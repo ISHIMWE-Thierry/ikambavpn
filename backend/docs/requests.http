@@ -1,0 +1,38 @@
+### Health
+GET http://localhost:3000/health
+
+### Smart connect
+POST http://localhost:3000/ai/smart-connect
+Authorization: Bearer <FIREBASE_ID_TOKEN>
+Content-Type: application/json
+
+{
+  "device": "ios",
+  "device_id": "abc123"
+}
+# Response: { session_id, server, wg_config { provider, endpoint, peer_public_key, private_key, allowed_ips, dns }, expires_at }
+
+### Metrics
+GET http://localhost:3000/servers/metrics
+
+### Heartbeat
+POST http://localhost:3000/connection/heartbeat
+Authorization: Bearer <FIREBASE_ID_TOKEN>
+Content-Type: application/json
+
+{
+  "session_id": "session123",
+  "status": "connected",
+  "local_ping_ms": 70
+}
+
+### Admin metrics
+POST http://localhost:3000/admin/metrics
+Authorization: Bearer <ADMIN_FIREBASE_ID_TOKEN>
+Content-Type: application/json
+
+{
+  "USA": { "latency_ms": 100, "load_percent": 30, "stability": 90 },
+  "RWANDA": { "latency_ms": 40, "load_percent": 60, "stability": 95 },
+  "updated_at": ""
+}
