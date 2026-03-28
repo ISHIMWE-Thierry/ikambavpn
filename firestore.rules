@@ -1,10 +1,50 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read and write access to all documents in all collections.
-    // WARNING: This makes the entire Firestore database publicly readable and writable.
-    match /{document=**} {
-      allow read, write: if true;
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/vpn_users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ── Users ──────────────────────────────────────────────────────────────
+    match /vpn_users/{userId} {
+      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ── Orders ────────────────────────────────────────────────────────────
+    match /vpn_orders/{orderId} {
+      allow read: if isSignedIn() &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ── Payment accounts (admin writes, all signed-in users read) ─────────
+    match /vpn_payment_accounts/{accountId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Plans (admin writes, public read) ─────────────────────────────────
+    match /vpn_plans/{planId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }
