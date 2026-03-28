@@ -45,10 +45,12 @@ export function TrialPage() {
     }
     getUserTrial(firebaseUser.uid)
       .then((trial) => {
-        if (trial && (trial.status === 'active' || trial.status === 'expired')) {
+        if (trial?.status === 'active') {
+          navigate('/dashboard');   // show countdown + credentials there
+        } else if (trial?.status === 'expired') {
           setStage('used');
         } else {
-          setStage('available');
+          setStage('available');    // no trial, provisioning, or failed → allow start
         }
       })
       .catch(() => setStage('available'));
