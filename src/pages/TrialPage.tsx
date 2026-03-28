@@ -73,18 +73,12 @@ export function TrialPage() {
         status: 'provisioning',
       });
 
-      // Step 1 — create ResellPortal client
+      // Step 1 — create ResellPortal client (or reuse existing)
       let resellClientId: number;
       try {
-        const client = await createClient({
-          email,
-          first_name: profile?.firstname || name.split(' ')[0] || 'User',
-          last_name: profile?.lastname || name.split(' ').slice(1).join(' ') || '',
-          password: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2),
-        });
-        resellClientId = client.id;
+        resellClientId = await createClient({ name, email });
       } catch {
-        // Client already exists in ResellPortal — look up by email
+        // Client already exists — look up by email
         const existing = await getClientByEmail(email);
         if (existing) {
           resellClientId = existing.id;
@@ -100,10 +94,15 @@ export function TrialPage() {
         throw new Error(order.message || 'VPN provisioning failed. Please try again.');
       }
 
+      // Credentials may be under vpn_credentials, client_credentials, or service_data
+      const vc = order.vpn_credentials;
+      const cc = order.client_credentials;
+      const sd = order.service_data;
+
       const creds: VpnCredentials = {
-        username: order.vpn_credentials?.username,
-        password: order.vpn_credentials?.password,
-        serverAddress: order.vpn_credentials?.server || order.vpn_credentials?.server_address,
+        username: vc?.username || cc?.email || sd?.username,
+        password: vc?.password || cc?.password || sd?.password,
+        serverAddress: vc?.server || vc?.server_address || sd?.server || sd?.server_address,
       };
 
       // Step 3 — update trial record with real data
