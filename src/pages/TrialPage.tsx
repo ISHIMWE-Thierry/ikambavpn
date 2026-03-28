@@ -45,7 +45,7 @@ export function TrialPage() {
     }
     getUserTrial(firebaseUser.uid)
       .then((trial) => {
-        if (trial) {
+        if (trial && (trial.status === 'active' || trial.status === 'expired')) {
           setStage('used');
         } else {
           setStage('available');
@@ -99,11 +99,14 @@ export function TrialPage() {
       const cc = order.client_credentials;
       const sd = order.service_data;
 
-      const creds: VpnCredentials = {
-        username: vc?.username || cc?.email || sd?.username,
-        password: vc?.password || cc?.password || sd?.password,
-        serverAddress: vc?.server || vc?.server_address || sd?.server || sd?.server_address,
-      };
+      // Build creds without undefined — Firestore rejects undefined field values
+      const creds: VpnCredentials = {};
+      const username = vc?.username || cc?.email || sd?.username;
+      const password = vc?.password || cc?.password || sd?.password;
+      const serverAddress = vc?.server || vc?.server_address || sd?.server || sd?.server_address;
+      if (username) creds.username = username;
+      if (password) creds.password = password;
+      if (serverAddress) creds.serverAddress = serverAddress;
 
       // Step 3 — update trial record with real data
       await updateTrial(trialId, {
