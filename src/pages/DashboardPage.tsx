@@ -1,14 +1,78 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap } from 'lucide-react';
+import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders, getUserTrial, updateTrial } from '../lib/db-service';
-import { cancelService } from '../lib/api';
+import { cancelService, getClientByEmail, getClientById, getServices, getService } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { formatDate, formatCurrency, daysUntilExpiry, isExpired } from '../lib/utils';
 import type { VpnOrder, OrderStatus, VpnTrial } from '../types';
+
+// ── App download links ────────────────────────────────────────────────────────
+
+const DOWNLOADS = [
+  { label: 'Windows', badge: '.exe',         url: 'https://vpnclient.app/current/vpnclient/vpnclient.exe' },
+  { label: 'macOS',   badge: '.dmg',         url: 'https://vpnclient.app/current/vpnclient/vpnclient.dmg' },
+  { label: 'iOS',     badge: 'App Store',    url: 'https://apps.apple.com/app/id1506797696' },
+  { label: 'Android', badge: 'Google Play',  url: 'https://play.google.com/store/apps/details?id=com.vpn.client' },
+  { label: 'Android APK', badge: 'Direct',   url: 'https://vpnclient.app/apk/VPNClient.apk' },
+  { label: 'TV / Fire TV', badge: 'APK',     url: 'https://vpnclient.app/apk/VPNClient-TV.apk' },
+  { label: 'Linux',   badge: '.run',         url: 'https://vpnclient.app/current/vpnclient/vpnclient.run' },
+];
+
+function AppDownloads() {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Download className="w-5 h-5" />
+          <h2 className="font-semibold">Download VPN app</h2>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {DOWNLOADS.map((d) => (
+            <a
+              key={d.label}
+              href={d.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col gap-0.5 border border-gray-100 rounded-xl px-3 py-2.5 hover:border-black transition"
+            >
+              <span className="text-sm font-medium">{d.label}</span>
+              <span className="text-xs text-gray-400">{d.badge}</span>
+            </a>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Credentials block (shared by trial + paid + resell) ───────────────────────
+
+function CredentialsBox({ username, password }: { username?: string; password?: string }) {
+  const [show, setShow] = useState(false);
+  if (!username && !password) return null;
+  return (
+    <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
+      {username && <p><span className="text-gray-400">Username: </span>{username}</p>}
+      {password && (
+        <div className="flex items-center gap-2">
+          <span className="text-gray-400">Password: </span>
+          <span>{show ? password : '••••••••••'}</span>
+          <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
+            {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
 
 function statusBadge(status: OrderStatus) {
   const map: Record<OrderStatus, { label: string; variant: 'success' | 'warning' | 'danger' | 'muted' | 'default' }> = {
@@ -22,12 +86,17 @@ function statusBadge(status: OrderStatus) {
   return <Badge variant={s.variant}>{s.label}</Badge>;
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function DashboardPage() {
   const { firebaseUser, profile } = useAuth();
   const [orders, setOrders] = useState<VpnOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [trial, setTrial] = useState<VpnTrial | null>(null);
   const [trialTimeLeft, setTrialTimeLeft] = useState('');
+
+  // ResellPortal live service for this user
+  const [resellCreds, setResellCreds] = useState<{ username?: string; password?: string } | null>(null);
 
   const fetchOrders = () => {
     if (!firebaseUser) return;
@@ -46,6 +115,32 @@ export function DashboardPage() {
     getUserTrial(firebaseUser.uid).then(setTrial).catch(() => {});
   }, [firebaseUser]);
 
+  // Background check: look up user's email in ResellPortal
+  // If they have an active service there, pull credentials automatically
+  useEffect(() => {
+    if (!firebaseUser?.email) return;
+    const email = firebaseUser.email;
+
+    async function syncFromResellPortal() {
+      try {
+        const client = await getClientByEmail(email);
+        if (!client) return;
+        const detail = await getClientById(client.id);
+        if (detail.active_services === 0) return;
+        const services = await getServices(client.id);
+        const vpnSvc = services.find((s) => Number(s.client_id) === Number(client.id));
+        if (!vpnSvc) return;
+        const full = await getService(vpnSvc.id);
+        const sd = full.service_data ?? {};
+        if (sd.username || sd.password) {
+          setResellCreds({ username: sd.username, password: sd.password });
+        }
+      } catch { /* silent — best-effort */ }
+    }
+
+    syncFromResellPortal();
+  }, [firebaseUser]);
+
   // Live countdown + auto-deactivate when trial expires
   useEffect(() => {
     if (!trial || trial.status !== 'active') return;
@@ -54,9 +149,7 @@ export function DashboardPage() {
       const ms = new Date(trial.expiresAt).getTime() - Date.now();
       if (ms <= 0) {
         setTrialTimeLeft('Expired');
-        if (trial.resellServiceId) {
-          cancelService(trial.resellServiceId).catch(() => {});
-        }
+        if (trial.resellServiceId) cancelService(trial.resellServiceId).catch(() => {});
         updateTrial(trial.id, { status: 'expired' }).catch(() => {});
         setTrial((t) => (t ? { ...t, status: 'expired' } : t));
         return;
@@ -76,9 +169,11 @@ export function DashboardPage() {
   const pendingOrders = orders.filter((o) =>
     o.status === 'pending_payment' || o.status === 'payment_submitted'
   );
-
   const days = daysUntilExpiry(activeOrder?.expiresAt);
   const expired = isExpired(activeOrder?.expiresAt);
+
+  // User has an active VPN in any form
+  const hasActiveVpn = !!activeOrder || trial?.status === 'active' || !!resellCreds;
 
   return (
     <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-10">
@@ -101,20 +196,40 @@ export function DashboardPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          {/* Active service */}
-          {activeOrder ? (
+
+          {/* ── ResellPortal live service (always shown if active) ── */}
+          {resellCreds && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Shield className="w-5 h-5" />
-                    <h2 className="font-semibold">Active VPN service</h2>
+                    <h2 className="font-semibold">Your VPN service</h2>
+                  </div>
+                  <Badge variant="success">Active</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm font-medium mb-3">VPN credentials</p>
+                <CredentialsBox username={resellCreds.username} password={resellCreds.password} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Paid active order (Firestore) ── */}
+          {activeOrder && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-5 h-5" />
+                    <h2 className="font-semibold">Active VPN plan</h2>
                   </div>
                   {statusBadge(activeOrder.status)}
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="grid sm:grid-cols-3 gap-6">
+                <div className="grid sm:grid-cols-3 gap-6 mb-4">
                   <Stat label="Plan" value={`${activeOrder.planName} — ${activeOrder.planDuration}`} />
                   <Stat label="Amount paid" value={formatCurrency(activeOrder.amount, activeOrder.currency)} />
                   {activeOrder.expiresAt && (
@@ -127,51 +242,26 @@ export function DashboardPage() {
                 </div>
 
                 {activeOrder.credentials && (
-                  <div className="mt-6 border-t border-gray-100 pt-5">
-                    <p className="text-sm font-medium mb-3">Your VPN credentials</p>
-                    <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-                      {activeOrder.credentials.serverAddress && (
-                        <p><span className="text-gray-400">Server:</span> {activeOrder.credentials.serverAddress}</p>
-                      )}
-                      {activeOrder.credentials.username && (
-                        <p><span className="text-gray-400">Username:</span> {activeOrder.credentials.username}</p>
-                      )}
-                      {activeOrder.credentials.password && (
-                        <p><span className="text-gray-400">Password:</span> {activeOrder.credentials.password}</p>
-                      )}
-                      {activeOrder.credentials.notes && (
-                        <p className="mt-1 font-sans text-gray-500 text-xs">{activeOrder.credentials.notes}</p>
-                      )}
-                    </div>
-                  </div>
+                  <>
+                    <p className="text-sm font-medium mb-3 border-t border-gray-100 pt-5">VPN credentials</p>
+                    <CredentialsBox
+                      username={activeOrder.credentials.username}
+                      password={activeOrder.credentials.password}
+                    />
+                  </>
                 )}
 
                 {(expired || (days !== null && days <= 7)) && (
                   <div className="mt-5">
-                    <Link to="/plans">
-                      <Button variant="secondary" size="sm">Renew service</Button>
-                    </Link>
+                    <Link to="/plans"><Button variant="secondary" size="sm">Renew service</Button></Link>
                   </div>
                 )}
               </CardContent>
             </Card>
-          ) : (
-            <Card>
-              <CardContent className="py-10 flex flex-col items-center gap-4 text-center">
-                <Shield className="w-10 h-10 text-gray-300" />
-                <p className="font-medium text-gray-700">No active VPN service</p>
-                <p className="text-sm text-gray-400 max-w-xs">
-                  Browse our plans and get started in minutes.
-                </p>
-                <Link to="/plans">
-                  <Button>Browse plans</Button>
-                </Link>
-              </CardContent>
-            </Card>
           )}
 
-          {/* Free trial */}
-          {trial && trial.status === 'active' && (
+          {/* ── Free trial ── */}
+          {trial?.status === 'active' && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -187,48 +277,54 @@ export function DashboardPage() {
                   <Clock className="w-4 h-4 text-gray-400" />
                   <span className="text-sm font-mono font-semibold">{trialTimeLeft} remaining</span>
                 </div>
-
                 {trial.credentials && (
-                  <div className="border-t border-gray-100 pt-5">
-                    <p className="text-sm font-medium mb-3">Your VPN credentials</p>
-                    <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-                      {trial.credentials.serverAddress && (
-                        <p><span className="text-gray-400">Server:</span> {trial.credentials.serverAddress}</p>
-                      )}
-                      {trial.credentials.username && (
-                        <p><span className="text-gray-400">Username:</span> {trial.credentials.username}</p>
-                      )}
-                      {trial.credentials.password && (
-                        <p><span className="text-gray-400">Password:</span> {trial.credentials.password}</p>
-                      )}
-                    </div>
-                  </div>
+                  <>
+                    <p className="text-sm font-medium mb-3 border-t border-gray-100 pt-4">VPN credentials</p>
+                    <CredentialsBox
+                      username={trial.credentials.username}
+                      password={trial.credentials.password}
+                    />
+                  </>
                 )}
-
                 <div className="mt-5">
-                  <Link to="/plans">
-                    <Button variant="secondary" size="sm">Upgrade to paid plan</Button>
-                  </Link>
+                  <Link to="/plans"><Button variant="secondary" size="sm">Upgrade to paid plan</Button></Link>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {trial && trial.status === 'expired' && !activeOrder && (
+          {/* ── App downloads (shown whenever user has active VPN) ── */}
+          {hasActiveVpn && <AppDownloads />}
+
+          {/* ── Trial expired ── */}
+          {trial?.status === 'expired' && !activeOrder && !resellCreds && (
             <Card>
               <CardContent className="py-6 flex flex-col items-center gap-3 text-center">
                 <AlertCircle className="w-8 h-8 text-gray-300" />
                 <p className="font-medium text-gray-700">Your free trial has ended</p>
                 <p className="text-sm text-gray-400 max-w-xs">Subscribe to keep your VPN access.</p>
-                <Link to="/plans">
-                  <Button size="sm">View plans</Button>
-                </Link>
+                <Link to="/plans"><Button size="sm">View plans</Button></Link>
               </CardContent>
             </Card>
           )}
 
-          {/* Offer trial when no active service and no prior trial */}
-          {!trial && !activeOrder && !loading && (
+          {/* ── No service at all ── */}
+          {!activeOrder && !resellCreds && trial?.status !== 'active' && (
+            <Card>
+              <CardContent className="py-10 flex flex-col items-center gap-4 text-center">
+                <Shield className="w-10 h-10 text-gray-300" />
+                <p className="font-medium text-gray-700">No active VPN service</p>
+                <p className="text-sm text-gray-400 max-w-xs">Browse our plans or try free for 1 day.</p>
+                <div className="flex gap-2">
+                  <Link to="/plans"><Button>Browse plans</Button></Link>
+                  {!trial && <Link to="/trial"><Button variant="secondary">Try free</Button></Link>}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Offer trial link (subtle) ── */}
+          {!trial && !activeOrder && !resellCreds && (
             <Link
               to="/trial"
               className="flex items-center justify-between border border-dashed border-gray-200 rounded-2xl px-5 py-4 hover:border-black transition"
@@ -241,12 +337,10 @@ export function DashboardPage() {
             </Link>
           )}
 
-          {/* Pending orders */}
+          {/* ── Pending orders ── */}
           {pendingOrders.length > 0 && (
             <div>
-              <h2 className="font-semibold mb-3 text-sm text-gray-500 uppercase tracking-wide">
-                Pending orders
-              </h2>
+              <h2 className="font-semibold mb-3 text-sm text-gray-500 uppercase tracking-wide">Pending orders</h2>
               <div className="flex flex-col gap-3">
                 {pendingOrders.map((order) => (
                   <Card key={order.id}>
@@ -270,12 +364,10 @@ export function DashboardPage() {
             </div>
           )}
 
-          {/* Order history */}
+          {/* ── Order history ── */}
           {orders.length > 0 && (
             <div>
-              <h2 className="font-semibold mb-3 text-sm text-gray-500 uppercase tracking-wide">
-                Order history
-              </h2>
+              <h2 className="font-semibold mb-3 text-sm text-gray-500 uppercase tracking-wide">Order history</h2>
               <Card>
                 <div className="divide-y divide-gray-50">
                   {orders.map((order) => (
@@ -295,19 +387,13 @@ export function DashboardPage() {
             </div>
           )}
 
-          {/* Quick links */}
+          {/* ── Quick links ── */}
           <div className="grid sm:grid-cols-2 gap-3">
-            <Link
-              to="/plans"
-              className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-black transition"
-            >
+            <Link to="/plans" className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-black transition">
               <span className="font-medium text-sm">Browse plans</span>
               <ChevronRight className="w-4 h-4 text-gray-400" />
             </Link>
-            <Link
-              to="/account"
-              className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-black transition"
-            >
+            <Link to="/account" className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-black transition">
               <span className="font-medium text-sm">Account settings</span>
               <ChevronRight className="w-4 h-4 text-gray-400" />
             </Link>
