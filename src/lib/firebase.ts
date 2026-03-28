@@ -23,6 +23,7 @@ export const COLLECTIONS = {
   ORDERS: 'vpn_orders',
   PAYMENT_ACCOUNTS: 'vpn_payment_accounts',
   PLANS: 'vpn_plans',
+  TRIALS: 'vpn_trials',
 } as const;
 
 /**

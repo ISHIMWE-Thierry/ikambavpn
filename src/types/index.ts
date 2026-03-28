@@ -79,6 +79,22 @@ export interface PaymentAccount {
   active: boolean;
 }
 
+export type TrialStatus = 'provisioning' | 'active' | 'expired' | 'failed';
+
+export interface VpnTrial {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  resellClientId?: number;
+  resellServiceId?: number;
+  credentials?: VpnCredentials;
+  status: TrialStatus;
+  expiresAt: string;       // ISO — now + 24 hours at creation
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ResellProduct {
   id: number;
   name: string;

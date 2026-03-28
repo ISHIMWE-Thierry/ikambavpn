@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check } from 'lucide-react';
+import { Check, Shield } from 'lucide-react';
 import { getPlans } from '../lib/db-service';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -68,6 +68,14 @@ export function PlansPage() {
     navigate('/checkout', { state: { plan } });
   };
 
+  const handleTrial = () => {
+    if (!firebaseUser) {
+      navigate('/signup', { state: { from: { pathname: '/trial' } } });
+      return;
+    }
+    navigate('/trial');
+  };
+
   if (loading) {
     return (
       <main className="flex-1 flex items-center justify-center">
@@ -83,6 +91,22 @@ export function PlansPage() {
         <p className="text-gray-500 max-w-md mx-auto">
           Simple, transparent pricing. No hidden fees. Cancel or renew anytime.
         </p>
+      </div>
+
+      {/* Free trial banner */}
+      <div className="mb-10 border border-gray-100 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shrink-0">
+            <Shield className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="font-semibold text-black">Try Ikamba VPN free for 1 day</p>
+            <p className="text-sm text-gray-500 mt-0.5">No credit card required. One trial per account.</p>
+          </div>
+        </div>
+        <Button variant="secondary" className="shrink-0" onClick={handleTrial}>
+          Start free trial
+        </Button>
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">

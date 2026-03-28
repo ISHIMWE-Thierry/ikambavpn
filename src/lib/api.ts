@@ -116,19 +116,65 @@ export function getOrder(orderId: number): Promise<ResellOrder> {
   return request<ResellOrder>(`/orders/${orderId}`);
 }
 
+// ── VPN order (trial and paid) ────────────────────────────────────────────────
+
+export interface VpnOrderResponse {
+  success: boolean;
+  service_id: number;
+  message?: string;
+  billing_cycle?: string;
+  amount_charged?: number;
+  new_balance?: number;
+  vpn_credentials?: {
+    username: string;
+    password: string;
+    server?: string;
+    server_address?: string;
+  };
+}
+
+/**
+ * Creates a VPN service order using the `vpn` product key.
+ * Returns credentials immediately on success.
+ */
+export function createVpnOrder(clientId: number, billingCycle = 'monthly'): Promise<VpnOrderResponse> {
+  return request<VpnOrderResponse>('/orders', {
+    method: 'POST',
+    body: JSON.stringify({
+      client_id: clientId,
+      product_key: 'vpn',
+      billing_cycle: billingCycle,
+    }),
+  });
+}
+
 // ── Services ─────────────────────────────────────────────────────────────────
 
 export interface ResellService {
   id: number;
   client_id: number;
-  product_id: number;
+  product_id?: number;
+  service_type?: string;
   status: string;
   username?: string;
   password?: string;
   expiry_date?: string;
+  monthly_cost?: number;
 }
 
 export function getServices(clientId?: number): Promise<ResellService[]> {
   const query = clientId ? `?client_id=${clientId}` : '';
   return request<ResellService[]>(`/services${query}`);
+}
+
+export function getService(serviceId: number): Promise<ResellService> {
+  return request<ResellService>(`/services/${serviceId}`);
+}
+
+/**
+ * Terminates a service immediately via DELETE /services/{id}.
+ * Used to deactivate expired trials.
+ */
+export async function cancelService(serviceId: number): Promise<void> {
+  await request<unknown>(`/services/${serviceId}`, { method: 'DELETE' });
 }

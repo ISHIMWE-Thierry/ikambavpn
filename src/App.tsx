@@ -13,6 +13,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { AccountPage } from './pages/AccountPage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
+import { TrialPage } from './pages/TrialPage'
 
 export default function App() {
   return (
@@ -28,6 +29,14 @@ export default function App() {
         <Route path="/plans" element={<PlansPage />} />
 
         {/* Protected — users */}
+        <Route
+          path="/trial"
+          element={
+            <ProtectedRoute>
+              <TrialPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/checkout"
           element={

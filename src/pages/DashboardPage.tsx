@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight } from 'lucide-react';
+import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserOrders } from '../lib/db-service';
+import { getUserOrders, getUserTrial, updateTrial } from '../lib/db-service';
+import { cancelService } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { formatDate, formatCurrency, daysUntilExpiry, isExpired } from '../lib/utils';
-import type { VpnOrder, OrderStatus } from '../types';
+import type { VpnOrder, OrderStatus, VpnTrial } from '../types';
 
 function statusBadge(status: OrderStatus) {
   const map: Record<OrderStatus, { label: string; variant: 'success' | 'warning' | 'danger' | 'muted' | 'default' }> = {
@@ -25,6 +26,8 @@ export function DashboardPage() {
   const { firebaseUser, profile } = useAuth();
   const [orders, setOrders] = useState<VpnOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [trial, setTrial] = useState<VpnTrial | null>(null);
+  const [trialTimeLeft, setTrialTimeLeft] = useState('');
 
   const fetchOrders = () => {
     if (!firebaseUser) return;
@@ -36,6 +39,38 @@ export function DashboardPage() {
   };
 
   useEffect(fetchOrders, [firebaseUser]);
+
+  // Fetch trial record
+  useEffect(() => {
+    if (!firebaseUser) return;
+    getUserTrial(firebaseUser.uid).then(setTrial).catch(() => {});
+  }, [firebaseUser]);
+
+  // Live countdown + auto-deactivate when trial expires
+  useEffect(() => {
+    if (!trial || trial.status !== 'active') return;
+
+    const tick = () => {
+      const ms = new Date(trial.expiresAt).getTime() - Date.now();
+      if (ms <= 0) {
+        setTrialTimeLeft('Expired');
+        if (trial.resellServiceId) {
+          cancelService(trial.resellServiceId).catch(() => {});
+        }
+        updateTrial(trial.id, { status: 'expired' }).catch(() => {});
+        setTrial((t) => (t ? { ...t, status: 'expired' } : t));
+        return;
+      }
+      const h = Math.floor(ms / 3_600_000);
+      const m = Math.floor((ms % 3_600_000) / 60_000);
+      const s = Math.floor((ms % 60_000) / 1_000);
+      setTrialTimeLeft(`${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`);
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [trial]);
 
   const activeOrder = orders.find((o) => o.status === 'active');
   const pendingOrders = orders.filter((o) =>
@@ -133,6 +168,77 @@ export function DashboardPage() {
                 </Link>
               </CardContent>
             </Card>
+          )}
+
+          {/* Free trial */}
+          {trial && trial.status === 'active' && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-5 h-5" />
+                    <h2 className="font-semibold">Free 1-day trial</h2>
+                  </div>
+                  <Badge variant="success">Active</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 mb-4">
+                  <Clock className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm font-mono font-semibold">{trialTimeLeft} remaining</span>
+                </div>
+
+                {trial.credentials && (
+                  <div className="border-t border-gray-100 pt-5">
+                    <p className="text-sm font-medium mb-3">Your VPN credentials</p>
+                    <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
+                      {trial.credentials.serverAddress && (
+                        <p><span className="text-gray-400">Server:</span> {trial.credentials.serverAddress}</p>
+                      )}
+                      {trial.credentials.username && (
+                        <p><span className="text-gray-400">Username:</span> {trial.credentials.username}</p>
+                      )}
+                      {trial.credentials.password && (
+                        <p><span className="text-gray-400">Password:</span> {trial.credentials.password}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-5">
+                  <Link to="/plans">
+                    <Button variant="secondary" size="sm">Upgrade to paid plan</Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {trial && trial.status === 'expired' && !activeOrder && (
+            <Card>
+              <CardContent className="py-6 flex flex-col items-center gap-3 text-center">
+                <AlertCircle className="w-8 h-8 text-gray-300" />
+                <p className="font-medium text-gray-700">Your free trial has ended</p>
+                <p className="text-sm text-gray-400 max-w-xs">Subscribe to keep your VPN access.</p>
+                <Link to="/plans">
+                  <Button size="sm">View plans</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Offer trial when no active service and no prior trial */}
+          {!trial && !activeOrder && !loading && (
+            <Link
+              to="/trial"
+              className="flex items-center justify-between border border-dashed border-gray-200 rounded-2xl px-5 py-4 hover:border-black transition"
+            >
+              <div className="flex items-center gap-3">
+                <Zap className="w-4 h-4 text-gray-400" />
+                <span className="text-sm font-medium">Try Ikamba VPN free for 1 day</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </Link>
           )}
 
           {/* Pending orders */}

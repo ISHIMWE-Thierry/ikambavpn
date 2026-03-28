@@ -9,12 +9,13 @@ import {
   query,
   where,
   orderBy,
+  limit,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, COLLECTIONS } from './firebase';
-import type { UserProfile, VpnOrder, PaymentAccount, VpnPlan, OrderStatus } from '../types';
+import type { UserProfile, VpnOrder, PaymentAccount, VpnPlan, OrderStatus, VpnTrial, TrialStatus } from '../types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -266,6 +267,59 @@ export async function getAppSettings(): Promise<AppPaymentSettings> {
     // Silent fallback
   }
   return PAYMENT_FALLBACK;
+}
+
+// ── Trials ────────────────────────────────────────────────────────────────────
+
+const TRIAL_DURATION_HOURS = 24;
+
+export async function getUserTrial(userId: string): Promise<VpnTrial | null> {
+  const q = query(
+    collection(db, COLLECTIONS.TRIALS),
+    where('userId', '==', userId),
+    orderBy('createdAt', 'desc'),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0].data();
+  return { id: snap.docs[0].id, ...d } as VpnTrial;
+}
+
+export async function createTrial(
+  userId: string,
+  data: {
+    userEmail: string;
+    userName: string;
+    resellClientId?: number;
+    resellServiceId?: number;
+    credentials?: VpnTrial['credentials'];
+    status: TrialStatus;
+  }
+): Promise<string> {
+  const ts = now();
+  const expiresAt = new Date(Date.now() + TRIAL_DURATION_HOURS * 60 * 60 * 1000).toISOString();
+  const ref = await addDoc(collection(db, COLLECTIONS.TRIALS), {
+    ...data,
+    userId,
+    expiresAt,
+    createdAt: ts,
+    updatedAt: ts,
+  });
+  return ref.id;
+}
+
+export async function updateTrial(trialId: string, data: Partial<VpnTrial>): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.TRIALS, trialId), {
+    ...data,
+    updatedAt: now(),
+  });
+}
+
+export async function getAllTrials(): Promise<VpnTrial[]> {
+  const q = query(collection(db, COLLECTIONS.TRIALS), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as VpnTrial));
 }
 
 // Re-export serverTimestamp for convenience
