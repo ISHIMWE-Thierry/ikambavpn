@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders, getUserTrial, updateTrial } from '../lib/db-service';
-import { getAccount, disableAccount } from '../lib/vpnresellers-api';
+import { getAccount, disableAccount, listServers } from '../lib/vpnresellers-api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
@@ -60,25 +60,72 @@ function CredentialsBox({
   wgIp?: string; wgPrivateKey?: string; wgPublicKey?: string;
 }) {
   const [show, setShow] = useState(false);
+  const [dlLoading, setDlLoading] = useState(false);
+
   if (!username && !password && !wgIp) return null;
+
+  const handleWgDownload = async () => {
+    if (!wgPrivateKey || !wgIp) return;
+    setDlLoading(true);
+    let serverIp = '';
+    try {
+      const servers = await listServers();
+      serverIp = servers[0]?.ip ?? '';
+    } catch { /* use placeholder */ } finally {
+      setDlLoading(false);
+    }
+    const cfg = [
+      '[Interface]',
+      `PrivateKey = ${wgPrivateKey}`,
+      `Address = ${wgIp}/32`,
+      'DNS = 1.1.1.1, 8.8.8.8',
+      '',
+      '[Peer]',
+      '# Get your server public key from Ikamba VPN support',
+      'PublicKey = REPLACE_WITH_SERVER_PUBLIC_KEY',
+      `Endpoint = ${serverIp || 'SERVER_IP'}:51820`,
+      'AllowedIPs = 0.0.0.0/0',
+      'PersistentKeepalive = 25',
+    ].join('\n');
+    const blob = new Blob([cfg], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${username ?? 'vpn'}-wireguard.conf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-      {username && <p><span className="text-gray-400">Username: </span>{username}</p>}
-      {password && (
-        <div className="flex items-center gap-2">
-          <span className="text-gray-400">Password: </span>
-          <span>{show ? password : '••••••••••'}</span>
-          <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
-            {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-          </button>
-        </div>
-      )}
-      {wgIp && <p><span className="text-gray-400">WG IP: </span>{wgIp}</p>}
+    <div className="flex flex-col gap-3">
+      <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
+        {username && <p><span className="text-gray-400">Username: </span>{username}</p>}
+        {password && (
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">Password: </span>
+            <span>{show ? password : '••••••••••'}</span>
+            <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
+              {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        )}
+        {wgIp && <p><span className="text-gray-400">WG IP: </span>{wgIp}</p>}
+        {wgPrivateKey && (
+          <p className="break-all"><span className="text-gray-400">WG Private: </span>{show ? wgPrivateKey : '••••••••••'}</p>
+        )}
+        {wgPublicKey && (
+          <p className="break-all"><span className="text-gray-400">WG Public: </span>{wgPublicKey}</p>
+        )}
+      </div>
       {wgPrivateKey && (
-        <p className="break-all"><span className="text-gray-400">WG Private: </span>{show ? wgPrivateKey : '••••••••••'}</p>
-      )}
-      {wgPublicKey && (
-        <p className="break-all"><span className="text-gray-400">WG Public: </span>{wgPublicKey}</p>
+        <button
+          onClick={handleWgDownload}
+          disabled={dlLoading}
+          className="self-start flex items-center gap-1.5 text-xs text-gray-500 hover:text-black transition disabled:opacity-50"
+        >
+          <Download className="w-3.5 h-3.5" />
+          {dlLoading ? 'Preparing…' : 'Download WireGuard config (iOS / Android)'}
+        </button>
       )}
     </div>
   );
@@ -329,6 +376,9 @@ export function DashboardPage() {
                     <CredentialsBox
                       username={trial.credentials.username}
                       password={trial.credentials.password}
+                      wgIp={trial.credentials.wgIp}
+                      wgPrivateKey={trial.credentials.wgPrivateKey}
+                      wgPublicKey={trial.credentials.wgPublicKey}
                     />
                   </>
                 )}

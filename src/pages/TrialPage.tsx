@@ -23,6 +23,7 @@ import {
   usernameFromEmail,
   generatePassword,
   getAccountByUsername,
+  setExpiry,
 } from '../lib/vpnresellers-api';
 import { Button } from '../components/ui/button';
 import type { VpnCredentials, VpnTrial } from '../types';
@@ -115,10 +116,17 @@ export function TrialPage() {
       const password = generatePassword();
       const account = await createAccount(username, password);
 
+      // Enforce 24h expiry on VPNresellers side (server-side safety net)
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      await setExpiry(account.id, tomorrow).catch(() => {});
+
       const creds: VpnCredentials = {
         username: account.username,
         password,
         vpnrAccountId: account.id,
+        wgIp: account.wg_ip,
+        wgPrivateKey: account.wg_private_key,
+        wgPublicKey: account.wg_public_key,
       };
 
       await updateTrial(trialId, {

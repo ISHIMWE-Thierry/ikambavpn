@@ -139,6 +139,26 @@ export async function setExpiry(id: number, expireAt: string | null): Promise<Vp
   return r.data;
 }
 
+/**
+ * Validate VPN credentials — use this to check if a user's subscription/trial is still active.
+ *   const { success } = await validateAccount(username, password);
+ * Returns success=true (200), false on wrong password (461) or not found (460).
+ */
+export async function validateAccount(
+  username: string,
+  password: string
+): Promise<{ success: boolean; id?: number }> {
+  try {
+    const r = await request<{ success: boolean; id?: number; code?: number }>(
+      '/accounts/validate',
+      { method: 'POST', body: JSON.stringify({ username, password }) }
+    );
+    return { success: r.success === true, id: r.id };
+  } catch {
+    return { success: false };
+  }
+}
+
 /** Change account password. */
 export async function changePassword(id: number, password: string): Promise<VpnrAccount> {
   const r = await request<{ data: VpnrAccount }>(`/accounts/${id}/change_password`, {
