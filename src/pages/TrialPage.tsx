@@ -1,16 +1,17 @@
 /**
  * Free 1-Day Trial Page
  *
- * Flow:
- * 1. Check if user already used a trial → redirect to dashboard if active
- * 2. If a stuck 'provisioning' trial exists → try to recover from ResellPortal
- * 3. Show trial details + confirm button
- * 4. On confirm:
- *    a. Create (or reuse) ResellPortal client
- *    b. If client already has an active VPN service → reuse it (no double charge)
- *    c. Otherwise create a new VPN order → get service_id + credentials
- *    d. Store in vpn_trials collection with expiresAt = now + 24h
- * 5. Show success screen with credentials → redirect to dashboard
+ * On load:
+ *  1. Check Firestore — if active → dashboard, if expired → "used" screen
+ *  2. Always also check ResellPortal by email — if an active VPN service
+ *     exists there, sync it to Firestore and redirect to dashboard.
+ *     This recovers any stuck provisioning/failed records automatically.
+ *
+ * On confirm:
+ *  a. Create (or reuse) ResellPortal client
+ *  b. If client already has an active VPN service → reuse (no double charge)
+ *  c. Otherwise create new VPN order
+ *  d. Save to vpn_trials with expiresAt = now + 24h
  */
 
 import { useEffect, useState } from 'react';
@@ -32,8 +33,7 @@ const TRIAL_PERKS = [
   'One trial per account',
 ];
 
-/** Pull credentials out of a ResellPortal service record */
-async function recoverCredsFromService(serviceId: number): Promise<{ creds: VpnCredentials; resellServiceId: number }> {
+async function getCredsFromService(serviceId: number): Promise<VpnCredentials> {
   const full = await getService(serviceId);
   const sd = full.service_data ?? {};
   const creds: VpnCredentials = {};
@@ -41,7 +41,7 @@ async function recoverCredsFromService(serviceId: number): Promise<{ creds: VpnC
   if (sd.password) creds.password = sd.password;
   const srv = sd.server || sd.server_address;
   if (srv) creds.serverAddress = srv;
-  return { creds, resellServiceId: full.id };
+  return creds;
 }
 
 export function TrialPage() {
@@ -51,7 +51,6 @@ export function TrialPage() {
   const [stage, setStage] = useState<Stage>('loading');
   const [credentials, setCredentials] = useState<VpnCredentials | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
-  // Reuse an existing provisioning trial record instead of creating a duplicate
   const [pendingTrialId, setPendingTrialId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,56 +59,79 @@ export function TrialPage() {
       return;
     }
 
-    getUserTrial(firebaseUser.uid)
-      .then(async (trial: VpnTrial | null) => {
-        if (trial?.status === 'active') {
-          // Already active → show it on dashboard
-          navigate('/dashboard');
-          return;
-        }
+    const email = firebaseUser.email || '';
+    const name = profile
+      ? `${profile.firstname} ${profile.lastname}`.trim()
+      : firebaseUser.displayName || 'VPN User';
 
-        if (trial?.status === 'expired') {
-          setStage('used');
-          return;
-        }
+    async function check() {
+      // ── Step 1: Firestore state ──────────────────────────────────────────
+      let trial: VpnTrial | null = null;
+      try {
+        trial = await getUserTrial(firebaseUser!.uid);
+      } catch { /* ignore — will check ResellPortal below */ }
 
-        if (trial?.status === 'provisioning' && trial.id) {
-          // Previous attempt created a VPN service but failed to save credentials.
-          // Try to recover from ResellPortal before showing the start button.
-          setPendingTrialId(trial.id);
-          try {
-            const email = firebaseUser.email || '';
-            const client = await getClientByEmail(email);
-            if (client) {
-              const services = await getServices(client.id);
-              const vpnSvc = services.find((s) => s.status === 'active');
-              if (vpnSvc) {
-                const { creds } = await recoverCredsFromService(vpnSvc.id);
-                await updateTrial(trial.id, {
-                  resellClientId: client.id,
-                  resellServiceId: vpnSvc.id,
-                  credentials: creds,
-                  status: 'active',
-                });
-                navigate('/dashboard');
-                return;
-              }
+      if (trial?.status === 'active') {
+        navigate('/dashboard');
+        return;
+      }
+      if (trial?.status === 'expired') {
+        setStage('used');
+        return;
+      }
+
+      // Remember the stuck record so handleStart can reuse it
+      if (trial?.id) setPendingTrialId(trial.id);
+
+      // ── Step 2: ResellPortal source of truth ─────────────────────────────
+      // Do this even when Firestore returned provisioning/failed/null.
+      try {
+        const client = await getClientByEmail(email);
+        if (client) {
+          const services = await getServices(client.id);
+          // Filter by both status and client_id (API may return all services)
+          const vpnSvc = services.find(
+            (s) => s.status === 'active' && s.client_id === client.id
+          );
+          if (vpnSvc) {
+            const creds = await getCredsFromService(vpnSvc.id);
+            // Sync to Firestore
+            if (trial?.id) {
+              await updateTrial(trial.id, {
+                resellClientId: client.id,
+                resellServiceId: vpnSvc.id,
+                credentials: creds,
+                status: 'active',
+              });
+            } else {
+              const tid = await createTrial(firebaseUser!.uid, {
+                userEmail: email,
+                userName: name,
+                status: 'provisioning',
+              });
+              await updateTrial(tid, {
+                resellClientId: client.id,
+                resellServiceId: vpnSvc.id,
+                credentials: creds,
+                status: 'active',
+              });
             }
-          } catch {
-            // Recovery failed — fall through, let user retry
+            navigate('/dashboard');
+            return;
           }
         }
+      } catch { /* no active service found in ResellPortal */ }
 
-        setStage('available');
-      })
-      .catch(() => setStage('available'));
-  }, [firebaseUser, navigate]);
+      setStage('available');
+    }
+
+    check();
+  }, [firebaseUser, navigate, profile]);
 
   const handleStart = async () => {
     if (!firebaseUser) return;
     setStage('provisioning');
 
-    // Reuse a stuck provisioning record if one exists
     let trialId: string | null = pendingTrialId;
 
     try {
@@ -118,7 +140,6 @@ export function TrialPage() {
         : firebaseUser.displayName || 'VPN User';
       const email = firebaseUser.email || '';
 
-      // Create trial record only if we don't have one already
       if (!trialId) {
         trialId = await createTrial(firebaseUser.uid, {
           userEmail: email,
@@ -127,30 +148,29 @@ export function TrialPage() {
         });
       }
 
-      // Step 1 — create ResellPortal client (or reuse existing)
+      // Create or reuse ResellPortal client
       let resellClientId: number;
-      let existingClientId: number | null = null;
+      let isExistingClient = false;
 
       try {
         resellClientId = await createClient({ name, email });
       } catch {
         const existing = await getClientByEmail(email);
-        if (existing) {
-          resellClientId = existing.id;
-          existingClientId = existing.id;
-        } else {
-          throw new Error('Could not create VPN account. Please contact support.');
-        }
+        if (!existing) throw new Error('Could not create VPN account. Please contact support.');
+        resellClientId = existing.id;
+        isExistingClient = true;
       }
 
-      // Step 1b — if client existed, check for an active VPN service to avoid double charge
-      if (existingClientId !== null) {
-        const services = await getServices(existingClientId);
-        const vpnSvc = services.find((s) => s.status === 'active');
+      // If client already existed, check for an active service first (no double charge)
+      if (isExistingClient) {
+        const services = await getServices(resellClientId);
+        const vpnSvc = services.find(
+          (s) => s.status === 'active' && s.client_id === resellClientId
+        );
         if (vpnSvc) {
-          const { creds } = await recoverCredsFromService(vpnSvc.id);
+          const creds = await getCredsFromService(vpnSvc.id);
           await updateTrial(trialId, {
-            resellClientId: existingClientId,
+            resellClientId,
             resellServiceId: vpnSvc.id,
             credentials: creds,
             status: 'active',
@@ -162,19 +182,16 @@ export function TrialPage() {
         }
       }
 
-      // Step 2 — create VPN order → receive credentials immediately
+      // Create new VPN order
       const order = await createVpnOrder(resellClientId, 'monthly');
-
       if (!order.success || !order.service_id) {
         throw new Error(order.message || 'VPN provisioning failed. Please try again.');
       }
 
-      // Credentials may be under different keys depending on the product
       const vc = order.vpn_credentials;
       const cc = order.client_credentials;
       const sd = order.service_data;
 
-      // Build creds without undefined — Firestore rejects undefined field values
       const creds: VpnCredentials = {};
       const username = vc?.username || cc?.email || sd?.username;
       const password = vc?.password || cc?.password || sd?.password;
@@ -183,7 +200,6 @@ export function TrialPage() {
       if (password) creds.password = password;
       if (serverAddress) creds.serverAddress = serverAddress;
 
-      // Step 3 — update trial record with real data
       await updateTrial(trialId, {
         resellClientId,
         resellServiceId: order.service_id,
@@ -197,14 +213,12 @@ export function TrialPage() {
     } catch (err: unknown) {
       const msg = (err as Error).message || 'Something went wrong. Please try again.';
       setErrorMsg(msg);
-      if (trialId) {
-        updateTrial(trialId, { status: 'failed' }).catch(() => {});
-      }
+      if (trialId) updateTrial(trialId, { status: 'failed' }).catch(() => {});
       setStage('error');
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   if (stage === 'loading') {
     return (
@@ -217,7 +231,6 @@ export function TrialPage() {
   return (
     <main className="flex-1 max-w-md mx-auto px-4 py-16">
 
-      {/* Available */}
       {stage === 'available' && (
         <div className="flex flex-col gap-8">
           <div className="text-center">
@@ -251,16 +264,14 @@ export function TrialPage() {
         </div>
       )}
 
-      {/* Provisioning */}
       {stage === 'provisioning' && (
         <div className="flex flex-col items-center gap-6 text-center py-8">
           <div className="w-14 h-14 border-2 border-black border-t-transparent rounded-full animate-spin" />
           <h2 className="text-xl font-bold">Setting up your VPN…</h2>
-          <p className="text-sm text-gray-500">Creating your account and provisioning a server. This takes a few seconds.</p>
+          <p className="text-sm text-gray-500">This takes a few seconds.</p>
         </div>
       )}
 
-      {/* Already used */}
       {stage === 'used' && (
         <div className="flex flex-col items-center gap-6 text-center py-8">
           <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center">
@@ -273,16 +284,12 @@ export function TrialPage() {
           <Button onClick={() => navigate('/plans')} className="w-full max-w-xs">
             View plans
           </Button>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="text-sm text-gray-400 hover:text-black"
-          >
+          <button onClick={() => navigate('/dashboard')} className="text-sm text-gray-400 hover:text-black">
             Go to dashboard
           </button>
         </div>
       )}
 
-      {/* Error */}
       {stage === 'error' && (
         <div className="flex flex-col items-center gap-6 text-center py-8">
           <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center">
@@ -293,16 +300,12 @@ export function TrialPage() {
           <Button onClick={() => setStage('available')} variant="secondary" className="w-full max-w-xs">
             Try again
           </Button>
-          <button
-            onClick={() => navigate('/plans')}
-            className="text-sm text-gray-400 hover:text-black"
-          >
+          <button onClick={() => navigate('/plans')} className="text-sm text-gray-400 hover:text-black">
             View paid plans instead
           </button>
         </div>
       )}
 
-      {/* Success */}
       {stage === 'success' && (
         <div className="flex flex-col gap-6">
           <div className="text-center">
