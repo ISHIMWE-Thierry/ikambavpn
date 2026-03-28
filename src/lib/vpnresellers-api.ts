@@ -6,22 +6,28 @@
 
 const BASE_URL = 'https://api.vpnresellers.com/v3_2';
 
-function getToken() {
-  return import.meta.env.VITE_VPNRESELLERS_TOKEN || '';
+function getToken(): string {
+  const token = import.meta.env.VITE_VPNRESELLERS_TOKEN || '';
+  if (!token) throw new Error('VPNresellers token is not configured. Set VITE_VPNRESELLERS_TOKEN in your .env file.');
+  return token;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method ?? 'GET').toUpperCase();
+  const hasBody = method !== 'GET' && method !== 'HEAD';
+
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
       'Authorization': `Bearer ${getToken()}`,
       'Accept': 'application/json',
-      'Content-Type': 'application/json',
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...options?.headers,
     },
   });
+
   if (!res.ok) {
-    const data = await res.json().catch(() => ({})) as { message?: string };
+    const data = await res.json().catch(() => ({})) as { message?: string; errors?: unknown };
     throw new Error(data.message || `API error ${res.status}`);
   }
   return res.json() as Promise<T>;
