@@ -108,9 +108,10 @@ export interface ResellService {
 }
 
 export async function getServices(clientId?: number): Promise<ResellService[]> {
-  const q = clientId ? `?client_id=${clientId}` : '';
-  const r = await request<{ success: boolean; services: ResellService[] }>(`/services${q}`);
-  return r.services ?? [];
+  // API only supports ?status=active, not ?client_id — filter in JS
+  const r = await request<{ success: boolean; services: ResellService[] }>('/services?status=active');
+  const all = r.services ?? [];
+  return clientId ? all.filter((s) => Number(s.client_id) === Number(clientId)) : all;
 }
 
 export async function getService(serviceId: number): Promise<ResellService> {
@@ -134,18 +135,10 @@ export interface VpnOrderResponse {
   message?: string;
   amount_charged?: number;
   new_balance?: number;
-  /** Credentials may be under different keys depending on product */
   vpn_credentials?: {
     username?: string;
     password?: string;
-    server?: string;
-    server_address?: string;
   };
-  client_credentials?: {
-    email?: string;
-    password?: string;
-  };
-  service_data?: Record<string, string>;
 }
 
 /**

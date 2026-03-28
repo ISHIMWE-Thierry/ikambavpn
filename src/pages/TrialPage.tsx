@@ -39,8 +39,6 @@ async function getCredsFromService(serviceId: number): Promise<VpnCredentials> {
   const creds: VpnCredentials = {};
   if (sd.username) creds.username = sd.username;
   if (sd.password) creds.password = sd.password;
-  const srv = sd.server || sd.server_address;
-  if (srv) creds.serverAddress = srv;
   return creds;
 }
 
@@ -91,7 +89,7 @@ export function TrialPage() {
           const services = await getServices(client.id);
           // Filter by both status and client_id (API may return all services)
           const vpnSvc = services.find(
-            (s) => s.status === 'active' && s.client_id === client.id
+            (s) => s.status === 'active' && Number(s.client_id) === Number(client.id)
           );
           if (vpnSvc) {
             const creds = await getCredsFromService(vpnSvc.id);
@@ -189,16 +187,9 @@ export function TrialPage() {
       }
 
       const vc = order.vpn_credentials;
-      const cc = order.client_credentials;
-      const sd = order.service_data;
-
       const creds: VpnCredentials = {};
-      const username = vc?.username || cc?.email || sd?.username;
-      const password = vc?.password || cc?.password || sd?.password;
-      const serverAddress = vc?.server || vc?.server_address || sd?.server || sd?.server_address;
-      if (username) creds.username = username;
-      if (password) creds.password = password;
-      if (serverAddress) creds.serverAddress = serverAddress;
+      if (vc?.username) creds.username = vc.username;
+      if (vc?.password) creds.password = vc.password;
 
       await updateTrial(trialId, {
         resellClientId,
