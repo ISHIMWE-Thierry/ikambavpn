@@ -78,6 +78,11 @@ export function getClients(): Promise<ResellClient[]> {
   return request<ResellClient[]>('/clients');
 }
 
+export async function getClientByEmail(email: string): Promise<ResellClient | null> {
+  const clients = await getClients();
+  return clients.find((c) => c.email.toLowerCase() === email.toLowerCase()) ?? null;
+}
+
 export function createClient(data: {
   email: string;
   first_name: string;

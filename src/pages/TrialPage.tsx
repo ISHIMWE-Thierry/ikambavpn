@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Check, Clock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserTrial, createTrial, updateTrial } from '../lib/db-service';
-import { createClient, createVpnOrder } from '../lib/api';
+import { createClient, createVpnOrder, getClientByEmail } from '../lib/api';
 import { Button } from '../components/ui/button';
 import type { VpnCredentials } from '../types';
 import toast from 'react-hot-toast';
@@ -83,12 +83,11 @@ export function TrialPage() {
           password: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2),
         });
         resellClientId = client.id;
-      } catch (clientErr: unknown) {
-        // Client may already exist — try to reuse ID from error message or re-throw
-        const msg = String(clientErr);
-        const match = msg.match(/client.*?(\d+)/i);
-        if (match) {
-          resellClientId = parseInt(match[1], 10);
+      } catch {
+        // Client already exists in ResellPortal — look up by email
+        const existing = await getClientByEmail(email);
+        if (existing) {
+          resellClientId = existing.id;
         } else {
           throw new Error('Could not create VPN account. Please contact support.');
         }
