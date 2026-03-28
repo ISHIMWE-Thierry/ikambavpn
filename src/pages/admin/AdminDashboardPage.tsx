@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, ShoppingBag, CheckCircle, Clock, ChevronRight, Plus } from 'lucide-react';
-import { getAllOrders, getAllUsers, getPaymentAccounts, savePaymentAccount, updatePaymentAccount } from '../../lib/db-service';
+import { Users, ShoppingBag, CheckCircle, Clock, ChevronRight, Plus, Zap } from 'lucide-react';
+import { getAllOrders, getAllUsers, getAllTrials, getPaymentAccounts, savePaymentAccount, updatePaymentAccount } from '../../lib/db-service';
+import { getServices } from '../../lib/api';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -32,6 +33,8 @@ export function AdminDashboardPage() {
   const [orders, setOrders] = useState<VpnOrder[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>([]);
+  const [activeServiceCount, setActiveServiceCount] = useState(0);
+  const [activeTrialCount, setActiveTrialCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Add payment account form
@@ -44,14 +47,19 @@ export function AdminDashboardPage() {
   const [savingAccount, setSavingAccount] = useState(false);
 
   useEffect(() => {
-    Promise.all([getAllOrders(), getAllUsers(), getPaymentAccounts()])
-      .then(([o, u, p]) => {
-        setOrders(o);
-        setUsers(u);
-        setPaymentAccounts(p);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      getAllOrders(),
+      getAllUsers(),
+      getPaymentAccounts(),
+      getAllTrials(),
+      getServices().catch(() => []),   // live count from ResellPortal
+    ]).then(([o, u, p, trials, services]) => {
+      setOrders(o as VpnOrder[]);
+      setUsers(u as UserProfile[]);
+      setPaymentAccounts(p as PaymentAccount[]);
+      setActiveTrialCount((trials as { status: string }[]).filter((t) => t.status === 'active').length);
+      setActiveServiceCount((services as { status: string }[]).filter((s) => s.status === 'active').length);
+    }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const handleSaveAccount = async (e: React.FormEvent) => {
@@ -92,7 +100,6 @@ export function AdminDashboardPage() {
     }
   };
 
-  const activeOrders = orders.filter((o) => o.status === 'active').length;
   const reviewOrders = orders.filter((o) => o.status === 'payment_submitted').length;
 
   if (loading) {
@@ -109,10 +116,10 @@ export function AdminDashboardPage() {
 
       {/* Stats */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-        <StatCard icon={ShoppingBag} label="Total orders" value={orders.length} />
-        <StatCard icon={CheckCircle} label="Active services" value={activeOrders} />
-        <StatCard icon={Clock} label="Under review" value={reviewOrders} />
         <StatCard icon={Users} label="Total users" value={users.length} />
+        <StatCard icon={CheckCircle} label="Active VPN services" value={activeServiceCount} />
+        <StatCard icon={Zap} label="Active trials" value={activeTrialCount} />
+        <StatCard icon={Clock} label="Under review" value={reviewOrders} />
       </div>
 
       <div className="grid sm:grid-cols-2 gap-6">
