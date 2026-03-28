@@ -119,7 +119,7 @@ export function DashboardPage() {
   // Background check: look up user's email in ResellPortal
   // If they have an active service there, pull credentials automatically
   useEffect(() => {
-    if (!firebaseUser?.email) return;
+    if (!firebaseUser?.email) { setCheckingResell(false); return; }
     const email = firebaseUser.email;
 
     async function syncFromResellPortal() {
@@ -194,16 +194,29 @@ export function DashboardPage() {
         </button>
       </div>
 
-      {(loading || checkingResell) && (
-        <div className="flex items-center gap-2 text-xs text-gray-400 mb-4">
-          <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-          {loading ? 'Loading orders…' : 'Checking subscription…'}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
+      {(loading || checkingResell) ? (
+        <div className="flex flex-col gap-6">
+          {/* Skeleton — main service card */}
+          <div className="border border-gray-100 rounded-2xl p-6 flex flex-col gap-4 animate-pulse">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 bg-gray-100 rounded" />
+                <div className="w-36 h-4 bg-gray-100 rounded" />
+              </div>
+              <div className="w-16 h-5 bg-gray-100 rounded-full" />
+            </div>
+            <div className="w-full h-20 bg-gray-50 rounded-xl" />
+            <div className="w-32 h-8 bg-gray-100 rounded-xl" />
+          </div>
+          {/* Skeleton — downloads */}
+          <div className="border border-gray-100 rounded-2xl p-6 flex flex-col gap-4 animate-pulse">
+            <div className="w-40 h-4 bg-gray-100 rounded" />
+            <div className="grid grid-cols-4 gap-2">
+              {[...Array(7)].map((_, i) => (
+                <div key={i} className="h-12 bg-gray-50 rounded-xl" />
+              ))}
+            </div>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-6">
