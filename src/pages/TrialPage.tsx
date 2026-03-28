@@ -18,10 +18,11 @@ import { Shield, Check, Clock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserTrial, createTrial, updateTrial } from '../lib/db-service';
 import {
-  findOrCreateAccount,
-  setExpiry,
-  getAccount,
+  createAccount,
   disableAccount,
+  usernameFromEmail,
+  generatePassword,
+  getAccountByUsername,
 } from '../lib/vpnresellers-api';
 import { Button } from '../components/ui/button';
 import type { VpnCredentials, VpnTrial } from '../types';
@@ -36,12 +37,6 @@ const TRIAL_PERKS = [
   'One trial per account',
 ];
 
-/** Tomorrow's date in Y-m-d format for the VPNresellers expire endpoint */
-function tomorrow(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
-}
 
 export function TrialPage() {
   const { firebaseUser, profile } = useAuth();
@@ -64,41 +59,12 @@ export function TrialPage() {
       : firebaseUser.displayName || 'VPN User';
 
     async function check() {
-      // ── 1. Firestore ──────────────────────────────────────────────────────
       let trial: VpnTrial | null = null;
       try { trial = await getUserTrial(firebaseUser!.uid); } catch { /* ignore */ }
 
       if (trial?.status === 'active') { navigate('/dashboard'); return; }
       if (trial?.status === 'expired') { setStage('used'); return; }
       if (trial?.id) setPendingTrialId(trial.id);
-
-      // ── 2. VPNresellers source of truth ────────────────────────────────────
-      // If we stored an account ID, verify it's still active
-      const accountId = trial?.credentials?.vpnrAccountId ?? (trial?.resellServiceId ?? null);
-      if (accountId) {
-        try {
-          const acct = await getAccount(accountId as number);
-          if (acct.status === 'Active') {
-            const creds: VpnCredentials = {
-              username: acct.username,
-              wgIp: acct.wg_ip,
-              wgPrivateKey: acct.wg_private_key,
-              wgPublicKey: acct.wg_public_key,
-              vpnrAccountId: acct.id,
-            };
-            if (trial?.id) {
-              await updateTrial(trial.id, { credentials: creds, status: 'active' });
-            } else {
-              const tid = await createTrial(firebaseUser!.uid, {
-                userEmail: email, userName: name, status: 'provisioning',
-              });
-              await updateTrial(tid, { credentials: creds, status: 'active' });
-            }
-            navigate('/dashboard');
-            return;
-          }
-        } catch { /* account may not exist */ }
-      }
 
       setStage('available');
     }
@@ -125,21 +91,35 @@ export function TrialPage() {
         });
       }
 
-      // Create or reuse VPNresellers account
-      const { account, password, isNew } = await findOrCreateAccount(email);
+      // Derive username from email, ensure it's not already taken
+      let username = usernameFromEmail(email);
+      const existing = await getAccountByUsername(username);
+      if (existing) {
+        // Already have an account — reuse it (previous failed trial)
+        const creds: VpnCredentials = {
+          username: existing.username,
+          vpnrAccountId: existing.id,
+        };
+        await updateTrial(trialId, {
+          resellServiceId: existing.id,
+          credentials: creds,
+          status: 'active',
+        });
+        setCredentials(creds);
+        setStage('success');
+        toast.success('Your free trial is now active!');
+        return;
+      }
 
-      // Set 24h expiry
-      await setExpiry(account.id, tomorrow());
+      // Create new account with generated password
+      const password = generatePassword();
+      const account = await createAccount(username, password);
 
       const creds: VpnCredentials = {
         username: account.username,
-        wgIp: account.wg_ip,
-        wgPrivateKey: account.wg_private_key,
-        wgPublicKey: account.wg_public_key,
+        password,
         vpnrAccountId: account.id,
       };
-      // Only store password if we just created the account
-      if (isNew && password) creds.notes = `Password: ${password}`;
 
       await updateTrial(trialId, {
         resellServiceId: account.id,
@@ -147,7 +127,7 @@ export function TrialPage() {
         status: 'active',
       });
 
-      setCredentials({ ...creds, password: isNew ? password : undefined });
+      setCredentials(creds);
       setStage('success');
       toast.success('Your free trial is now active!');
     } catch (err: unknown) {
