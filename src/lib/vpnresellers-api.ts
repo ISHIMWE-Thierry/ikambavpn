@@ -1,25 +1,25 @@
 /**
  * VPNresellers API client v3.2
- * Base URL: https://api.vpnresellers.com/v3_2/
- * Auth: Authorization: Bearer {token}
+ *
+ * All requests are routed through /vpnr-api (Firebase Hosting rewrite →
+ * Cloud Function proxy) to avoid CORS issues. The token lives server-side
+ * in a Firebase Secret — it is never sent to the browser.
  */
 
-const BASE_URL = 'https://api.vpnresellers.com/v3_2';
-
-function getToken(): string {
-  const token = import.meta.env.VITE_VPNRESELLERS_TOKEN || '';
-  if (!token) throw new Error('VPNresellers token is not configured. Set VITE_VPNRESELLERS_TOKEN in your .env file.');
-  return token;
-}
+// In dev Vite proxies /vpnr-api → function emulator; in prod Firebase Hosting rewrites it.
+const PROXY_BASE = '/vpnr-api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const method = (options?.method ?? 'GET').toUpperCase();
   const hasBody = method !== 'GET' && method !== 'HEAD';
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  // Pass the upstream path as a query param so the function knows where to forward
+  const url = `${PROXY_BASE}?path=${encodeURIComponent(path)}`;
+
+  const res = await fetch(url, {
     ...options,
+    method,
     headers: {
-      'Authorization': `Bearer ${getToken()}`,
       'Accept': 'application/json',
       ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...options?.headers,

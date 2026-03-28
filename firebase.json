@@ -22,6 +22,10 @@
     ],
     "rewrites": [
       {
+        "source": "/vpnr-api/**",
+        "function": "vpnrProxy"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
