@@ -131,6 +131,13 @@ export function AdminDashboardPage() {
           <CardContent>
             <div className="flex flex-col gap-2">
               <Link
+                to="/admin/users"
+                className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition"
+              >
+                <span className="text-sm font-medium">Manage VPN users</span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </Link>
+              <Link
                 to="/admin/orders"
                 className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition"
               >

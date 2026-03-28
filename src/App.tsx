@@ -13,6 +13,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { AccountPage } from './pages/AccountPage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
+import { AdminUsersPage } from './pages/admin/AdminUsersPage'
 import { TrialPage } from './pages/TrialPage'
 
 export default function App() {
@@ -76,6 +77,14 @@ export default function App() {
           element={
             <ProtectedRoute adminOnly>
               <AdminOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute adminOnly>
+              <AdminUsersPage />
             </ProtectedRoute>
           }
         />
