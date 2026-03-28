@@ -6,8 +6,11 @@
  * in a Firebase Secret — it is never sent to the browser.
  */
 
-// In dev Vite proxies /vpnr-api → function emulator; in prod Firebase Hosting rewrites it.
-const PROXY_BASE = '/vpnr-api';
+// In dev Vite proxies /vpnr-api → function emulator; in prod call the Cloud Function directly
+// (ikambavpn.com is on Railway, not Firebase Hosting, so rewrites don't apply).
+const PROXY_BASE = import.meta.env.DEV
+  ? '/vpnr-api'
+  : 'https://us-central1-ikamba-1c669.cloudfunctions.net/vpnrProxy';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const method = (options?.method ?? 'GET').toUpperCase();
