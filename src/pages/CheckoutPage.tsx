@@ -54,7 +54,7 @@ export function CheckoutPage() {
       const id = await createOrder({
         userId: firebaseUser.uid,
         userEmail: firebaseUser.email,
-        userName: profile?.fullName || firebaseUser.displayName,
+        userName: profile ? `${profile.firstname} ${profile.lastname}`.trim() : firebaseUser.displayName,
         planId: plan.id,
         planName: plan.name,
         planDuration: plan.duration,
@@ -67,7 +67,7 @@ export function CheckoutPage() {
       // Notify admins — fire and forget, never block the user
       notifyAdminsNewOrder({
         orderId: id,
-        userName: profile?.fullName || firebaseUser.displayName,
+        userName: profile ? `${profile.firstname} ${profile.lastname}`.trim() : firebaseUser.displayName,
         userEmail: firebaseUser.email,
         planName: plan.name,
         planDuration: plan.duration,
@@ -96,7 +96,7 @@ export function CheckoutPage() {
       // Notify admins proof is ready for review — fire and forget
       notifyAdminsPaymentProof({
         orderId,
-        userName: profile?.fullName || firebaseUser?.displayName || null,
+        userName: profile ? `${profile.firstname} ${profile.lastname}`.trim() : (firebaseUser?.displayName || null),
         userEmail: firebaseUser?.email || null,
         planName: plan.name,
         planDuration: plan.duration,

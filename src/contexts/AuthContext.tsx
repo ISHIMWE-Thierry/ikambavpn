@@ -34,16 +34,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         try {
           let prof = await getUser(user.uid);
+
           if (!prof) {
-            // First-time login — create profile
+            // First sign-in — create user doc with Blink-1 field structure
+            const displayName = user.displayName || '';
+            const parts = displayName.trim().split(/\s+/);
             await createUser(user.uid, {
-              email: user.email,
-              fullName: user.displayName,
-              phoneNumber: user.phoneNumber,
-              role: 'user',
+              email: user.email || '',
+              firstname: parts[0] || '',
+              lastname: parts.slice(1).join(' ') || '',
+              tel: user.phoneNumber || '',
             });
             prof = await getUser(user.uid);
           }
+
           setProfile(prof);
         } catch {
           setProfile(null);

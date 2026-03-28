@@ -17,9 +17,19 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
+// Shared with Blink-1 — same Firebase project (ikamba-1c669)
 export const COLLECTIONS = {
-  USERS: 'vpn_users',
+  USERS: 'users',              // shared with Blink-1, same user records
   ORDERS: 'vpn_orders',
   PAYMENT_ACCOUNTS: 'vpn_payment_accounts',
   PLANS: 'vpn_plans',
 } as const;
+
+/**
+ * Base URL for Blink-1 Cloud Functions API.
+ * Used for OTP-based password reset (same endpoints shared via same project).
+ */
+export function fnApiBase(): string {
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'ikamba-1c669';
+  return `https://us-central1-${projectId}.cloudfunctions.net/api`;
+}

@@ -51,7 +51,7 @@ export function DashboardPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-black">
-            {profile?.fullName ? `Hi, ${profile.fullName.split(' ')[0]}` : 'Dashboard'}
+            {profile?.firstname ? `Hi, ${profile.firstname}` : 'Dashboard'}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">{firebaseUser?.email}</p>
         </div>

@@ -10,8 +10,9 @@ import toast from 'react-hot-toast';
 export function AccountPage() {
   const { firebaseUser, profile } = useAuth();
 
-  const [fullName, setFullName] = useState(profile?.fullName || '');
-  const [phone, setPhone] = useState(profile?.phoneNumber || '');
+  const [firstname, setFirstname] = useState(profile?.firstname || '');
+  const [lastname, setLastname] = useState(profile?.lastname || '');
+  const [tel, setTel] = useState(profile?.tel || '');
   const [savingProfile, setSavingProfile] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -24,7 +25,13 @@ export function AccountPage() {
     if (!firebaseUser) return;
     setSavingProfile(true);
     try {
-      await updateUser(firebaseUser.uid, { fullName, phoneNumber: phone });
+      await updateUser(firebaseUser.uid, {
+        firstname: firstname.trim(),
+        lastname: lastname.trim(),
+        displayName: `${firstname.trim()} ${lastname.trim()}`.trim(),
+        tel: tel.trim(),
+        updatedAt: new Date().toISOString(),
+      });
       toast.success('Profile updated.');
     } catch {
       toast.error('Failed to update profile.');
@@ -72,12 +79,22 @@ export function AccountPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSaveProfile} className="flex flex-col gap-4">
-              <Input
-                label="Full name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Your name"
-              />
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="First name"
+                  value={firstname}
+                  onChange={(e) => setFirstname(e.target.value)}
+                  placeholder="John"
+                  autoComplete="given-name"
+                />
+                <Input
+                  label="Last name"
+                  value={lastname}
+                  onChange={(e) => setLastname(e.target.value)}
+                  placeholder="Doe"
+                  autoComplete="family-name"
+                />
+              </div>
               <Input
                 label="Email"
                 value={firebaseUser?.email || ''}
@@ -86,10 +103,11 @@ export function AccountPage() {
               />
               <Input
                 label="Phone number"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+250..."
+                value={tel}
+                onChange={(e) => setTel(e.target.value)}
+                placeholder="+250 7XX XXX XXX"
                 type="tel"
+                autoComplete="tel"
               />
               <div className="flex justify-end">
                 <Button type="submit" loading={savingProfile} size="sm">

@@ -1,13 +1,25 @@
-export type UserRole = 'user' | 'admin';
+export type UserRole = 'user' | 'admin' | 'agent';
 
+/**
+ * Matches the Blink-1 `users` Firestore document structure exactly so both
+ * apps share the same user records without duplication.
+ */
 export interface UserProfile {
   id: string;
-  email: string | null;
-  fullName: string | null;
-  phoneNumber: string | null;
+  email: string;
+  firstname: string;
+  lastname: string;
+  tel: string;
   role: UserRole;
+  emailVerified: number;        // 0 = unverified, 1 = verified (Blink-1 convention)
+  needsOtpVerification?: boolean;
+  paymentstatus: string;        // 'False' default (Blink-1 field)
+  last_login: string;
   createdAt: string;
   updatedAt: string;
+  accountStatus?: string;       // 'active' | 'suspended'
+  avatarUrl?: string | null;
+  displayName?: string;         // virtual: firstname + ' ' + lastname
 }
 
 export type OrderStatus =
@@ -24,11 +36,11 @@ export interface VpnOrder {
   userName: string | null;
   planId: string;
   planName: string;
-  planDuration: string;       // e.g. "1 Month", "3 Months"
-  amount: number;             // in USD
+  planDuration: string;
+  amount: number;
   currency: string;
   status: OrderStatus;
-  paymentMethod: string;      // e.g. "Mobile Money", "Bank Transfer"
+  paymentMethod: string;
   paymentProofUrl?: string;
   activatedAt?: string;
   expiresAt?: string;
@@ -54,13 +66,13 @@ export interface VpnPlan {
   currency: string;
   features: string[];
   popular?: boolean;
-  resellProductId?: string;   // ID from ResellPortal
+  resellProductId?: string;
 }
 
 export interface PaymentAccount {
   id: string;
-  method: string;             // e.g. "Mobile Money", "Bank Transfer"
-  provider?: string;          // e.g. "MTN", "Airtel"
+  method: string;
+  provider?: string;
   accountName: string;
   accountNumber: string;
   instructions: string;

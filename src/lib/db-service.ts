@@ -28,21 +28,63 @@ function tsToString(ts: Timestamp | string | undefined): string {
   return ts.toDate().toISOString();
 }
 
-// ── Users ─────────────────────────────────────────────────────────────────────
+// ── Users (shared `users` collection — same structure as Blink-1) ─────────────
 
+/**
+ * Read a user doc and normalise phone from any Blink-1 field variant.
+ */
 export async function getUser(uid: string): Promise<UserProfile | null> {
   const snap = await getDoc(doc(db, COLLECTIONS.USERS, uid));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as UserProfile;
+  const d = snap.data();
+  // Blink-1 stores phone under multiple field names — normalise to `tel`
+  const tel: string =
+    d.tel || d.phone || d.phoneNumber || d.userphone || d.userPhone || d.mobile || d.contact || '';
+  return {
+    id: snap.id,
+    email: d.email || '',
+    firstname: d.firstname || d.displayName?.split(' ')[0] || '',
+    lastname: d.lastname || d.displayName?.split(' ').slice(1).join(' ') || '',
+    tel,
+    role: d.role || 'user',
+    emailVerified: typeof d.emailVerified === 'number' ? d.emailVerified : (d.emailVerified ? 1 : 0),
+    needsOtpVerification: d.needsOtpVerification ?? false,
+    paymentstatus: d.paymentstatus || 'False',
+    last_login: d.last_login || d.lastLoginAt || d.createdAt || '',
+    createdAt: d.createdAt || '',
+    updatedAt: d.updatedAt || '',
+    accountStatus: d.accountStatus || 'active',
+    avatarUrl: d.avatarUrl || null,
+    displayName: [d.firstname || '', d.lastname || ''].filter(Boolean).join(' ') ||
+      d.displayName || d.email || '',
+  } as UserProfile;
 }
 
-export async function createUser(uid: string, data: Omit<UserProfile, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
+/**
+ * Create a new user doc using Blink-1's exact field structure so both apps
+ * share the same user records without format mismatch.
+ */
+export async function createUser(
+  uid: string,
+  data: { email: string; firstname: string; lastname: string; tel: string }
+): Promise<void> {
   const ts = now();
   await setDoc(doc(db, COLLECTIONS.USERS, uid), {
-    ...data,
-    role: data.role ?? 'user',
+    email: data.email,
+    firstname: data.firstname,
+    lastname: data.lastname,
+    tel: data.tel,
+    displayName: `${data.firstname} ${data.lastname}`.trim(),
+    role: 'user',
+    emailVerified: 0,
+    needsOtpVerification: false,
+    paymentstatus: 'False',
+    accountStatus: 'active',
+    last_login: ts,
     createdAt: ts,
     updatedAt: ts,
+    avatarUrl: null,
+    loginCount: 1,
   });
 }
 

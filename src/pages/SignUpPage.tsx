@@ -3,13 +3,20 @@ import { Link, useNavigate } from 'react-router-dom';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { Shield } from 'lucide-react';
 import { auth } from '../lib/firebase';
+import { createUser } from '../lib/db-service';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import toast from 'react-hot-toast';
 
+function normalizePhone(raw: string): string {
+  return raw.replace(/[\s\-().]/g, '');
+}
+
 export function SignUpPage() {
   const navigate = useNavigate();
-  const [fullName, setFullName] = useState('');
+  const [firstname, setFirstname] = useState('');
+  const [lastname, setLastname] = useState('');
+  const [tel, setTel] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +32,17 @@ export function SignUpPage() {
     setLoading(true);
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(cred.user, { displayName: fullName });
+      const displayName = `${firstname} ${lastname}`.trim();
+      await updateProfile(cred.user, { displayName });
+
+      // Write user doc with Blink-1 field structure to shared `users` collection
+      await createUser(cred.user.uid, {
+        email,
+        firstname: firstname.trim(),
+        lastname: lastname.trim(),
+        tel: normalizePhone(tel),
+      });
+
       toast.success('Account created!');
       navigate('/plans');
     } catch (err: unknown) {
@@ -50,14 +67,33 @@ export function SignUpPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="First name"
+              type="text"
+              value={firstname}
+              onChange={(e) => setFirstname(e.target.value)}
+              placeholder="John"
+              required
+              autoComplete="given-name"
+            />
+            <Input
+              label="Last name"
+              type="text"
+              value={lastname}
+              onChange={(e) => setLastname(e.target.value)}
+              placeholder="Doe"
+              required
+              autoComplete="family-name"
+            />
+          </div>
           <Input
-            label="Full name"
-            type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Your name"
-            required
-            autoComplete="name"
+            label="Phone number"
+            type="tel"
+            value={tel}
+            onChange={(e) => setTel(e.target.value)}
+            placeholder="+250 7XX XXX XXX"
+            autoComplete="tel"
           />
           <Input
             label="Email"

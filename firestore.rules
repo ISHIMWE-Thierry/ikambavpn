@@ -13,11 +13,13 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() &&
-        get(/databases/$(database)/documents/vpn_users/$(request.auth.uid)).data.role == 'admin';
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // ── Users ──────────────────────────────────────────────────────────────
-    match /vpn_users/{userId} {
+    // ── Users (shared with Blink-1) ────────────────────────────────────────
+    // Note: Blink-1's firestore.rules also defines rules for this collection.
+    // Whichever project deploys last wins — keep these rules in sync.
+    match /users/{userId} {
       allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
       allow create: if isSignedIn() && isOwner(userId);
       allow update: if isSignedIn() && (isOwner(userId) || isAdmin());
