@@ -19,7 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Check, Clock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserTrial, createTrial, updateTrial } from '../lib/db-service';
-import { createClient, createVpnOrder, getClientByEmail, getServices, getService } from '../lib/api';
+import { createClient, createVpnOrder, getClientByEmail, getClientById, getServices, getService } from '../lib/api';
 import { Button } from '../components/ui/button';
 import type { VpnCredentials, VpnTrial } from '../types';
 import toast from 'react-hot-toast';
@@ -86,36 +86,38 @@ export function TrialPage() {
       try {
         const client = await getClientByEmail(email);
         if (client) {
-          const services = await getServices(client.id);
-          // Filter by both status and client_id (API may return all services)
-          const vpnSvc = services.find(
-            (s) => s.status === 'active' && Number(s.client_id) === Number(client.id)
-          );
-          if (vpnSvc) {
-            const creds = await getCredsFromService(vpnSvc.id);
-            // Sync to Firestore
-            if (trial?.id) {
-              await updateTrial(trial.id, {
-                resellClientId: client.id,
-                resellServiceId: vpnSvc.id,
-                credentials: creds,
-                status: 'active',
-              });
-            } else {
-              const tid = await createTrial(firebaseUser!.uid, {
-                userEmail: email,
-                userName: name,
-                status: 'provisioning',
-              });
-              await updateTrial(tid, {
-                resellClientId: client.id,
-                resellServiceId: vpnSvc.id,
-                credentials: creds,
-                status: 'active',
-              });
+          // GET /clients/{id} has active_services count — skip services call if 0
+          const detail = await getClientById(client.id);
+          if (detail.active_services > 0) {
+            const services = await getServices(client.id);
+            const vpnSvc = services.find(
+              (s) => Number(s.client_id) === Number(client.id)
+            );
+            if (vpnSvc) {
+              const creds = await getCredsFromService(vpnSvc.id);
+              if (trial?.id) {
+                await updateTrial(trial.id, {
+                  resellClientId: client.id,
+                  resellServiceId: vpnSvc.id,
+                  credentials: creds,
+                  status: 'active',
+                });
+              } else {
+                const tid = await createTrial(firebaseUser!.uid, {
+                  userEmail: email,
+                  userName: name,
+                  status: 'provisioning',
+                });
+                await updateTrial(tid, {
+                  resellClientId: client.id,
+                  resellServiceId: vpnSvc.id,
+                  credentials: creds,
+                  status: 'active',
+                });
+              }
+              navigate('/dashboard');
+              return;
             }
-            navigate('/dashboard');
-            return;
           }
         }
       } catch { /* no active service found in ResellPortal */ }
@@ -159,11 +161,12 @@ export function TrialPage() {
         isExistingClient = true;
       }
 
-      // If client already existed, check for an active service first (no double charge)
+      // If client already existed, check active_services before creating a new order
       if (isExistingClient) {
-        const services = await getServices(resellClientId);
+        const detail = await getClientById(resellClientId);
+        const services = detail.active_services > 0 ? await getServices(resellClientId) : [];
         const vpnSvc = services.find(
-          (s) => s.status === 'active' && s.client_id === resellClientId
+          (s) => Number(s.client_id) === Number(resellClientId)
         );
         if (vpnSvc) {
           const creds = await getCredsFromService(vpnSvc.id);

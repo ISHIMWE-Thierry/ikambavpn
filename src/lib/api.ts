@@ -73,6 +73,18 @@ export async function getClientByEmail(email: string): Promise<ResellClient | nu
   return clients.find((c) => c.email.toLowerCase() === email.toLowerCase()) ?? null;
 }
 
+export interface ResellClientDetail extends ResellClient {
+  phone?: string;
+  company?: string;
+  active_services: number;
+  total_services: number;
+}
+
+export async function getClientById(clientId: number): Promise<ResellClientDetail> {
+  const r = await request<{ success: boolean; client: ResellClientDetail }>(`/clients/${clientId}`);
+  return r.client;
+}
+
 /**
  * Creates a client. Returns the new client_id.
  * Request: { name, email, phone?, company? }
