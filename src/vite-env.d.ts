@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_RESELL_API_KEY: string
   readonly VITE_RESELL_API_SECRET: string
   readonly VITE_RESELL_API_BASE: string
+  readonly VITE_VPNRESELLERS_TOKEN: string
 }
 
 interface ImportMeta {

@@ -1,17 +1,15 @@
 /**
- * Free 1-Day Trial Page
+ * Free 1-Day Trial Page — uses VPNresellers API as default provider.
  *
- * On load:
- *  1. Check Firestore — if active → dashboard, if expired → "used" screen
- *  2. Always also check ResellPortal by email — if an active VPN service
- *     exists there, sync it to Firestore and redirect to dashboard.
- *     This recovers any stuck provisioning/failed records automatically.
- *
- * On confirm:
- *  a. Create (or reuse) ResellPortal client
- *  b. If client already has an active VPN service → reuse (no double charge)
- *  c. Otherwise create new VPN order
- *  d. Save to vpn_trials with expiresAt = now + 24h
+ * Flow:
+ * 1. Check Firestore — if active trial exists → dashboard
+ * 2. Check VPNresellers by stored account ID — if active → sync + dashboard
+ * 3. Show confirm screen
+ * 4. On confirm:
+ *    a. findOrCreateAccount(email) → VPNresellers account
+ *    b. setExpiry(id, tomorrow) → 24h window
+ *    c. Store in vpn_trials with credentials + vpnrAccountId
+ * 5. Show success screen + redirect to dashboard
  */
 
 import { useEffect, useState } from 'react';
@@ -19,7 +17,12 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Check, Clock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserTrial, createTrial, updateTrial } from '../lib/db-service';
-import { createClient, createVpnOrder, getClientByEmail, getClientById, getServices, getService } from '../lib/api';
+import {
+  findOrCreateAccount,
+  setExpiry,
+  getAccount,
+  disableAccount,
+} from '../lib/vpnresellers-api';
 import { Button } from '../components/ui/button';
 import type { VpnCredentials, VpnTrial } from '../types';
 import toast from 'react-hot-toast';
@@ -33,13 +36,11 @@ const TRIAL_PERKS = [
   'One trial per account',
 ];
 
-async function getCredsFromService(serviceId: number): Promise<VpnCredentials> {
-  const full = await getService(serviceId);
-  const sd = full.service_data ?? {};
-  const creds: VpnCredentials = {};
-  if (sd.username) creds.username = sd.username;
-  if (sd.password) creds.password = sd.password;
-  return creds;
+/** Tomorrow's date in Y-m-d format for the VPNresellers expire endpoint */
+function tomorrow(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split('T')[0];
 }
 
 export function TrialPage() {
@@ -63,64 +64,41 @@ export function TrialPage() {
       : firebaseUser.displayName || 'VPN User';
 
     async function check() {
-      // ── Step 1: Firestore state ──────────────────────────────────────────
+      // ── 1. Firestore ──────────────────────────────────────────────────────
       let trial: VpnTrial | null = null;
-      try {
-        trial = await getUserTrial(firebaseUser!.uid);
-      } catch { /* ignore — will check ResellPortal below */ }
+      try { trial = await getUserTrial(firebaseUser!.uid); } catch { /* ignore */ }
 
-      if (trial?.status === 'active') {
-        navigate('/dashboard');
-        return;
-      }
-      if (trial?.status === 'expired') {
-        setStage('used');
-        return;
-      }
-
-      // Remember the stuck record so handleStart can reuse it
+      if (trial?.status === 'active') { navigate('/dashboard'); return; }
+      if (trial?.status === 'expired') { setStage('used'); return; }
       if (trial?.id) setPendingTrialId(trial.id);
 
-      // ── Step 2: ResellPortal source of truth ─────────────────────────────
-      // Do this even when Firestore returned provisioning/failed/null.
-      try {
-        const client = await getClientByEmail(email);
-        if (client) {
-          // GET /clients/{id} has active_services count — skip services call if 0
-          const detail = await getClientById(client.id);
-          if (detail.active_services > 0) {
-            const services = await getServices(client.id);
-            const vpnSvc = services.find(
-              (s) => Number(s.client_id) === Number(client.id)
-            );
-            if (vpnSvc) {
-              const creds = await getCredsFromService(vpnSvc.id);
-              if (trial?.id) {
-                await updateTrial(trial.id, {
-                  resellClientId: client.id,
-                  resellServiceId: vpnSvc.id,
-                  credentials: creds,
-                  status: 'active',
-                });
-              } else {
-                const tid = await createTrial(firebaseUser!.uid, {
-                  userEmail: email,
-                  userName: name,
-                  status: 'provisioning',
-                });
-                await updateTrial(tid, {
-                  resellClientId: client.id,
-                  resellServiceId: vpnSvc.id,
-                  credentials: creds,
-                  status: 'active',
-                });
-              }
-              navigate('/dashboard');
-              return;
+      // ── 2. VPNresellers source of truth ────────────────────────────────────
+      // If we stored an account ID, verify it's still active
+      const accountId = trial?.credentials?.vpnrAccountId ?? (trial?.resellServiceId ?? null);
+      if (accountId) {
+        try {
+          const acct = await getAccount(accountId as number);
+          if (acct.status === 'Active') {
+            const creds: VpnCredentials = {
+              username: acct.username,
+              wgIp: acct.wg_ip,
+              wgPrivateKey: acct.wg_private_key,
+              wgPublicKey: acct.wg_public_key,
+              vpnrAccountId: acct.id,
+            };
+            if (trial?.id) {
+              await updateTrial(trial.id, { credentials: creds, status: 'active' });
+            } else {
+              const tid = await createTrial(firebaseUser!.uid, {
+                userEmail: email, userName: name, status: 'provisioning',
+              });
+              await updateTrial(tid, { credentials: creds, status: 'active' });
             }
+            navigate('/dashboard');
+            return;
           }
-        }
-      } catch { /* no active service found in ResellPortal */ }
+        } catch { /* account may not exist */ }
+      }
 
       setStage('available');
     }
@@ -133,13 +111,12 @@ export function TrialPage() {
     setStage('provisioning');
 
     let trialId: string | null = pendingTrialId;
+    const email = firebaseUser.email || '';
+    const name = profile
+      ? `${profile.firstname} ${profile.lastname}`.trim()
+      : firebaseUser.displayName || 'VPN User';
 
     try {
-      const name = profile
-        ? `${profile.firstname} ${profile.lastname}`.trim()
-        : firebaseUser.displayName || 'VPN User';
-      const email = firebaseUser.email || '';
-
       if (!trialId) {
         trialId = await createTrial(firebaseUser.uid, {
           userEmail: email,
@@ -148,60 +125,29 @@ export function TrialPage() {
         });
       }
 
-      // Create or reuse ResellPortal client
-      let resellClientId: number;
-      let isExistingClient = false;
+      // Create or reuse VPNresellers account
+      const { account, password, isNew } = await findOrCreateAccount(email);
 
-      try {
-        resellClientId = await createClient({ name, email });
-      } catch {
-        const existing = await getClientByEmail(email);
-        if (!existing) throw new Error('Could not create VPN account. Please contact support.');
-        resellClientId = existing.id;
-        isExistingClient = true;
-      }
+      // Set 24h expiry
+      await setExpiry(account.id, tomorrow());
 
-      // If client already existed, check active_services before creating a new order
-      if (isExistingClient) {
-        const detail = await getClientById(resellClientId);
-        const services = detail.active_services > 0 ? await getServices(resellClientId) : [];
-        const vpnSvc = services.find(
-          (s) => Number(s.client_id) === Number(resellClientId)
-        );
-        if (vpnSvc) {
-          const creds = await getCredsFromService(vpnSvc.id);
-          await updateTrial(trialId, {
-            resellClientId,
-            resellServiceId: vpnSvc.id,
-            credentials: creds,
-            status: 'active',
-          });
-          setCredentials(creds);
-          setStage('success');
-          toast.success('Your free trial is now active!');
-          return;
-        }
-      }
-
-      // Create new VPN order
-      const order = await createVpnOrder(resellClientId, 'monthly');
-      if (!order.success || !order.service_id) {
-        throw new Error(order.message || 'VPN provisioning failed. Please try again.');
-      }
-
-      const vc = order.vpn_credentials;
-      const creds: VpnCredentials = {};
-      if (vc?.username) creds.username = vc.username;
-      if (vc?.password) creds.password = vc.password;
+      const creds: VpnCredentials = {
+        username: account.username,
+        wgIp: account.wg_ip,
+        wgPrivateKey: account.wg_private_key,
+        wgPublicKey: account.wg_public_key,
+        vpnrAccountId: account.id,
+      };
+      // Only store password if we just created the account
+      if (isNew && password) creds.notes = `Password: ${password}`;
 
       await updateTrial(trialId, {
-        resellClientId,
-        resellServiceId: order.service_id,
+        resellServiceId: account.id,
         credentials: creds,
         status: 'active',
       });
 
-      setCredentials(creds);
+      setCredentials({ ...creds, password: isNew ? password : undefined });
       setStage('success');
       toast.success('Your free trial is now active!');
     } catch (err: unknown) {
@@ -249,7 +195,7 @@ export function TrialPage() {
           </div>
 
           <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-500 leading-relaxed">
-            Your trial will automatically expire after 24 hours. To keep your VPN access, subscribe to one of our plans.
+            Your trial will automatically expire after 24 hours. Subscribe to keep access.
           </div>
 
           <Button onClick={handleStart} size="lg" className="w-full">
@@ -273,11 +219,9 @@ export function TrialPage() {
           </div>
           <h2 className="text-2xl font-bold">Trial already used</h2>
           <p className="text-gray-500 max-w-xs">
-            You've already used your free trial. Subscribe to a plan to continue enjoying Ikamba VPN.
+            You've already used your free trial. Subscribe to continue.
           </p>
-          <Button onClick={() => navigate('/plans')} className="w-full max-w-xs">
-            View plans
-          </Button>
+          <Button onClick={() => navigate('/plans')} className="w-full max-w-xs">View plans</Button>
           <button onClick={() => navigate('/dashboard')} className="text-sm text-gray-400 hover:text-black">
             Go to dashboard
           </button>
@@ -300,7 +244,7 @@ export function TrialPage() {
         </div>
       )}
 
-      {stage === 'success' && (
+      {stage === 'success' && credentials && (
         <div className="flex flex-col gap-6">
           <div className="text-center">
             <div className="inline-flex items-center justify-center w-14 h-14 bg-black rounded-2xl mb-4">
@@ -310,29 +254,26 @@ export function TrialPage() {
             <p className="text-gray-500 mt-1 text-sm">You have 24 hours of full VPN access.</p>
           </div>
 
-          {credentials && (
-            <div className="border border-gray-100 rounded-2xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-50">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Your VPN credentials</p>
-              </div>
-              <div className="px-5 py-4 font-mono text-sm flex flex-col gap-2 bg-gray-50">
-                {credentials.serverAddress && (
-                  <p><span className="text-gray-400">Server: </span>{credentials.serverAddress}</p>
-                )}
-                {credentials.username && (
-                  <p><span className="text-gray-400">Username: </span>{credentials.username}</p>
-                )}
-                {credentials.password && (
-                  <p><span className="text-gray-400">Password: </span>{credentials.password}</p>
-                )}
-              </div>
+          <div className="border border-gray-100 rounded-2xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-50">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">VPN credentials</p>
             </div>
-          )}
+            <div className="px-5 py-4 font-mono text-sm flex flex-col gap-2 bg-gray-50">
+              {credentials.username && (
+                <p><span className="text-gray-400">Username: </span>{credentials.username}</p>
+              )}
+              {credentials.password && (
+                <p><span className="text-gray-400">Password: </span>{credentials.password}</p>
+              )}
+              {credentials.wgIp && (
+                <p><span className="text-gray-400">WireGuard IP: </span>{credentials.wgIp}</p>
+              )}
+            </div>
+          </div>
 
           <p className="text-sm text-gray-500 text-center">
-            These credentials are also visible on your dashboard at any time.
+            Full credentials and app downloads are on your dashboard.
           </p>
-
           <Button onClick={() => navigate('/dashboard')} className="w-full">
             Go to dashboard
           </Button>
@@ -341,3 +282,6 @@ export function TrialPage() {
     </main>
   );
 }
+
+// Re-export for use in dashboard trial auto-deactivation
+export { disableAccount };

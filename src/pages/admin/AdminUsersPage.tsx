@@ -1,78 +1,55 @@
 import { useEffect, useState } from 'react';
-import { Plus, RefreshCw, Eye, EyeOff, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Plus, RefreshCw, Eye, EyeOff, ChevronDown, ChevronUp, X, ToggleLeft, ToggleRight } from 'lucide-react';
 import {
-  getClients,
-  getClientById,
-  getClientByEmail,
-  getServices,
-  getService,
-  createClient,
-  createVpnOrder,
-} from '../../lib/api';
-import type { ResellClient, ResellClientDetail, ResellService } from '../../lib/api';
+  listAccounts,
+  findOrCreateAccount,
+  setExpiry,
+  disableAccount,
+  enableAccount,
+} from '../../lib/vpnresellers-api';
+import type { VpnrAccount } from '../../lib/vpnresellers-api';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Card, CardContent } from '../../components/ui/card';
 import toast from 'react-hot-toast';
 
-const BILLING_OPTIONS = [
-  { value: 'monthly',   label: 'Monthly',   price: '$6' },
-  { value: 'quarterly', label: 'Quarterly',  price: '$16' },
-  { value: 'biannual',  label: '6 Months',   price: '$30' },
-  { value: 'annual',    label: 'Annual',     price: '$54' },
+const EXPIRY_OPTIONS = [
+  { label: '1 day (trial)',  days: 1 },
+  { label: '30 days',       days: 30 },
+  { label: '90 days',       days: 90 },
+  { label: '180 days',      days: 180 },
+  { label: '365 days',      days: 365 },
+  { label: 'No expiry',     days: 0 },
 ];
 
-interface ClientRow {
-  client: ResellClient;
-  detail: ResellClientDetail | null;
-  services: ResellService[];
-  expanded: boolean;
-  loadingDetail: boolean;
+function addDays(days: number): string | null {
+  if (days === 0) return null;
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
 }
 
 // ── Create user modal ─────────────────────────────────────────────────────────
 
-interface CreateModalProps {
-  onClose: () => void;
-  onCreated: () => void;
-}
-
-function CreateModal({ onClose, onCreated }: CreateModalProps) {
-  const [name, setName] = useState('');
+function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [billing, setBilling] = useState('monthly');
-  const [vpnUsername, setVpnUsername] = useState('');
+  const [username, setUsername] = useState('');
+  const [expiryDays, setExpiryDays] = useState(30);
   const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<{ username: string; password: string } | null>(null);
+  const [result, setResult] = useState<{ account: VpnrAccount; password: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      // Find existing client or create new one
-      let clientId: number;
-      const existing = await getClientByEmail(email);
-      if (existing) {
-        clientId = existing.id;
-      } else {
-        clientId = await createClient({ name, email, phone: phone || undefined });
-      }
-
-      // Provision VPN
-      const order = await createVpnOrder(clientId, billing, vpnUsername || undefined);
-      if (!order.success || !order.service_id) {
-        throw new Error(order.message || 'VPN provisioning failed.');
-      }
-      const creds = order.vpn_credentials;
-      if (!creds?.username || !creds?.password) {
-        throw new Error('Order created but no credentials returned — check ResellPortal panel.');
-      }
-      setResult({ username: creds.username, password: creds.password });
-      toast.success('VPN user provisioned.');
+      const { account, password } = await findOrCreateAccount(email, username || undefined);
+      const expireAt = addDays(expiryDays);
+      await setExpiry(account.id, expireAt);
+      setResult({ account, password });
+      toast.success('VPN account created.');
       onCreated();
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Failed.');
+      toast.error((err as Error).message || 'Failed to create account.');
     } finally {
       setSaving(false);
     }
@@ -83,38 +60,38 @@ function CreateModal({ onClose, onCreated }: CreateModalProps) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-semibold text-lg">Create VPN user</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-black">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={onClose} className="text-gray-400 hover:text-black"><X className="w-5 h-5" /></button>
         </div>
 
         {result ? (
           <div className="flex flex-col gap-4">
-            <p className="text-sm text-gray-600">User provisioned. Share these credentials:</p>
-            <CredBox username={result.username} password={result.password} />
+            <p className="text-sm text-gray-600">Account created. Share these credentials:</p>
+            <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
+              <p><span className="text-gray-400">Username: </span>{result.account.username}</p>
+              {result.password && <p><span className="text-gray-400">Password: </span>{result.password}</p>}
+              {result.account.wg_ip && <p><span className="text-gray-400">WG IP: </span>{result.account.wg_ip}</p>}
+              <p><span className="text-gray-400">Expires: </span>{result.account.expired_at ?? 'Auto-renewal'}</p>
+            </div>
             <Button onClick={onClose} className="w-full">Done</Button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <Field label="Full name" value={name} onChange={setName} placeholder="John Doe" required />
-            <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="john@example.com" required />
-            <Field label="Phone (optional)" value={phone} onChange={setPhone} placeholder="+1234567890" />
-            <Field label="Custom username (optional)" value={vpnUsername} onChange={setVpnUsername} placeholder="Leave blank to auto-generate" />
+            <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="user@example.com" required />
+            <Field label="Custom username (optional)" value={username} onChange={setUsername} placeholder="Auto-generated from email" />
 
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">Billing cycle</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">Expiry</label>
               <div className="grid grid-cols-2 gap-2">
-                {BILLING_OPTIONS.map((o) => (
+                {EXPIRY_OPTIONS.map((o) => (
                   <button
-                    key={o.value}
+                    key={o.days}
                     type="button"
-                    onClick={() => setBilling(o.value)}
-                    className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm transition ${
-                      billing === o.value ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
+                    onClick={() => setExpiryDays(o.days)}
+                    className={`rounded-xl border px-3 py-2 text-sm text-left transition ${
+                      expiryDays === o.days ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
                     }`}
                   >
-                    <span>{o.label}</span>
-                    <span className={billing === o.value ? 'text-gray-300' : 'text-gray-400'}>{o.price}</span>
+                    {o.label}
                   </button>
                 ))}
               </div>
@@ -122,7 +99,7 @@ function CreateModal({ onClose, onCreated }: CreateModalProps) {
 
             <div className="flex gap-2 pt-1">
               <Button type="submit" className="flex-1" loading={saving}>
-                {saving ? 'Provisioning…' : 'Create & provision VPN'}
+                {saving ? 'Creating…' : 'Create VPN account'}
               </Button>
               <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
             </div>
@@ -133,11 +110,7 @@ function CreateModal({ onClose, onCreated }: CreateModalProps) {
   );
 }
 
-// ── Small helpers ─────────────────────────────────────────────────────────────
-
-function Field({
-  label, value, onChange, placeholder, type = 'text', required,
-}: {
+function Field({ label, value, onChange, placeholder, type = 'text', required }: {
   label: string; value: string; onChange: (v: string) => void;
   placeholder?: string; type?: string; required?: boolean;
 }) {
@@ -145,29 +118,100 @@ function Field({
     <div>
       <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
       <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
+        type={type} value={value} onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder} required={required}
         className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-black"
       />
     </div>
   );
 }
 
-function CredBox({ username, password }: { username: string; password: string }) {
-  const [show, setShow] = useState(false);
+// ── Account row ───────────────────────────────────────────────────────────────
+
+function AccountRow({ account, onRefresh }: { account: VpnrAccount; onRefresh: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
+  const toggle = async () => {
+    setToggling(true);
+    try {
+      if (account.status === 'Active') {
+        await disableAccount(account.id);
+        toast.success(`${account.username} disabled.`);
+      } else {
+        await enableAccount(account.id);
+        toast.success(`${account.username} enabled.`);
+      }
+      onRefresh();
+    } catch {
+      toast.error('Failed to toggle account.');
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  const isExpired = account.expired_at
+    ? new Date(account.expired_at) < new Date()
+    : false;
+
   return (
-    <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-      <p><span className="text-gray-400">Username: </span>{username}</p>
-      <div className="flex items-center gap-2">
-        <span className="text-gray-400">Password: </span>
-        <span>{show ? password : '••••••••'}</span>
-        <button onClick={() => setShow((v) => !v)} className="text-gray-400 hover:text-black ml-1">
-          {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-        </button>
-      </div>
+    <div>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition text-left"
+      >
+        <div>
+          <p className="text-sm font-medium">{account.username}</p>
+          <p className="text-xs text-gray-400">
+            Expires: {account.expired_at ?? 'Auto-renewal'}{isExpired ? ' · Expired' : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant={account.status === 'Active' ? 'success' : 'muted'}>{account.status}</Badge>
+          {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-5 pb-4 bg-gray-50 border-t border-gray-100">
+          <div className="flex flex-col gap-3 pt-3">
+            {/* Credentials */}
+            <div className="border border-gray-100 rounded-xl p-4 bg-white font-mono text-sm flex flex-col gap-1.5">
+              <p><span className="text-gray-400">ID: </span>{account.id}</p>
+              <p><span className="text-gray-400">WG IP: </span>{account.wg_ip}</p>
+              <p className="break-all">
+                <span className="text-gray-400">WG Public: </span>
+                {showKeys ? account.wg_public_key : `${account.wg_public_key.slice(0, 16)}…`}
+              </p>
+              {showKeys && (
+                <p className="break-all">
+                  <span className="text-gray-400">WG Private: </span>{account.wg_private_key}
+                </p>
+              )}
+              <button
+                onClick={() => setShowKeys((v) => !v)}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-black mt-1 w-fit"
+              >
+                {showKeys ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                {showKeys ? 'Hide keys' : 'Show full keys'}
+              </button>
+            </div>
+
+            {/* Toggle enable/disable */}
+            <button
+              onClick={toggle}
+              disabled={toggling}
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-black w-fit"
+            >
+              {account.status === 'Active'
+                ? <ToggleRight className="w-4 h-4 text-green-500" />
+                : <ToggleLeft className="w-4 h-4 text-gray-400" />}
+              {toggling ? 'Updating…' : account.status === 'Active' ? 'Disable account' : 'Enable account'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -175,65 +219,42 @@ function CredBox({ username, password }: { username: string; password: string })
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function AdminUsersPage() {
-  const [rows, setRows] = useState<ClientRow[]>([]);
+  const [accounts, setAccounts] = useState<VpnrAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
-  const loadClients = async () => {
+  const load = async () => {
     setLoading(true);
     try {
-      const clients = await getClients();
-      setRows(clients.map((c) => ({
-        client: c, detail: null, services: [], expanded: false, loadingDetail: false,
-      })));
+      const all = await listAccounts({ per_page: 100 });
+      setAccounts(all);
     } catch {
-      toast.error('Failed to load clients.');
+      toast.error('Failed to load accounts from VPNresellers.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { loadClients(); }, []);
+  useEffect(() => { load(); }, []);
 
-  const toggleExpand = async (idx: number) => {
-    const row = rows[idx];
-    if (row.expanded) {
-      setRows((prev) => prev.map((r, i) => i === idx ? { ...r, expanded: false } : r));
-      return;
-    }
-    if (!row.detail) {
-      setRows((prev) => prev.map((r, i) => i === idx ? { ...r, expanded: true, loadingDetail: true } : r));
-      try {
-        const [detail, services] = await Promise.all([
-          getClientById(row.client.id),
-          getServices(row.client.id),
-        ]);
-        setRows((prev) => prev.map((r, i) =>
-          i === idx ? { ...r, detail, services, loadingDetail: false } : r
-        ));
-      } catch {
-        setRows((prev) => prev.map((r, i) => i === idx ? { ...r, loadingDetail: false } : r));
-        toast.error('Failed to load client details.');
-      }
-    } else {
-      setRows((prev) => prev.map((r, i) => i === idx ? { ...r, expanded: true } : r));
-    }
-  };
+  const active = accounts.filter((a) => a.status === 'Active').length;
 
   return (
     <>
-      {showModal && (
-        <CreateModal
-          onClose={() => setShowModal(false)}
-          onCreated={loadClients}
-        />
-      )}
+      {showModal && <CreateModal onClose={() => setShowModal(false)} onCreated={load} />}
 
       <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 py-10">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold">VPN Users</h1>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold">VPN Users</h1>
+            {!loading && (
+              <p className="text-sm text-gray-400 mt-0.5">
+                {accounts.length} total · {active} active
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
-            <button onClick={loadClients} className="p-2 hover:bg-gray-50 rounded-xl transition" title="Refresh">
+            <button onClick={load} className="p-2 hover:bg-gray-50 rounded-xl transition" title="Refresh">
               <RefreshCw className="w-5 h-5 text-gray-400" />
             </button>
             <Button onClick={() => setShowModal(true)} size="sm">
@@ -246,120 +267,22 @@ export function AdminUsersPage() {
           <div className="flex justify-center py-16">
             <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : rows.length === 0 ? (
+        ) : accounts.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-sm text-gray-400">
-              No clients in ResellPortal yet.
+              No accounts yet. Create the first one above.
             </CardContent>
           </Card>
         ) : (
           <Card>
             <div className="divide-y divide-gray-50">
-              {rows.map((row, idx) => (
-                <div key={row.client.id}>
-                  <button
-                    onClick={() => toggleExpand(idx)}
-                    className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition text-left"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{row.client.name}</p>
-                      <p className="text-xs text-gray-400">{row.client.email}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {row.detail && (
-                        <Badge variant={row.detail.active_services > 0 ? 'success' : 'muted'}>
-                          {row.detail.active_services > 0
-                            ? `${row.detail.active_services} active`
-                            : 'No services'}
-                        </Badge>
-                      )}
-                      {row.expanded
-                        ? <ChevronUp className="w-4 h-4 text-gray-400" />
-                        : <ChevronDown className="w-4 h-4 text-gray-400" />}
-                    </div>
-                  </button>
-
-                  {row.expanded && (
-                    <div className="px-5 pb-4 bg-gray-50 border-t border-gray-100">
-                      {row.loadingDetail ? (
-                        <div className="flex justify-center py-4">
-                          <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                        </div>
-                      ) : (
-                        <ServiceList clientId={row.client.id} services={row.services} />
-                      )}
-                    </div>
-                  )}
-                </div>
+              {accounts.map((acct) => (
+                <AccountRow key={acct.id} account={acct} onRefresh={load} />
               ))}
             </div>
           </Card>
         )}
       </main>
     </>
-  );
-}
-
-// ── Service list + credential rows ────────────────────────────────────────────
-
-function ServiceList({ clientId, services }: { clientId: number; services: ResellService[] }) {
-  const mine = services.filter((s) => Number(s.client_id) === Number(clientId));
-  if (mine.length === 0) return <p className="text-sm text-gray-400 py-3">No services found.</p>;
-  return (
-    <div className="flex flex-col gap-3 pt-3">
-      {mine.map((svc) => <ServiceRow key={svc.id} service={svc} />)}
-    </div>
-  );
-}
-
-function ServiceRow({ service }: { service: ResellService }) {
-  const [creds, setCreds] = useState<{ username?: string; password?: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [show, setShow] = useState(false);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const full = await getService(service.id);
-      const sd = full.service_data ?? {};
-      setCreds({ username: sd.username, password: sd.password });
-    } catch {
-      toast.error('Failed to load credentials.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="border border-gray-100 rounded-xl p-4 bg-white">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <p className="text-sm font-medium capitalize">{service.service_type ?? 'VPN'} service</p>
-          {service.monthly_cost && (
-            <p className="text-xs text-gray-400">${service.monthly_cost}/mo · {service.billing_cycle}</p>
-          )}
-        </div>
-        <Badge variant={service.status === 'active' ? 'success' : 'muted'}>{service.status}</Badge>
-      </div>
-
-      {creds ? (
-        <div className="font-mono text-sm flex flex-col gap-1 mt-2">
-          {creds.username && <p><span className="text-gray-400">Username: </span>{creds.username}</p>}
-          {creds.password && (
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">Password: </span>
-              <span>{show ? creds.password : '••••••••'}</span>
-              <button onClick={() => setShow((v) => !v)} className="text-gray-400 hover:text-black">
-                {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <button onClick={load} disabled={loading} className="text-xs text-gray-500 hover:text-black underline mt-1">
-          {loading ? 'Loading…' : 'View credentials'}
-        </button>
-      )}
-    </div>
   );
 }

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders, getUserTrial, updateTrial } from '../lib/db-service';
-import { cancelService, getClientByEmail, getClientById, getServices, getService } from '../lib/api';
+import { getAccount, disableAccount } from '../lib/vpnresellers-api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
@@ -53,9 +53,14 @@ function AppDownloads() {
 
 // ── Credentials block (shared by trial + paid + resell) ───────────────────────
 
-function CredentialsBox({ username, password }: { username?: string; password?: string }) {
+function CredentialsBox({
+  username, password, wgIp, wgPrivateKey, wgPublicKey,
+}: {
+  username?: string; password?: string;
+  wgIp?: string; wgPrivateKey?: string; wgPublicKey?: string;
+}) {
   const [show, setShow] = useState(false);
-  if (!username && !password) return null;
+  if (!username && !password && !wgIp) return null;
   return (
     <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
       {username && <p><span className="text-gray-400">Username: </span>{username}</p>}
@@ -67,6 +72,13 @@ function CredentialsBox({ username, password }: { username?: string; password?: 
             {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
           </button>
         </div>
+      )}
+      {wgIp && <p><span className="text-gray-400">WG IP: </span>{wgIp}</p>}
+      {wgPrivateKey && (
+        <p className="break-all"><span className="text-gray-400">WG Private: </span>{show ? wgPrivateKey : '••••••••••'}</p>
+      )}
+      {wgPublicKey && (
+        <p className="break-all"><span className="text-gray-400">WG Public: </span>{wgPublicKey}</p>
       )}
     </div>
   );
@@ -95,8 +107,11 @@ export function DashboardPage() {
   const [trial, setTrial] = useState<VpnTrial | null>(null);
   const [trialTimeLeft, setTrialTimeLeft] = useState('');
 
-  // ResellPortal live service for this user
-  const [resellCreds, setResellCreds] = useState<{ username?: string; password?: string } | null>(null);
+    // VPNresellers live account for this user
+  const [resellCreds, setResellCreds] = useState<{
+    username?: string; password?: string;
+    wgIp?: string; wgPrivateKey?: string; wgPublicKey?: string;
+  } | null>(null);
   const [checkingResell, setCheckingResell] = useState(true);
 
   const fetchOrders = () => {
@@ -116,33 +131,33 @@ export function DashboardPage() {
     getUserTrial(firebaseUser.uid).then(setTrial).catch(() => {});
   }, [firebaseUser]);
 
-  // Background check: look up user's email in ResellPortal
-  // If they have an active service there, pull credentials automatically
+  // Background check: use stored VPNresellers account ID from the trial record
   useEffect(() => {
-    if (!firebaseUser?.email) { setCheckingResell(false); return; }
-    const email = firebaseUser.email;
+    if (!firebaseUser) { setCheckingResell(false); return; }
 
-    async function syncFromResellPortal() {
+    async function syncFromVpnresellers() {
       setCheckingResell(true);
       try {
-        const client = await getClientByEmail(email);
-        if (!client) return;
-        const detail = await getClientById(client.id);
-        if (detail.active_services === 0) return;
-        const services = await getServices(client.id);
-        const vpnSvc = services.find((s) => Number(s.client_id) === Number(client.id));
-        if (!vpnSvc) return;
-        const full = await getService(vpnSvc.id);
-        const sd = full.service_data ?? {};
-        if (sd.username || sd.password) {
-          setResellCreds({ username: sd.username, password: sd.password });
+        const trial = await getUserTrial(firebaseUser!.uid);
+        const accountId =
+          trial?.credentials?.vpnrAccountId ??
+          (trial?.resellServiceId ? Number(trial.resellServiceId) : null);
+        if (!accountId) return;
+        const acct = await getAccount(accountId);
+        if (acct.status === 'Active') {
+          setResellCreds({
+            username: acct.username,
+            wgIp: acct.wg_ip,
+            wgPrivateKey: acct.wg_private_key,
+            wgPublicKey: acct.wg_public_key,
+          });
         }
-      } catch { /* silent — best-effort */ } finally {
+      } catch { /* silent */ } finally {
         setCheckingResell(false);
       }
     }
 
-    syncFromResellPortal();
+    syncFromVpnresellers();
   }, [firebaseUser]);
 
   // Live countdown + auto-deactivate when trial expires
@@ -153,7 +168,8 @@ export function DashboardPage() {
       const ms = new Date(trial.expiresAt).getTime() - Date.now();
       if (ms <= 0) {
         setTrialTimeLeft('Expired');
-        if (trial.resellServiceId) cancelService(trial.resellServiceId).catch(() => {});
+        const accountId = trial.credentials?.vpnrAccountId ?? trial.resellServiceId;
+        if (accountId) disableAccount(Number(accountId)).catch(() => {});
         updateTrial(trial.id, { status: 'expired' }).catch(() => {});
         setTrial((t) => (t ? { ...t, status: 'expired' } : t));
         return;
@@ -235,7 +251,13 @@ export function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm font-medium mb-3">VPN credentials</p>
-                <CredentialsBox username={resellCreds.username} password={resellCreds.password} />
+                <CredentialsBox
+                  username={resellCreds.username}
+                  password={resellCreds.password}
+                  wgIp={resellCreds.wgIp}
+                  wgPrivateKey={resellCreds.wgPrivateKey}
+                  wgPublicKey={resellCreds.wgPublicKey}
+                />
               </CardContent>
             </Card>
           )}

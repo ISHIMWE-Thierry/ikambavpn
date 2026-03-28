@@ -55,6 +55,12 @@ export interface VpnCredentials {
   serverAddress?: string;
   configFile?: string;
   notes?: string;
+  // WireGuard (VPNresellers)
+  wgIp?: string;
+  wgPrivateKey?: string;
+  wgPublicKey?: string;
+  // Internal — VPNresellers account ID for status checks
+  vpnrAccountId?: number;
 }
 
 export interface VpnPlan {
