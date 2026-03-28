@@ -2,13 +2,20 @@ import { useEffect, useState, useRef, type ChangeEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Upload, CheckCircle, Copy } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { createOrder, getPaymentAccounts, uploadPaymentProof, updateOrderStatus } from '../lib/db-service';
+import { createOrder, uploadPaymentProof, updateOrderStatus, getAppSettings, type AppPaymentSettings } from '../lib/db-service';
 import { Button } from '../components/ui/button';
 import { formatCurrency } from '../lib/utils';
-import type { VpnPlan, PaymentAccount } from '../types';
+import type { VpnPlan } from '../types';
 import toast from 'react-hot-toast';
 
 type Step = 'review' | 'payment' | 'proof' | 'done';
+
+const STEP_LABELS: Record<Step, string> = {
+  review: 'Review',
+  payment: 'Payment',
+  proof: 'Proof',
+  done: 'Done',
+};
 
 export function CheckoutPage() {
   const location = useLocation();
@@ -18,8 +25,7 @@ export function CheckoutPage() {
   const plan = (location.state as { plan?: VpnPlan })?.plan;
 
   const [step, setStep] = useState<Step>('review');
-  const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>([]);
-  const [selectedAccount, setSelectedAccount] = useState<PaymentAccount | null>(null);
+  const [paymentSettings, setPaymentSettings] = useState<AppPaymentSettings | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -31,12 +37,8 @@ export function CheckoutPage() {
       navigate('/plans');
       return;
     }
-    getPaymentAccounts()
-      .then((accounts) => {
-        setPaymentAccounts(accounts);
-        if (accounts.length) setSelectedAccount(accounts[0]);
-      })
-      .catch(() => {});
+    // Load payment account details from shared appdata (same doc as Blink-1)
+    getAppSettings().then(setPaymentSettings);
   }, [plan, navigate]);
 
   if (!plan) return null;
@@ -58,7 +60,7 @@ export function CheckoutPage() {
         amount: plan.price,
         currency: plan.currency,
         status: 'pending_payment',
-        paymentMethod: selectedAccount?.method || 'Manual',
+        paymentMethod: paymentSettings?.depositBankName || 'Bank Transfer',
       });
       setOrderId(id);
       setStep('payment');
@@ -93,21 +95,23 @@ export function CheckoutPage() {
     toast.success('Copied!');
   };
 
+  const steps = Object.keys(STEP_LABELS) as Step[];
+
   return (
     <main className="flex-1 max-w-lg mx-auto px-4 py-12">
       {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-8 text-xs text-gray-400">
-        {(['review', 'payment', 'proof', 'done'] as Step[]).map((s, i) => (
-          <span key={s} className="flex items-center gap-2">
+      <div className="flex items-center gap-1 mb-8 text-xs text-gray-400">
+        {steps.map((s, i) => (
+          <span key={s} className="flex items-center gap-1">
             <span className={step === s || isAfter(step, s) ? 'text-black font-medium' : ''}>
-              {i + 1}. {s.charAt(0).toUpperCase() + s.slice(1)}
+              {i + 1}. {STEP_LABELS[s]}
             </span>
-            {i < 3 && <span>›</span>}
+            {i < steps.length - 1 && <span className="mx-1">›</span>}
           </span>
         ))}
       </div>
 
-      {/* Step: Review plan */}
+      {/* Step 1: Review plan */}
       {step === 'review' && (
         <div className="flex flex-col gap-6">
           <h1 className="text-2xl font-bold">Review your order</h1>
@@ -122,80 +126,60 @@ export function CheckoutPage() {
             </div>
           </div>
 
-          {paymentAccounts.length > 0 && (
-            <div>
-              <p className="text-sm font-medium mb-2">Payment method</p>
-              <div className="flex flex-col gap-2">
-                {paymentAccounts.map((acc) => (
-                  <label
-                    key={acc.id}
-                    className={`flex items-center gap-3 border rounded-xl px-4 py-3 cursor-pointer transition ${
-                      selectedAccount?.id === acc.id ? 'border-black' : 'border-gray-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={selectedAccount?.id === acc.id}
-                      onChange={() => setSelectedAccount(acc)}
-                      className="accent-black"
-                    />
-                    <span className="text-sm font-medium">{acc.method}</span>
-                    {acc.provider && <span className="text-sm text-gray-400">({acc.provider})</span>}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {paymentAccounts.length === 0 && (
-            <p className="text-sm text-gray-500 bg-gray-50 rounded-xl px-4 py-3">
-              Payment instructions will be provided on the next step.
-            </p>
-          )}
+          <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600">
+            You will receive payment instructions on the next step. After paying, upload a screenshot to confirm.
+          </div>
 
           <Button onClick={handleConfirmPlan} loading={creatingOrder} className="w-full">
-            Confirm & proceed to payment
+            Continue to payment
           </Button>
         </div>
       )}
 
-      {/* Step: Payment instructions */}
-      {step === 'payment' && selectedAccount && (
+      {/* Step 2: Payment instructions */}
+      {step === 'payment' && (
         <div className="flex flex-col gap-6">
           <h1 className="text-2xl font-bold">Make your payment</h1>
 
           <div className="border border-gray-100 rounded-2xl p-5 flex flex-col gap-4">
-            <p className="text-sm font-medium text-gray-500">Amount to pay</p>
-            <p className="text-3xl font-bold">{formatCurrency(plan.price, plan.currency)}</p>
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Amount to pay</p>
+              <p className="text-3xl font-bold">{formatCurrency(plan.price, plan.currency)}</p>
+            </div>
 
             <div className="border-t border-gray-100 pt-4 flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">{selectedAccount.method}</span>
-                {selectedAccount.provider && (
-                  <span className="text-sm text-gray-400">{selectedAccount.provider}</span>
-                )}
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">Account name</span>
-                <span className="text-sm font-medium">{selectedAccount.accountName}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">Account number</span>
-                <button
-                  onClick={() => copyToClipboard(selectedAccount.accountNumber)}
-                  className="flex items-center gap-1 text-sm font-medium hover:underline"
-                >
-                  {selectedAccount.accountNumber}
-                  <Copy className="w-3.5 h-3.5 text-gray-400" />
-                </button>
-              </div>
+              {paymentSettings ? (
+                <>
+                  <Row
+                    label="Bank / Method"
+                    value={paymentSettings.depositBankName}
+                  />
+                  <Row
+                    label="Account name"
+                    value={paymentSettings.depositAccountName}
+                  />
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Account / Phone</span>
+                    <button
+                      onClick={() => copyToClipboard(paymentSettings.depositAccountNumber)}
+                      className="flex items-center gap-1.5 text-sm font-semibold hover:underline"
+                    >
+                      {paymentSettings.depositAccountNumber}
+                      <Copy className="w-3.5 h-3.5 text-gray-400" />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-center py-4">
+                  <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
             </div>
           </div>
 
-          {selectedAccount.instructions && (
+          {paymentSettings?.depositInstructions && (
             <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600 leading-relaxed">
-              {selectedAccount.instructions}
+              {paymentSettings.depositInstructions}
             </div>
           )}
 
@@ -209,7 +193,7 @@ export function CheckoutPage() {
         </div>
       )}
 
-      {/* Step: Upload proof */}
+      {/* Step 3: Upload proof */}
       {step === 'proof' && (
         <div className="flex flex-col gap-6">
           <h1 className="text-2xl font-bold">Upload payment proof</h1>
@@ -248,7 +232,7 @@ export function CheckoutPage() {
         </div>
       )}
 
-      {/* Step: Done */}
+      {/* Step 4: Done */}
       {step === 'done' && (
         <div className="flex flex-col items-center gap-6 text-center py-8">
           <CheckCircle className="w-16 h-16 text-black" />
@@ -263,6 +247,15 @@ export function CheckoutPage() {
         </div>
       )}
     </main>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-sm text-gray-500">{label}</span>
+      <span className="text-sm font-semibold">{value}</span>
+    </div>
   );
 }
 

@@ -178,5 +178,53 @@ export async function getAllUsers(): Promise<UserProfile[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserProfile));
 }
 
+// ── App settings (shared with Blink-1 via same Firebase project) ─────────────
+// Reads from the same `appdata/appSettings` document that Blink-1 uses,
+// so admins only need to manage payment account details in one place.
+
+export interface AppPaymentSettings {
+  depositAccountName: string;
+  depositAccountNumber: string;
+  depositBankName: string;
+  depositInstructions: string;
+}
+
+const PAYMENT_FALLBACK: AppPaymentSettings = {
+  depositAccountName: 'Thierry Ishimwe',
+  depositAccountNumber: '+79099049277',
+  depositBankName: 'Sberbank',
+  depositInstructions: 'Send to our Sberbank number and upload a screenshot of the confirmation.',
+};
+
+export async function getAppSettings(): Promise<AppPaymentSettings> {
+  try {
+    // Try the named appSettings doc first
+    const snap = await getDoc(doc(db, 'appdata', 'appSettings'));
+    if (snap.exists()) {
+      const d = snap.data();
+      return {
+        depositAccountName: d.depositAccountName || PAYMENT_FALLBACK.depositAccountName,
+        depositAccountNumber: d.depositAccountNumber || PAYMENT_FALLBACK.depositAccountNumber,
+        depositBankName: d.depositBankName || PAYMENT_FALLBACK.depositBankName,
+        depositInstructions: d.depositInstructions || PAYMENT_FALLBACK.depositInstructions,
+      };
+    }
+    // Fall back to first doc in appdata collection (Blink-1 sometimes stores it there)
+    const colSnap = await getDocs(collection(db, 'appdata'));
+    if (!colSnap.empty) {
+      const d = colSnap.docs[0].data();
+      return {
+        depositAccountName: d.depositAccountName || PAYMENT_FALLBACK.depositAccountName,
+        depositAccountNumber: d.depositAccountNumber || PAYMENT_FALLBACK.depositAccountNumber,
+        depositBankName: d.depositBankName || PAYMENT_FALLBACK.depositBankName,
+        depositInstructions: d.depositInstructions || PAYMENT_FALLBACK.depositInstructions,
+      };
+    }
+  } catch {
+    // Silent fallback
+  }
+  return PAYMENT_FALLBACK;
+}
+
 // Re-export serverTimestamp for convenience
 export { serverTimestamp };
