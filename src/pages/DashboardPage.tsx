@@ -53,6 +53,13 @@ function AppDownloads() {
 
 // ── Credentials block (shared by trial + paid + resell) ───────────────────────
 
+/** Extract password from admin notes (stored as "Password: xyz" by ActivateForm). */
+function extractPassword(notes?: string): string | undefined {
+  if (!notes) return undefined;
+  const match = notes.match(/^Password:\s*(.+)$/i);
+  return match?.[1]?.trim();
+}
+
 function CredentialsBox({
   username, password, wgIp, wgPrivateKey, wgPublicKey,
 }: {
@@ -158,6 +165,7 @@ export function DashboardPage() {
   const [resellCreds, setResellCreds] = useState<{
     username?: string; password?: string;
     wgIp?: string; wgPrivateKey?: string; wgPublicKey?: string;
+    status?: string; expiredAt?: string | null;
   } | null>(null);
   const [checkingResell, setCheckingResell] = useState(true);
 
@@ -178,27 +186,54 @@ export function DashboardPage() {
     getUserTrial(firebaseUser.uid).then(setTrial).catch(() => {});
   }, [firebaseUser]);
 
-  // Background check: use stored VPNresellers account ID from the trial record
+  // Background check: sync live account from VPNresellers API.
+  // Checks BOTH trial records AND active order credentials for vpnrAccountId.
   useEffect(() => {
     if (!firebaseUser) { setCheckingResell(false); return; }
 
     async function syncFromVpnresellers() {
       setCheckingResell(true);
       try {
-        const trial = await getUserTrial(firebaseUser!.uid);
-        const accountId =
-          trial?.credentials?.vpnrAccountId ??
-          (trial?.resellServiceId ? Number(trial.resellServiceId) : null);
-        if (!accountId) return;
-        const acct = await getAccount(accountId);
-        if (acct.status === 'Active') {
-          setResellCreds({
-            username: acct.username,
-            wgIp: acct.wg_ip,
-            wgPrivateKey: acct.wg_private_key,
-            wgPublicKey: acct.wg_public_key,
-          });
+        // 1. Gather all possible VPNresellers account IDs from trial + orders
+        let accountId: number | null = null;
+        let storedPassword: string | undefined;
+
+        // Check trial first
+        const trialRec = await getUserTrial(firebaseUser!.uid);
+        if (trialRec?.credentials?.vpnrAccountId) {
+          accountId = trialRec.credentials.vpnrAccountId;
+          storedPassword = trialRec.credentials.password;
+        } else if (trialRec?.resellServiceId) {
+          accountId = Number(trialRec.resellServiceId);
         }
+
+        // Then check orders (active or most recent with credentials)
+        const userOrders = await getUserOrders(firebaseUser!.uid);
+        const orderWithCreds = userOrders.find(
+          (o) => o.credentials?.vpnrAccountId
+        );
+        if (orderWithCreds?.credentials?.vpnrAccountId) {
+          accountId = orderWithCreds.credentials.vpnrAccountId;
+          // Password may be stored in credentials.notes as "Password: xyz"
+          // or directly on credentials.password
+          storedPassword =
+            orderWithCreds.credentials.password ??
+            extractPassword(orderWithCreds.credentials.notes);
+        }
+
+        if (!accountId) return;
+
+        // 2. Fetch live status from VPNresellers API
+        const acct = await getAccount(accountId);
+        setResellCreds({
+          username: acct.username,
+          password: storedPassword,
+          wgIp: acct.wg_ip,
+          wgPrivateKey: acct.wg_private_key,
+          wgPublicKey: acct.wg_public_key,
+          status: acct.status,
+          expiredAt: acct.expired_at,
+        });
       } catch { /* silent */ } finally {
         setCheckingResell(false);
       }
@@ -240,7 +275,12 @@ export function DashboardPage() {
   const expired = isExpired(activeOrder?.expiresAt);
 
   // User has an active VPN in any form
-  const hasActiveVpn = !!activeOrder || trial?.status === 'active' || !!resellCreds;
+  const hasActiveVpn = !!activeOrder || trial?.status === 'active' || (resellCreds?.status === 'Active');
+
+  // Compute days until VPNresellers account expires
+  const resellDays = resellCreds?.expiredAt ? daysUntilExpiry(resellCreds.expiredAt) : null;
+  const resellExpired = resellCreds?.expiredAt ? isExpired(resellCreds.expiredAt) : false;
+  const resellIsActive = resellCreds?.status === 'Active' && !resellExpired;
 
   return (
     <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-10">
@@ -293,11 +333,28 @@ export function DashboardPage() {
                     <Shield className="w-5 h-5" />
                     <h2 className="font-semibold">Your VPN service</h2>
                   </div>
-                  <Badge variant="success">Active</Badge>
+                  <Badge variant={resellIsActive ? 'success' : resellCreds.status === 'Disabled' ? 'danger' : 'muted'}>
+                    {resellExpired ? 'Expired' : resellCreds.status}
+                  </Badge>
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-sm font-medium mb-3">VPN credentials</p>
+                {/* Service summary */}
+                <div className="grid sm:grid-cols-3 gap-6 mb-4">
+                  <Stat label="Account" value={resellCreds.username ?? '—'} />
+                  <Stat label="Status" value={resellIsActive ? 'Active' : resellExpired ? 'Expired' : (resellCreds.status ?? 'Unknown')} />
+                  {resellCreds.expiredAt ? (
+                    <Stat
+                      label="Expires"
+                      value={resellExpired ? 'Expired' : `${resellDays} days left (${resellCreds.expiredAt})`}
+                      alert={resellExpired || (resellDays !== null && resellDays <= 5)}
+                    />
+                  ) : (
+                    <Stat label="Expires" value="Auto-renewal" />
+                  )}
+                </div>
+
+                <p className="text-sm font-medium mb-3 border-t border-gray-100 pt-4">VPN credentials</p>
                 <CredentialsBox
                   username={resellCreds.username}
                   password={resellCreds.password}
@@ -305,6 +362,12 @@ export function DashboardPage() {
                   wgPrivateKey={resellCreds.wgPrivateKey}
                   wgPublicKey={resellCreds.wgPublicKey}
                 />
+
+                {(resellExpired || (resellDays !== null && resellDays <= 7)) && (
+                  <div className="mt-5">
+                    <Link to="/plans"><Button variant="secondary" size="sm">Renew service</Button></Link>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -339,7 +402,10 @@ export function DashboardPage() {
                     <p className="text-sm font-medium mb-3 border-t border-gray-100 pt-5">VPN credentials</p>
                     <CredentialsBox
                       username={activeOrder.credentials.username}
-                      password={activeOrder.credentials.password}
+                      password={activeOrder.credentials.password ?? extractPassword(activeOrder.credentials.notes)}
+                      wgIp={activeOrder.credentials.wgIp}
+                      wgPrivateKey={activeOrder.credentials.wgPrivateKey}
+                      wgPublicKey={activeOrder.credentials.wgPublicKey}
                     />
                   </>
                 )}
@@ -405,7 +471,7 @@ export function DashboardPage() {
           )}
 
           {/* ── No service at all ── */}
-          {!activeOrder && !resellCreds && trial?.status !== 'active' && (
+          {!activeOrder && !resellIsActive && trial?.status !== 'active' && (
             <Card>
               <CardContent className="py-10 flex flex-col items-center gap-4 text-center">
                 <Shield className="w-10 h-10 text-gray-300" />
@@ -420,7 +486,7 @@ export function DashboardPage() {
           )}
 
           {/* ── Offer trial link (subtle) ── */}
-          {!trial && !activeOrder && !resellCreds && (
+          {!trial && !activeOrder && !resellIsActive && (
             <Link
               to="/trial"
               className="flex items-center justify-between border border-dashed border-gray-200 rounded-2xl px-5 py-4 hover:border-black transition"

@@ -56,6 +56,7 @@ function ActivateForm({ order, onDone }: ActivateFormProps) {
 
       const creds = {
         username: account.username,
+        password: isNew ? password : undefined,
         wgIp: account.wg_ip,
         wgPrivateKey: account.wg_private_key,
         wgPublicKey: account.wg_public_key,
@@ -66,6 +67,7 @@ function ActivateForm({ order, onDone }: ActivateFormProps) {
       await updateOrderStatus(order.id, 'active', {
         credentials: creds,
         activatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + expiryDays * 86_400_000).toISOString(),
       });
 
       notifyUserServiceActivated({
