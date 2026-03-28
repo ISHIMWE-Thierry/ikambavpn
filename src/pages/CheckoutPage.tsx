@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Upload, CheckCircle, Copy } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { createOrder, uploadPaymentProof, updateOrderStatus, getAppSettings, type AppPaymentSettings } from '../lib/db-service';
+import { notifyAdminsNewOrder, notifyAdminsPaymentProof } from '../lib/email-service';
 import { Button } from '../components/ui/button';
 import { formatCurrency } from '../lib/utils';
 import type { VpnPlan } from '../types';
@@ -63,6 +64,16 @@ export function CheckoutPage() {
         paymentMethod: paymentSettings?.depositBankName || 'Bank Transfer',
       });
       setOrderId(id);
+      // Notify admins — fire and forget, never block the user
+      notifyAdminsNewOrder({
+        orderId: id,
+        userName: profile?.fullName || firebaseUser.displayName,
+        userEmail: firebaseUser.email,
+        planName: plan.name,
+        planDuration: plan.duration,
+        amount: plan.price,
+        currency: plan.currency,
+      }).catch(() => {});
       setStep('payment');
     } catch {
       toast.error('Failed to create order. Please try again.');
@@ -82,6 +93,17 @@ export function CheckoutPage() {
     try {
       const url = await uploadPaymentProof(orderId, proofFile);
       await updateOrderStatus(orderId, 'payment_submitted', { paymentProofUrl: url });
+      // Notify admins proof is ready for review — fire and forget
+      notifyAdminsPaymentProof({
+        orderId,
+        userName: profile?.fullName || firebaseUser?.displayName || null,
+        userEmail: firebaseUser?.email || null,
+        planName: plan.name,
+        planDuration: plan.duration,
+        amount: plan.price,
+        currency: plan.currency,
+        proofUrl: url,
+      }).catch(() => {});
       setStep('done');
     } catch {
       toast.error('Failed to upload proof. Please try again.');

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, RefreshCw } from 'lucide-react';
 import { getAllOrders, updateOrderStatus } from '../../lib/db-service';
+import { notifyUserServiceActivated, notifyUserOrderCancelled } from '../../lib/email-service';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
@@ -37,11 +38,26 @@ function ActivateForm({ order, onDone }: ActivateFormProps) {
     setLoading(true);
     try {
       const credentials: VpnCredentials = { username, password, serverAddress, notes };
+      const expiresIso = expiresAt ? new Date(expiresAt).toISOString() : undefined;
       await updateOrderStatus(order.id, 'active', {
         credentials,
         activatedAt: new Date().toISOString(),
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
+        expiresAt: expiresIso,
       });
+      // Email user their credentials — fire and forget
+      if (order.userEmail) {
+        notifyUserServiceActivated({
+          userEmail: order.userEmail,
+          userName: order.userName,
+          planName: order.planName,
+          planDuration: order.planDuration,
+          expiresAt: expiresIso,
+          serverAddress,
+          username,
+          password,
+          notes,
+        }).catch(() => {});
+      }
       toast.success('Order activated!');
       onDone();
     } catch {
@@ -94,7 +110,19 @@ function ActivateForm({ order, onDone }: ActivateFormProps) {
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => updateOrderStatus(order.id, 'cancelled').then(onDone)}
+          onClick={async () => {
+            await updateOrderStatus(order.id, 'cancelled');
+            if (order.userEmail) {
+              notifyUserOrderCancelled({
+                userEmail: order.userEmail,
+                userName: order.userName,
+                planName: order.planName,
+                orderId: order.id,
+                newStatus: 'cancelled',
+              }).catch(() => {});
+            }
+            onDone();
+          }}
         >
           Cancel order
         </Button>
