@@ -2,12 +2,20 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, RefreshCw } from 'lucide-react';
 import { getAllOrders, updateOrderStatus } from '../../lib/db-service';
 import { notifyUserServiceActivated, notifyUserOrderCancelled } from '../../lib/email-service';
+import { getClientByEmail, createClient, createVpnOrder } from '../../lib/api';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { formatDate, formatCurrency } from '../../lib/utils';
-import type { VpnOrder, OrderStatus, VpnCredentials } from '../../types';
+import type { VpnOrder, OrderStatus } from '../../types';
 import toast from 'react-hot-toast';
+
+const BILLING_OPTIONS = [
+  { value: 'monthly',   label: 'Monthly',  price: '$6' },
+  { value: 'quarterly', label: 'Quarterly', price: '$16' },
+  { value: 'biannual',  label: '6 Months',  price: '$30' },
+  { value: 'annual',    label: 'Annual',    price: '$54' },
+];
 
 function statusBadge(status: OrderStatus) {
   const map: Record<OrderStatus, { label: string; variant: 'success' | 'warning' | 'danger' | 'muted' | 'default' }> = {
@@ -27,103 +35,108 @@ interface ActivateFormProps {
 }
 
 function ActivateForm({ order, onDone }: ActivateFormProps) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [serverAddress, setServerAddress] = useState('');
-  const [notes, setNotes] = useState('');
-  const [expiresAt, setExpiresAt] = useState('');
+  const [billing, setBilling] = useState('monthly');
+  const [vpnUsername, setVpnUsername] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleActivate = async () => {
+    if (!order.userEmail) { toast.error('Order has no user email.'); return; }
     setLoading(true);
     try {
-      const credentials: VpnCredentials = { username, password, serverAddress, notes };
-      const expiresIso = expiresAt ? new Date(expiresAt).toISOString() : undefined;
+      // Find or create ResellPortal client for this user
+      let clientId: number;
+      const existing = await getClientByEmail(order.userEmail);
+      if (existing) {
+        clientId = existing.id;
+      } else {
+        clientId = await createClient({
+          name: order.userName || order.userEmail,
+          email: order.userEmail,
+        });
+      }
+
+      // Provision VPN order via API → get credentials immediately
+      const vpnOrder = await createVpnOrder(clientId, billing, vpnUsername || undefined);
+      if (!vpnOrder.success || !vpnOrder.service_id) {
+        throw new Error(vpnOrder.message || 'VPN provisioning failed.');
+      }
+
+      const creds = {
+        username: vpnOrder.vpn_credentials?.username,
+        password: vpnOrder.vpn_credentials?.password,
+      };
+
       await updateOrderStatus(order.id, 'active', {
-        credentials,
+        credentials: creds,
         activatedAt: new Date().toISOString(),
-        expiresAt: expiresIso,
       });
-      // Email user their credentials — fire and forget
+
       if (order.userEmail) {
         notifyUserServiceActivated({
           userEmail: order.userEmail,
           userName: order.userName,
           planName: order.planName,
           planDuration: order.planDuration,
-          expiresAt: expiresIso,
-          serverAddress,
-          username,
-          password,
-          notes,
+          username: creds.username,
+          password: creds.password,
         }).catch(() => {});
       }
-      toast.success('Order activated!');
+
+      toast.success('Order activated — credentials sent to user.');
       onDone();
-    } catch {
-      toast.error('Failed to activate order.');
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Failed to activate order.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleCancel = async () => {
+    await updateOrderStatus(order.id, 'cancelled');
+    if (order.userEmail) {
+      notifyUserOrderCancelled({
+        userEmail: order.userEmail,
+        userName: order.userName,
+        planName: order.planName,
+        orderId: order.id,
+        newStatus: 'cancelled',
+      }).catch(() => {});
+    }
+    onDone();
+  };
+
   return (
     <div className="mt-4 border-t border-gray-100 pt-4 flex flex-col gap-3">
-      <p className="text-sm font-medium">Activate service — set credentials</p>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <input
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
-          placeholder="Server address"
-          value={serverAddress}
-          onChange={(e) => setServerAddress(e.target.value)}
-        />
-        <input
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <input
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <input
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
-          type="date"
-          placeholder="Expires at"
-          value={expiresAt}
-          onChange={(e) => setExpiresAt(e.target.value)}
-        />
+      <p className="text-sm font-medium">Activate via ResellPortal API</p>
+
+      <div className="grid grid-cols-2 gap-2">
+        {BILLING_OPTIONS.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => setBilling(o.value)}
+            className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition ${
+              billing === o.value ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
+            }`}
+          >
+            <span>{o.label}</span>
+            <span className={billing === o.value ? 'text-gray-300' : 'text-gray-400'}>{o.price}</span>
+          </button>
+        ))}
       </div>
+
       <input
         className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
-        placeholder="Notes (optional setup instructions)"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+        placeholder="Custom username (optional — leave blank to auto-generate)"
+        value={vpnUsername}
+        onChange={(e) => setVpnUsername(e.target.value)}
       />
+
       <div className="flex gap-2">
         <Button size="sm" onClick={handleActivate} loading={loading}>
           Activate
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={async () => {
-            await updateOrderStatus(order.id, 'cancelled');
-            if (order.userEmail) {
-              notifyUserOrderCancelled({
-                userEmail: order.userEmail,
-                userName: order.userName,
-                planName: order.planName,
-                orderId: order.id,
-                newStatus: 'cancelled',
-              }).catch(() => {});
-            }
-            onDone();
-          }}
-        >
+        <Button size="sm" variant="ghost" onClick={handleCancel}>
           Cancel order
         </Button>
       </div>

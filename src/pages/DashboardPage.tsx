@@ -97,6 +97,7 @@ export function DashboardPage() {
 
   // ResellPortal live service for this user
   const [resellCreds, setResellCreds] = useState<{ username?: string; password?: string } | null>(null);
+  const [checkingResell, setCheckingResell] = useState(true);
 
   const fetchOrders = () => {
     if (!firebaseUser) return;
@@ -122,6 +123,7 @@ export function DashboardPage() {
     const email = firebaseUser.email;
 
     async function syncFromResellPortal() {
+      setCheckingResell(true);
       try {
         const client = await getClientByEmail(email);
         if (!client) return;
@@ -135,7 +137,9 @@ export function DashboardPage() {
         if (sd.username || sd.password) {
           setResellCreds({ username: sd.username, password: sd.password });
         }
-      } catch { /* silent — best-effort */ }
+      } catch { /* silent — best-effort */ } finally {
+        setCheckingResell(false);
+      }
     }
 
     syncFromResellPortal();
@@ -189,6 +193,13 @@ export function DashboardPage() {
           <RefreshCw className="w-5 h-5 text-gray-400" />
         </button>
       </div>
+
+      {(loading || checkingResell) && (
+        <div className="flex items-center gap-2 text-xs text-gray-400 mb-4">
+          <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+          {loading ? 'Loading orders…' : 'Checking subscription…'}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16">

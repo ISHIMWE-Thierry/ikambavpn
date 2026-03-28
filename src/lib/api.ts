@@ -157,13 +157,19 @@ export interface VpnOrderResponse {
  * Creates a VPN order for a client.
  * POST /orders { client_id, product_key: "vpn", billing_cycle }
  */
-export function createVpnOrder(clientId: number, billingCycle = 'monthly'): Promise<VpnOrderResponse> {
+export function createVpnOrder(
+  clientId: number,
+  billingCycle = 'monthly',
+  vpnUsername?: string
+): Promise<VpnOrderResponse> {
+  const body: Record<string, unknown> = {
+    client_id: clientId,
+    product_key: 'vpn',
+    billing_cycle: billingCycle,
+  };
+  if (vpnUsername) body.vpn_username = vpnUsername;
   return request<VpnOrderResponse>('/orders', {
     method: 'POST',
-    body: JSON.stringify({
-      client_id: clientId,
-      product_key: 'vpn',
-      billing_cycle: billingCycle,
-    }),
+    body: JSON.stringify(body),
   });
 }
