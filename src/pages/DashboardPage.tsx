@@ -512,17 +512,41 @@ export function DashboardPage() {
         } catch (apiErr) {
           // API failed (404, network error, etc.) — still show Firestore credentials
           console.warn('VPNresellers API error for account', accountId, apiErr);
-          if (storedUsername || storedPassword) {
-            setResellCreds({
-              username: storedUsername,
-              password: storedPassword,
-              wgIp: storedWgIp,
-              wgPrivateKey: storedWgPrivateKey,
-              wgPublicKey: storedWgPublicKey,
-              status: 'Active',   // assume active since we have an active trial/order
-              expiredAt: null,
-            });
+          console.info('Falling back to stored creds:', { storedUsername, storedPassword: storedPassword ? '***' : undefined, storedWgIp });
+
+          // Try to find the account by email if we have no stored username
+          if (!storedUsername && firebaseUser?.email) {
+            try {
+              const { getAccountByUsername, usernameFromEmail } = await import('../lib/vpnresellers-api');
+              const guessedUsername = usernameFromEmail(firebaseUser.email);
+              const found = await getAccountByUsername(guessedUsername);
+              if (found) {
+                setResellCreds({
+                  username: found.username,
+                  password: storedPassword,
+                  wgIp: found.wg_ip,
+                  wgPrivateKey: found.wg_private_key,
+                  wgPublicKey: found.wg_public_key,
+                  status: found.status,
+                  expiredAt: found.expired_at,
+                });
+                return;
+              }
+            } catch {
+              // lookup also failed — continue to fallback
+            }
           }
+
+          // Show whatever credentials we have from Firestore
+          setResellCreds({
+            username: storedUsername,
+            password: storedPassword,
+            wgIp: storedWgIp,
+            wgPrivateKey: storedWgPrivateKey,
+            wgPublicKey: storedWgPublicKey,
+            status: 'Active',   // assume active since we have an active trial/order
+            expiredAt: null,
+          });
         }
       } catch { /* silent */ } finally {
         setCheckingResell(false);
@@ -663,6 +687,14 @@ export function DashboardPage() {
                   wgPrivateKey={resellCreds.wgPrivateKey}
                   wgPublicKey={resellCreds.wgPublicKey}
                 />
+                {!resellCreds.username && !resellCreds.password && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+                    <p className="font-medium">Credentials not available</p>
+                    <p className="text-xs mt-1 text-amber-600">
+                      Your VPN account credentials could not be retrieved. Please contact support or check your email for login details.
+                    </p>
+                  </div>
+                )}
 
                 {(resellExpired || (resellDays !== null && resellDays <= 7)) && (
                   <div className="mt-5">
