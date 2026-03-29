@@ -7,9 +7,14 @@
     box-sizing: border-box;
   }
 
+  /* Hide scrollbar but keep scrolling */
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    scrollbar-width: none; /* Firefox */
+  }
+  html::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Edge */
   }
 
   body {

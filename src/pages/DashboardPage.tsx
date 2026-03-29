@@ -173,7 +173,7 @@ function CredentialsBox({
   };
 
   const tabs = [
-    { key: 'vless' as const, label: '⚡ Ikamba VPN' },
+    { key: 'vless' as const, label: 'Ikamba VPN' },
     { key: 'openvpn' as const, label: 'OpenVPN' },
     { key: 'ikev2' as const, label: 'IKEv2' },
     { key: 'l2tp' as const, label: 'L2TP' },
@@ -184,12 +184,12 @@ function CredentialsBox({
   return (
     <div className="flex flex-col gap-3">
       {/* Protocol tabs */}
-      <div className="flex gap-1 bg-gray-50 rounded-lg p-0.5">
+      <div className="flex flex-wrap gap-1 bg-gray-50 rounded-lg p-0.5">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex-1 text-xs font-medium py-1.5 px-3 rounded-md transition ${
+            className={`text-xs font-medium py-1.5 px-3 rounded-md transition whitespace-nowrap ${
               tab === t.key
                 ? t.key === 'vless'
                   ? 'bg-black text-white shadow-sm'
@@ -244,14 +244,14 @@ function CredentialsBox({
                 <li>To switch protocol: tap <strong>Advanced</strong> → choose <strong>UDP-OpenVPN</strong> or <strong>TCP-OpenVPN</strong></li>
               </ol>
               <div className="mt-2 p-2 bg-blue-100 rounded-lg">
-                <p className="font-semibold text-blue-900">💡 UDP vs TCP</p>
+                <p className="font-semibold text-blue-900">UDP vs TCP</p>
                 <ul className="list-disc ml-4 mt-1 flex flex-col gap-0.5">
                   <li><strong>UDP-OpenVPN</strong> — Faster, best for streaming &amp; general use</li>
                   <li><strong>TCP-OpenVPN</strong> — More reliable on unstable networks, may work when UDP is blocked</li>
                 </ul>
               </div>
               <p className="mt-2 text-blue-600 text-[11px]">
-                ⚠️ If OpenVPN is blocked in your country (Russia, China, Iran), switch to the <strong>Stealth</strong> tab.
+                If OpenVPN is blocked in your country (Russia, China, Iran), switch to the <strong>Stealth</strong> tab.
               </p>
             </div>
           </details>
@@ -320,7 +320,7 @@ function CredentialsBox({
                 <li>Enter credentials → Connect</li>
               </ol>
               <p className="mt-2 text-blue-600 text-[11px]">
-                ⚠️ IKEv2 is blocked in Russia. Use <strong>Stealth</strong> mode to tunnel IKEv2 through TLS.
+                IKEv2 is blocked in Russia. Use <strong>Stealth</strong> mode to tunnel IKEv2 through TLS.
               </p>
             </div>
           </details>
@@ -402,7 +402,7 @@ function CredentialsBox({
                 <li>Enter credentials → Connect</li>
               </ol>
               <p className="mt-2 text-blue-600 text-[11px]">
-                ⚠️ L2TP is blocked in Russia. Use <strong>Stealth</strong> mode to tunnel L2TP through TLS.
+                L2TP is blocked in Russia. Use <strong>Stealth</strong> mode to tunnel L2TP through TLS.
               </p>
             </div>
           </details>
@@ -488,17 +488,17 @@ function CredentialsBox({
                   </li>
                 </ul>
                 <p className="mt-2 text-red-600 text-[11px] leading-relaxed">
-                  ⚠️ There is currently no reliable way to use this VPN on iPhone in Russia.
-                  The only guaranteed method is connecting a Mac or PC with Stealth and sharing
-                  the internet to your phone. We are working on better mobile solutions.
+                  Not available on iPhone in Russia.
+                  The only method is connecting a Mac or PC with Stealth and sharing
+                  the internet to your phone.
                 </p>
               </div>
 
               <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg">
-                <p className="font-semibold text-red-800">🇷🇺 Russia summary</p>
+                <p className="font-semibold text-red-800">Russia summary</p>
                 <ul className="list-disc ml-4 mt-1 flex flex-col gap-0.5 text-red-700">
-                  <li><strong>Desktop ✅</strong> — use Stealth mode, it works</li>
-                  <li><strong>iPhone / Android ❌</strong> — no Stealth on mobile, use desktop + hotspot sharing</li>
+                  <li><strong>Desktop</strong> — use Stealth mode, it works</li>
+                  <li><strong>iPhone / Android</strong> — no Stealth on mobile, use desktop + hotspot sharing</li>
                   <li>If one server doesn't connect, try a different server location</li>
                   <li>Connect before opening blocked services (Instagram, etc.)</li>
                 </ul>
@@ -571,7 +571,7 @@ function CredentialsBox({
               </ol>
               <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded-lg">
                 <p className="text-amber-700 text-[11px]">
-                  ⚠️ WireGuard may be blocked in Russia and some restricted countries. Use <strong>Stealth</strong> mode instead.
+                  WireGuard may be blocked in Russia and some restricted countries. Use <strong>Stealth</strong> mode instead.
                 </p>
               </div>
             </div>
@@ -639,9 +639,9 @@ function VlessTab() {
       <div className="bg-gradient-to-r from-gray-900 to-black border border-gray-800 rounded-xl p-3 flex items-start gap-2">
         <Globe className="w-4 h-4 text-white mt-0.5 shrink-0" />
         <div className="text-xs text-gray-200">
-          <p className="font-semibold text-white">⚡ Ikamba VPN — Works everywhere</p>
+          <p className="font-semibold text-white">Ikamba VPN</p>
           <p className="mt-0.5 text-gray-400">
-            Next-generation encrypted connection. Your traffic looks identical to visiting <strong className="text-gray-200">microsoft.com</strong> — undetectable by any firewall.
+            Undetectable encrypted connection. Works on all devices.
           </p>
         </div>
       </div>
@@ -712,30 +712,30 @@ function VlessTab() {
           </div>
         ) : stats ? (
           <div className="bg-green-50 border border-green-100 rounded-xl p-3">
-            <p className="text-xs text-green-800 font-medium">✅ Your Ikamba VPN is active</p>
+            <p className="text-xs text-green-800 font-medium">Your Ikamba VPN is active</p>
             <div className="mt-2 text-xs text-green-700 flex flex-col gap-0.5">
-              <p>📊 Used: {formatBytes(stats.total)} {stats.limit > 0 ? `/ ${formatBytes(stats.limit)}` : '(unlimited)'}</p>
-              <p>⏰ Expires: {formatExpiry(stats.expiryTime)}</p>
+              <p>Used: {formatBytes(stats.total)} {stats.limit > 0 ? `/ ${formatBytes(stats.limit)}` : '(unlimited)'}</p>
+              <p>Expires: {formatExpiry(stats.expiryTime)}</p>
             </div>
             <p className="mt-2 text-[11px] text-green-600">
-              Your connection link was shown when you first activated. Open the app — it auto-updates via your subscription. Contact support if you need it again.
+              Link shown on activation. App auto-updates via subscription.
             </p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
             <p className="text-xs text-gray-500">
-              Start a free trial to activate your Ikamba VPN. You'll get a connection link to paste into the app.
+              Activate to get your connection link.
             </p>
             {error && (
               <div className="bg-red-50 border border-red-100 rounded-lg p-2 text-xs text-red-700">
-                ⚠️ {error}
+                {error}
               </div>
             )}
             <Button onClick={handleGetTrial} disabled={loading} className="w-full">
               {loading ? (
                 <><RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> Creating trial...</>
               ) : (
-                <>🚀 Activate Ikamba VPN — Free trial</>
+                <>Activate Ikamba VPN — Free trial</>
               )}
             </Button>
           </div>
@@ -746,40 +746,38 @@ function VlessTab() {
       <div className="border border-gray-100 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-2">
           <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold">3</div>
-          <p className="text-sm font-semibold">Paste link &amp; connect</p>
+          <p className="text-sm font-semibold">Connect</p>
         </div>
         <ol className="text-xs text-gray-600 list-decimal ml-8 flex flex-col gap-1.5">
-          <li>Open <strong>V2RayTun</strong> (or V2RayNG / Hiddify)</li>
-          <li>Tap the <strong>+</strong> button</li>
-          <li>Choose <strong>"Import from clipboard"</strong> or <strong>"Import from URL"</strong></li>
-          <li>Paste the link you copied above</li>
-          <li>Tap <strong>Connect</strong> — done! 🎉</li>
+          <li>Open the app</li>
+          <li>Tap <strong>+</strong> → <strong>Import from clipboard</strong></li>
+          <li>Tap <strong>Connect</strong></li>
         </ol>
       </div>
 
       {/* Why it works */}
       <details className="group">
         <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition px-1">
-          Why Ikamba VPN works everywhere ▸
+          How it works ▸
         </summary>
         <div className="mt-2 bg-green-50 border border-green-100 rounded-xl p-3 text-xs text-green-800">
           <ul className="list-disc ml-4 flex flex-col gap-1">
-            <li>Your traffic looks <strong>identical</strong> to visiting microsoft.com — completely invisible</li>
-            <li>Uses real TLS 1.3 handshakes — DPI cannot detect it</li>
-            <li>Works on <strong>all devices</strong>: iPhone, Android, Windows, Mac, Linux</li>
-            <li>If server IP changes, your subscription link auto-updates</li>
+            <li>Traffic looks like normal HTTPS — invisible to DPI</li>
+            <li>Real TLS 1.3 handshakes</li>
+            <li>All devices: iPhone, Android, Windows, Mac, Linux</li>
+            <li>Subscription link auto-updates if server changes</li>
           </ul>
         </div>
       </details>
 
       {/* Russian summary */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
-        <p className="font-semibold text-gray-700 mb-1">🇷🇺 Краткая инструкция</p>
+        <p className="font-semibold text-gray-700 mb-1">Инструкция</p>
         <ol className="list-decimal ml-4 flex flex-col gap-0.5">
-          <li>Скачайте <strong>V2RayTun</strong> из <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store</a></li>
-          <li>Нажмите <strong>«Activate Ikamba VPN»</strong> выше, чтобы получить ссылку</li>
-          <li>Скопируйте ссылку → откройте V2RayTun → <strong>+</strong> → <strong>«Import from URL»</strong></li>
-          <li>Нажмите <strong>«Подключиться»</strong> — готово! ✅</li>
+          <li>Скачайте <strong>V2RayTun</strong> (<a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store</a>)</li>
+          <li>Нажмите <strong>«Activate»</strong> выше</li>
+          <li>Скопируйте ссылку → V2RayTun → <strong>+</strong> → <strong>Import</strong></li>
+          <li>Нажмите <strong>«Подключиться»</strong></li>
         </ol>
       </div>
     </div>
@@ -1247,34 +1245,32 @@ export function DashboardPage() {
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Globe className="w-5 h-5" />
-                  <h2 className="font-semibold">🇷🇺 For users in Russia &amp; restricted countries</h2>
+                  <h2 className="font-semibold">For users in Russia &amp; restricted countries</h2>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 mb-4">
                   <p className="text-sm font-medium text-blue-900 mb-1">
-                    Standard VPN protocols (OpenVPN, WireGuard, IKEv2) are blocked in Russia.
+                    Standard protocols are blocked in Russia.
                   </p>
                   <p className="text-xs text-blue-700">
-                    <strong>Ikamba VPN</strong> uses next-generation encryption that makes your traffic look
-                    like normal HTTPS browsing. It works on <strong>all devices including iPhone</strong> and is
-                    undetectable by DPI systems.
+                    <strong>Ikamba VPN</strong> looks like normal HTTPS — undetectable. Works on all devices.
                   </p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <Link to="/russia-guide">
                     <Button variant="secondary" size="sm">
-                      📖 Russia setup guide
+                      Russia setup guide
                     </Button>
                   </Link>
                   <a href="https://t.me/ikambavpn" target="_blank" rel="noopener noreferrer">
                     <Button variant="secondary" size="sm">
-                      💬 Telegram support
+                      Telegram support
                     </Button>
                   </a>
                 </div>
                 <p className="text-xs text-gray-400 mt-3">
-                  Switch to the <strong>⚡ Ikamba VPN</strong> tab in your credentials section above to get started.
+                  Switch to the <strong>Ikamba VPN</strong> tab above to get started.
                 </p>
               </CardContent>
             </Card>
