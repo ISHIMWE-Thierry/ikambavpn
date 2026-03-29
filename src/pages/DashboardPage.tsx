@@ -447,6 +447,10 @@ export function DashboardPage() {
         // 1. Gather all possible VPNresellers account IDs from trial + orders
         let accountId: number | null = null;
         let storedPassword: string | undefined;
+        let storedUsername: string | undefined;
+        let storedWgIp: string | undefined;
+        let storedWgPrivateKey: string | undefined;
+        let storedWgPublicKey: string | undefined;
 
         // Check trial first
         let trialRec: VpnTrial | null = null;
@@ -460,8 +464,17 @@ export function DashboardPage() {
         if (trialRec?.credentials?.vpnrAccountId) {
           accountId = trialRec.credentials.vpnrAccountId;
           storedPassword = trialRec.credentials.password;
+          storedUsername = trialRec.credentials.username;
+          storedWgIp = trialRec.credentials.wgIp;
+          storedWgPrivateKey = trialRec.credentials.wgPrivateKey;
+          storedWgPublicKey = trialRec.credentials.wgPublicKey;
         } else if (trialRec?.resellServiceId) {
           accountId = Number(trialRec.resellServiceId);
+          storedPassword = trialRec.credentials?.password;
+          storedUsername = trialRec.credentials?.username;
+          storedWgIp = trialRec.credentials?.wgIp;
+          storedWgPrivateKey = trialRec.credentials?.wgPrivateKey;
+          storedWgPublicKey = trialRec.credentials?.wgPublicKey;
         }
 
         // Then check orders (active or most recent with credentials)
@@ -476,21 +489,41 @@ export function DashboardPage() {
           storedPassword =
             orderWithCreds.credentials.password ??
             extractPassword(orderWithCreds.credentials.notes);
+          storedUsername = orderWithCreds.credentials.username ?? storedUsername;
+          storedWgIp = orderWithCreds.credentials.wgIp ?? storedWgIp;
+          storedWgPrivateKey = orderWithCreds.credentials.wgPrivateKey ?? storedWgPrivateKey;
+          storedWgPublicKey = orderWithCreds.credentials.wgPublicKey ?? storedWgPublicKey;
         }
 
         if (!accountId) return;
 
-        // 2. Fetch live status from VPNresellers API
-        const acct = await getAccount(accountId);
-        setResellCreds({
-          username: acct.username,
-          password: storedPassword,
-          wgIp: acct.wg_ip,
-          wgPrivateKey: acct.wg_private_key,
-          wgPublicKey: acct.wg_public_key,
-          status: acct.status,
-          expiredAt: acct.expired_at,
-        });
+        // 2. Try to fetch live status from VPNresellers API
+        try {
+          const acct = await getAccount(accountId);
+          setResellCreds({
+            username: acct.username,
+            password: storedPassword,
+            wgIp: acct.wg_ip,
+            wgPrivateKey: acct.wg_private_key,
+            wgPublicKey: acct.wg_public_key,
+            status: acct.status,
+            expiredAt: acct.expired_at,
+          });
+        } catch (apiErr) {
+          // API failed (404, network error, etc.) — still show Firestore credentials
+          console.warn('VPNresellers API error for account', accountId, apiErr);
+          if (storedUsername || storedPassword) {
+            setResellCreds({
+              username: storedUsername,
+              password: storedPassword,
+              wgIp: storedWgIp,
+              wgPrivateKey: storedWgPrivateKey,
+              wgPublicKey: storedWgPublicKey,
+              status: 'Active',   // assume active since we have an active trial/order
+              expiredAt: null,
+            });
+          }
+        }
       } catch { /* silent */ } finally {
         setCheckingResell(false);
       }
