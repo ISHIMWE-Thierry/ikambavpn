@@ -449,26 +449,7 @@ function CredentialsBox({
               Setup instructions ▸
             </summary>
             <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
-              <p className="font-semibold text-blue-900">📱 iPhone / iPad</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Download <strong>VPN Client</strong> from the <a href="https://apps.apple.com/app/id1506797696" target="_blank" rel="noopener noreferrer" className="underline">App Store</a></li>
-                <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
-                <li>Tap the <strong>⚙️ Settings</strong> icon (gear icon, top-right)</li>
-                <li>Tap <strong>Protocol</strong> → select <strong>Stealth</strong></li>
-                <li>Go back → tap <strong>Connect</strong></li>
-                <li>When iOS asks <em>"VPN Client Would Like to Add VPN Configurations"</em> → tap <strong>Allow</strong></li>
-              </ol>
-
-              <p className="font-semibold text-blue-900 mt-3">🤖 Android</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Download <strong>VPN Client</strong> from <a href="https://play.google.com/store/apps/details?id=com.vpn.client" target="_blank" rel="noopener noreferrer" className="underline">Google Play</a> or use the APK (see downloads below)</li>
-                <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
-                <li>Tap <strong>⚙️ Settings</strong> or <strong>Advanced</strong></li>
-                <li>Tap <strong>Protocol</strong> → select <strong>Stealth</strong></li>
-                <li>Go back → tap <strong>Connect</strong></li>
-              </ol>
-
-              <p className="font-semibold text-blue-900 mt-3">💻 Desktop (Windows / macOS / Linux)</p>
+              <p className="font-semibold text-blue-900">� Desktop only — macOS / Windows / Linux</p>
               <ol className="list-decimal ml-4 flex flex-col gap-1">
                 <li>Download <strong>VPN Client</strong> from <a href="https://vpnclient.app" target="_blank" rel="noopener noreferrer" className="underline">vpnclient.app</a></li>
                 <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
@@ -476,10 +457,41 @@ function CredentialsBox({
                 <li>Select <strong>Stealth</strong> from the protocol list</li>
                 <li>Click <strong>Connect</strong> — the connection will look like regular HTTPS traffic</li>
               </ol>
+
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="font-semibold text-amber-900">📱 iPhone / iPad — Stealth is NOT available</p>
+                <p className="mt-1 text-amber-700">
+                  The VPN Client iOS app does <strong>not</strong> have a Stealth option. If you're in Russia or a restricted country, try these alternatives:
+                </p>
+                <ol className="list-decimal ml-4 mt-2 flex flex-col gap-1.5 text-amber-800">
+                  <li>
+                    <strong>Try the VPN Client app anyway</strong> — download from the <a href="https://apps.apple.com/app/id1506797696" target="_blank" rel="noopener noreferrer" className="underline">App Store</a>,
+                    log in, and tap Connect. The app may auto-negotiate a working connection even in restricted networks.
+                  </li>
+                  <li>
+                    <strong>Try IKEv2 manually</strong> — go to the <strong>IKEv2</strong> tab above and follow the iOS built-in setup.
+                    IKEv2 sometimes works in Russia depending on the server.
+                  </li>
+                  <li>
+                    <strong>Use a Mac/PC with Stealth + share internet</strong> — connect your Mac or PC with Stealth mode,
+                    then share the VPN connection to your iPhone via Wi-Fi hotspot or USB tethering.
+                  </li>
+                </ol>
+              </div>
+
+              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="font-semibold text-amber-900">🤖 Android — Stealth may not be available</p>
+                <p className="mt-1 text-amber-700">
+                  Check if your version has a <strong>Protocol</strong> or <strong>Advanced</strong> option in Settings.
+                  If not, use the same alternatives listed above for iPhone.
+                </p>
+              </div>
+
               <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg">
                 <p className="font-semibold text-red-800">🇷🇺 Tips for use in Russia</p>
                 <ul className="list-disc ml-4 mt-1 flex flex-col gap-0.5 text-red-700">
-                  <li>Always use <strong>Stealth</strong> mode — standard IKEv2, L2TP, OpenVPN, and WireGuard are blocked</li>
+                  <li>On desktop: always use <strong>Stealth</strong> — standard protocols are blocked</li>
+                  <li>On iPhone: try the VPN Client app first, then IKEv2 manual setup</li>
                   <li>If one server doesn't connect, try a different server location</li>
                   <li>Keep the app updated for latest anti-censorship improvements</li>
                   <li>Connect before opening blocked services (Instagram, etc.)</li>
