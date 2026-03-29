@@ -24,6 +24,14 @@ const DEFAULT_INBOUND_ID = Number(process.env.XPANEL_INBOUND_ID || "1");
 // Subscription base URL (with HTTPS when domain is set up)
 const SUB_BASE = process.env.XPANEL_SUB_URL || "https://194.76.217.4:2096/sub";
 
+// VLESS+REALITY direct link parameters (bypass broken 3X-UI subscription endpoint)
+const VPS_IP = process.env.XPANEL_VPS_IP || "194.76.217.4";
+const REALITY_PUBLIC_KEY = process.env.XPANEL_REALITY_PUBLIC_KEY || "";
+const REALITY_SHORT_ID = process.env.XPANEL_REALITY_SHORT_ID || "";
+const REALITY_SNI = "www.microsoft.com";
+const REALITY_FINGERPRINT = "chrome";
+const VLESS_PORT = 443;
+
 // HTTPS agent that tolerates IP-based or short-lived certs
 const tlsAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -344,47 +352,63 @@ export async function getClientStatByEmail(
 // ── Subscription URLs ─────────────────────────────────────────────────────────
 
 /**
- * Build the subscription URL for a client.
- * This URL auto-refreshes configs when the user reconnects.
+ * Build a direct VLESS+REALITY link for a client.
+ * Bypasses the broken 3X-UI subscription endpoint entirely.
+ */
+export function buildVlessLink(clientId: string, remark: string): string {
+  const params = new URLSearchParams({
+    type: "tcp",
+    security: "reality",
+    pbk: REALITY_PUBLIC_KEY,
+    fp: REALITY_FINGERPRINT,
+    sni: REALITY_SNI,
+    sid: REALITY_SHORT_ID,
+    spx: "/",
+    flow: "xtls-rprx-vision",
+  });
+  return `vless://${clientId}@${VPS_IP}:${VLESS_PORT}?${params.toString()}#${encodeURIComponent(remark)}`;
+}
+
+/**
+ * Build the subscription URL for a client (kept as fallback).
  */
 export function getSubscriptionUrl(subId: string): string {
   return `${SUB_BASE}/${subId}`;
 }
 
 /**
- * Build a V2RayTun deep link that auto-imports the subscription.
- * iOS users tap this → V2RayTun app opens → subscription imported.
+ * Build a V2RayTun deep link that auto-imports the VLESS link.
  */
-export function getV2RayTunDeepLink(subId: string): string {
-  const subUrl = getSubscriptionUrl(subId);
-  return `v2raytun://import/${subUrl}`;
+export function getV2RayTunDeepLink(vlessLink: string): string {
+  return `v2raytun://import/${vlessLink}`;
 }
 
 /**
  * Build a V2RayNG deep link for Android.
  */
-export function getV2RayNGDeepLink(subId: string): string {
-  const subUrl = getSubscriptionUrl(subId);
-  return `v2rayng://install-sub?url=${encodeURIComponent(subUrl)}`;
+export function getV2RayNGDeepLink(vlessLink: string): string {
+  return `v2rayng://install-config?url=${encodeURIComponent(vlessLink)}`;
 }
 
 /**
  * Build a Hiddify deep link for Android.
  */
-export function getHiddifyDeepLink(subId: string): string {
-  const subUrl = getSubscriptionUrl(subId);
-  return `hiddify://import/${subUrl}`;
+export function getHiddifyDeepLink(vlessLink: string): string {
+  return `hiddify://import/${vlessLink}`;
 }
 
 /**
  * Get all connection links for a client.
  */
-export function getAllClientLinks(subId: string) {
+export function getAllClientLinks(clientId: string, subId: string, email: string) {
+  const remark = `IkambaVPN-${email.split("@")[0]}`;
+  const vlessLink = buildVlessLink(clientId, remark);
   return {
+    vlessLink,
     subscriptionUrl: getSubscriptionUrl(subId),
-    v2raytun: getV2RayTunDeepLink(subId),
-    v2rayng: getV2RayNGDeepLink(subId),
-    hiddify: getHiddifyDeepLink(subId),
+    v2raytun: getV2RayTunDeepLink(vlessLink),
+    v2rayng: getV2RayNGDeepLink(vlessLink),
+    hiddify: getHiddifyDeepLink(vlessLink),
   };
 }
 
@@ -415,6 +439,7 @@ export interface ProvisionedUser {
   clientId: string;
   subId: string;
   email: string;
+  vlessLink: string;
   subscriptionUrl: string;
   v2raytunLink: string;
   v2rayngLink: string;
@@ -443,12 +468,13 @@ export async function provisionUser(
       limitIp: options?.maxConnections ?? 3,
     });
 
-    const links = getAllClientLinks(subId);
+    const links = getAllClientLinks(clientId, subId, email);
 
     return {
       clientId,
       subId,
       email,
+      vlessLink: links.vlessLink,
       subscriptionUrl: links.subscriptionUrl,
       v2raytunLink: links.v2raytun,
       v2rayngLink: links.v2rayng,
@@ -459,11 +485,12 @@ export async function provisionUser(
     if (err.message?.includes("Duplicate email")) {
       const existing = await findClientByEmail(email);
       if (existing) {
-        const links = getAllClientLinks(existing.subId);
+        const links = getAllClientLinks(existing.id, existing.subId, email);
         return {
           clientId: existing.id,
           subId: existing.subId,
           email,
+          vlessLink: links.vlessLink,
           subscriptionUrl: links.subscriptionUrl,
           v2raytunLink: links.v2raytun,
           v2rayngLink: links.v2rayng,

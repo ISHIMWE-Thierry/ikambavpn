@@ -43,6 +43,7 @@ export interface XuiProvisionResult {
   clientId: string;
   subId: string;
   email: string;
+  vlessLink: string;
   subscriptionUrl: string;
   v2raytunLink: string;
   v2rayngLink: string;
@@ -50,6 +51,7 @@ export interface XuiProvisionResult {
 }
 
 export interface XuiClientLinks {
+  vlessLink: string;
   subscriptionUrl: string;
   v2raytun: string;
   v2rayng: string;

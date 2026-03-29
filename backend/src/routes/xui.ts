@@ -21,6 +21,7 @@ import {
   getAllClientLinks,
   getSubscriptionUrl,
   getV2RayTunDeepLink,
+  buildVlessLink,
   GB,
   daysFromNow,
   resetClientTraffic,
@@ -63,14 +64,29 @@ xuiRouter.post("/provision", async (req: AuthedRequest, res: Response) => {
 });
 
 /**
- * GET /xui/links/:subId
- * Get all connection links (subscription URL, V2RayTun, V2RayNG, Hiddify)
- * for a given subscription ID.
+ * GET /xui/links/:email
+ * Get all connection links for a client by email.
  */
-xuiRouter.get("/links/:subId", async (req: Request, res: Response) => {
+xuiRouter.get("/links/:email", async (req: AuthedRequest, res: Response) => {
   try {
-    const { subId } = req.params;
-    const links = getAllClientLinks(subId);
+    const email = decodeURIComponent(req.params.email);
+    // Look up client in inbound to get clientId and subId
+    const inbounds = await listInbounds();
+    let clientId = "";
+    let subId = "";
+    for (const inb of inbounds) {
+      const settings = JSON.parse((inb as any).settings || "{}");
+      const client = (settings.clients || []).find((c: any) => c.email === email);
+      if (client) {
+        clientId = client.id;
+        subId = client.subId || "";
+        break;
+      }
+    }
+    if (!clientId) {
+      return res.status(404).json({ ok: false, error: "Client not found" });
+    }
+    const links = getAllClientLinks(clientId, subId, email);
     return res.json({ ok: true, data: links });
   } catch (err: any) {
     return res.status(500).json({ ok: false, error: err.message });

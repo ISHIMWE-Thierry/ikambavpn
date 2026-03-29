@@ -616,7 +616,7 @@ function VlessTab() {
         expiryDays: 0,        // never expires
         maxConnections: 2,
       });
-      setVlessLink(result.subscriptionUrl);
+      setVlessLink(result.vlessLink);
       // Refresh stats
       getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
     } catch (err: any) {
