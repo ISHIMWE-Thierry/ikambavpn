@@ -10,7 +10,7 @@
 
 const API_BASE = import.meta.env.DEV
   ? 'http://localhost:4000'
-  : (import.meta.env.VITE_API_URL || 'http://194.76.217.4:4000');
+  : (import.meta.env.VITE_API_URL || 'https://194.76.217.4:4443');
 
 async function xuiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   // Get Firebase ID token for auth
