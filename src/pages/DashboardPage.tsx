@@ -107,7 +107,7 @@ function CredentialsBox({
   const [show, setShow] = useState(false);
   const [dlLoading, setDlLoading] = useState(false);
   const [servers, setServers] = useState<VpnrServer[]>([]);
-  const [tab, setTab] = useState<'ikev2' | 'l2tp' | 'wireguard'>('ikev2');
+  const [tab, setTab] = useState<'openvpn' | 'stealth' | 'wireguard'>('openvpn');
   const [copied, setCopied] = useState<string | null>(null);
 
   if (!username && !password && !wgIp) return null;
@@ -141,7 +141,7 @@ function CredentialsBox({
       if (!s?.wg_public_key) {
         // Try using the user's account public key as a fallback hint
         // but we actually need the SERVER's public key for the config
-        alert('WireGuard config download is not available for your server. Use IKEv2 or L2TP instead — they work on all devices.');
+        alert('WireGuard config download is not available for your server. Use the VPN Client app with OpenVPN or Stealth protocol instead.');
         return;
       }
       const cfg = [
@@ -171,8 +171,8 @@ function CredentialsBox({
   };
 
   const tabs = [
-    { key: 'ikev2' as const, label: 'IKEv2' },
-    { key: 'l2tp' as const, label: 'L2TP/IPSec' },
+    { key: 'openvpn' as const, label: 'OpenVPN' },
+    { key: 'stealth' as const, label: '🛡️ Stealth' },
     ...(wgPrivateKey ? [{ key: 'wireguard' as const, label: 'WireGuard' }] : []),
   ];
 
@@ -193,22 +193,22 @@ function CredentialsBox({
         ))}
       </div>
 
-      {/* ── IKEv2 ── */}
-      {tab === 'ikev2' && (
+      {/* ── OpenVPN (UDP / TCP) ── */}
+      {tab === 'openvpn' && (
         <div className="flex flex-col gap-3">
           <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
             {srv && (
               <p className="flex items-center flex-wrap">
                 <span className="text-gray-400">Server: </span>{srv.ip}
-                <CopyBtn text={srv.ip} label="ike-srv" />
+                <CopyBtn text={srv.ip} label="ovpn-srv" />
                 <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
               </p>
             )}
-            <p><span className="text-gray-400">Type: </span>IKEv2</p>
+            <p><span className="text-gray-400">Protocol: </span>OpenVPN (UDP or TCP)</p>
             {username && (
               <p className="flex items-center">
                 <span className="text-gray-400">Username: </span>{username}
-                <CopyBtn text={username} label="ike-user" />
+                <CopyBtn text={username} label="ovpn-user" />
               </p>
             )}
             {password && (
@@ -218,7 +218,7 @@ function CredentialsBox({
                 <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
                   {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
-                {password && <CopyBtn text={password} label="ike-pw" />}
+                {password && <CopyBtn text={password} label="ovpn-pw" />}
               </div>
             )}
           </div>
@@ -227,49 +227,56 @@ function CredentialsBox({
               Setup instructions ▸
             </summary>
             <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
-              <p className="font-semibold text-blue-900">iOS / macOS</p>
+              <p className="font-semibold text-blue-900">Using VPN Client app (all platforms)</p>
               <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → VPN → Add VPN → Type: <strong>IKEv2</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Remote ID: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Authentication: <strong>Username</strong></li>
-                <li>Enter your username &amp; password → Connect</li>
+                <li>Download <strong>VPN Client</strong> from <a href="https://vpnclient.app" target="_blank" rel="noopener noreferrer" className="underline">vpnclient.app</a> (see downloads below)</li>
+                <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
+                <li>The app connects with <strong>UDP-OpenVPN</strong> by default — this is the fastest option</li>
+                <li>To switch protocol: tap <strong>Advanced</strong> → choose <strong>UDP-OpenVPN</strong> or <strong>TCP-OpenVPN</strong></li>
               </ol>
-              <p className="font-semibold text-blue-900 mt-2">Windows</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → Network → VPN → Add VPN</li>
-                <li>Provider: <strong>Windows (built-in)</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong>, Type: <strong>IKEv2</strong></li>
-                <li>Sign-in: <strong>Username and password</strong> → Connect</li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">Android</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Install <strong>strongSwan VPN</strong> from Play Store</li>
-                <li>Add Profile → Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Type: <strong>IKEv2 EAP (Username/Password)</strong></li>
-                <li>Enter credentials → Connect</li>
-              </ol>
+              <div className="mt-2 p-2 bg-blue-100 rounded-lg">
+                <p className="font-semibold text-blue-900">💡 UDP vs TCP</p>
+                <ul className="list-disc ml-4 mt-1 flex flex-col gap-0.5">
+                  <li><strong>UDP-OpenVPN</strong> — Faster, best for streaming &amp; general use</li>
+                  <li><strong>TCP-OpenVPN</strong> — More reliable on unstable networks, may work when UDP is blocked</li>
+                </ul>
+              </div>
+              <p className="mt-2 text-blue-600 text-[11px]">
+                ⚠️ If OpenVPN is blocked in your country (Russia, China, Iran), switch to the <strong>Stealth</strong> tab.
+              </p>
             </div>
           </details>
         </div>
       )}
 
-      {/* ── L2TP/IPSec ── */}
-      {tab === 'l2tp' && (
+      {/* ── Stealth (OpenVPN over TLS — for Russia / restricted networks) ── */}
+      {tab === 'stealth' && (
         <div className="flex flex-col gap-3">
+          {/* Russia / restricted country warning */}
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+            <Shield className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+            <div className="text-xs text-red-800">
+              <p className="font-semibold">For Russia, China, Iran &amp; restricted networks</p>
+              <p className="mt-0.5 text-red-600">
+                Stealth mode wraps OpenVPN inside TLS/SSL encryption, making it look like normal
+                HTTPS web traffic. This bypasses deep packet inspection (DPI) used to block VPNs.
+              </p>
+            </div>
+          </div>
+
           <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
             {srv && (
               <p className="flex items-center flex-wrap">
                 <span className="text-gray-400">Server: </span>{srv.ip}
-                <CopyBtn text={srv.ip} label="l2tp-srv" />
+                <CopyBtn text={srv.ip} label="stealth-srv" />
                 <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
               </p>
             )}
-            <p><span className="text-gray-400">Type: </span>L2TP/IPSec PSK</p>
+            <p><span className="text-gray-400">Protocol: </span>Stealth (OpenVPN over TLS)</p>
             {username && (
               <p className="flex items-center">
                 <span className="text-gray-400">Username: </span>{username}
-                <CopyBtn text={username} label="l2tp-user" />
+                <CopyBtn text={username} label="stealth-user" />
               </p>
             )}
             {password && (
@@ -279,52 +286,39 @@ function CredentialsBox({
                 <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
                   {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
-                {password && <CopyBtn text={password} label="l2tp-pw" />}
+                {password && <CopyBtn text={password} label="stealth-pw" />}
               </div>
             )}
-            <p className="flex items-center">
-              <span className="text-gray-400">Pre-shared Key: </span>
-              <span className="ml-1 font-semibold">vpnresellers</span>
-              <CopyBtn text="vpnresellers" label="l2tp-psk" />
-            </p>
           </div>
-          <details className="group">
+          <details className="group" open>
             <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
               Setup instructions ▸
             </summary>
             <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
-              <p className="font-semibold text-blue-900">iOS</p>
+              <p className="font-semibold text-blue-900">Desktop (Windows / macOS / Linux)</p>
               <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → VPN → Add VPN Configuration</li>
-                <li>Type: <strong>L2TP</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Account: your <strong>username</strong></li>
-                <li>Password: your <strong>password</strong></li>
-                <li>Secret: <strong>vpnresellers</strong></li>
-                <li>Send All Traffic: <strong>ON</strong> → Connect</li>
+                <li>Download <strong>VPN Client</strong> from <a href="https://vpnclient.app" target="_blank" rel="noopener noreferrer" className="underline">vpnclient.app</a></li>
+                <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
+                <li>Tap <strong>Advanced</strong> (bottom of the screen)</li>
+                <li>Select <strong>Stealth</strong> from the protocol list</li>
+                <li>Tap <strong>Connect</strong> — the connection will look like regular HTTPS traffic</li>
               </ol>
-              <p className="font-semibold text-blue-900 mt-2">macOS</p>
+              <p className="font-semibold text-blue-900 mt-3">Mobile (iOS / Android)</p>
               <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>System Settings → Network → + → VPN → <strong>L2TP over IPSec</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Auth Settings → Password + Shared Secret: <strong>vpnresellers</strong></li>
+                <li>Install <strong>VPN Client</strong> from the App Store or Google Play</li>
+                <li>Log in with your credentials</li>
+                <li>On some mobile versions, the Stealth option may be under <strong>Settings</strong> or <strong>Protocol</strong></li>
+                <li>If Stealth is not available in the mobile app, the app will auto-select the best working protocol</li>
               </ol>
-              <p className="font-semibold text-blue-900 mt-2">Windows</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → Network → VPN → Add VPN</li>
-                <li>Type: <strong>L2TP/IPsec with pre-shared key</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Pre-shared key: <strong>vpnresellers</strong></li>
-                <li>Enter username &amp; password → Connect</li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">Android</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → Connections → VPN → Add</li>
-                <li>Type: <strong>L2TP/IPSec PSK</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>IPSec pre-shared key: <strong>vpnresellers</strong></li>
-                <li>Enter credentials → Connect</li>
-              </ol>
+              <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg">
+                <p className="font-semibold text-red-800">🇷🇺 Tips for use in Russia</p>
+                <ul className="list-disc ml-4 mt-1 flex flex-col gap-0.5 text-red-700">
+                  <li>Always use <strong>Stealth</strong> mode — standard OpenVPN and WireGuard are blocked</li>
+                  <li>If one server doesn't connect, try a different server location</li>
+                  <li>Keep the app updated for latest anti-censorship improvements</li>
+                  <li>Connect before opening blocked services (Instagram, etc.)</li>
+                </ul>
+              </div>
             </div>
           </details>
         </div>
@@ -370,7 +364,7 @@ function CredentialsBox({
             </button>
           ) : (
             <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-              WireGuard .conf download not available — use <strong>IKEv2</strong> or <strong>L2TP</strong> tabs for easier setup.
+              WireGuard .conf download not available — use the <strong>VPN Client</strong> app with <strong>OpenVPN</strong> or <strong>Stealth</strong> protocol instead.
             </p>
           )}
           <details className="group">
@@ -378,12 +372,24 @@ function CredentialsBox({
               Setup instructions ▸
             </summary>
             <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-1">
+              <p className="font-semibold text-blue-900">Using VPN Client app</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Open <strong>VPN Client</strong> → log in with your credentials</li>
+                <li>Tap <strong>Advanced</strong> → select <strong>WireGuard</strong></li>
+                <li>The app handles configuration automatically</li>
+              </ol>
+              <p className="font-semibold text-blue-900 mt-2">Manual setup (with .conf file)</p>
               <ol className="list-decimal ml-4 flex flex-col gap-1">
                 <li>Install <strong>WireGuard</strong> app on your device</li>
-                <li>Download the <strong>.conf</strong> file above</li>
+                <li>Download the <strong>.conf</strong> file above (if available)</li>
                 <li>Open WireGuard → tap <strong>+</strong> → <strong>Import from file</strong></li>
                 <li>Select the file → Toggle to connect</li>
               </ol>
+              <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded-lg">
+                <p className="text-amber-700 text-[11px]">
+                  ⚠️ WireGuard may be blocked in Russia and some restricted countries. Use <strong>Stealth</strong> mode instead.
+                </p>
+              </div>
             </div>
           </details>
         </div>

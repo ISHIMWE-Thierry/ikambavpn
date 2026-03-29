@@ -260,7 +260,7 @@ export function TrialPage() {
           </div>
 
           <p className="text-sm text-gray-500 text-center">
-            Your dashboard has full setup instructions for <strong>IKEv2</strong>, <strong>L2TP/IPSec</strong>, and <strong>WireGuard</strong>.
+            Your dashboard has full setup instructions for <strong>OpenVPN</strong>, <strong>Stealth</strong> (for Russia), and <strong>WireGuard</strong>.
           </p>
           <Button onClick={() => navigate('/dashboard')} className="w-full">
             Go to dashboard
