@@ -424,7 +424,7 @@ export interface ProvisionedUser {
 /**
  * Provision a new VLESS+REALITY user end-to-end.
  *
- * 1. Creates a client in 3X-UI
+ * 1. Creates a client in 3X-UI (or finds existing one)
  * 2. Returns all subscription/deep links
  */
 export async function provisionUser(
@@ -435,22 +435,57 @@ export async function provisionUser(
     maxConnections?: number;
   }
 ): Promise<ProvisionedUser> {
-  const { id: clientId, subId } = await addClient({
-    email,
-    totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
-    expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
-    limitIp: options?.maxConnections ?? 3,
-  });
+  try {
+    const { id: clientId, subId } = await addClient({
+      email,
+      totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
+      expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
+      limitIp: options?.maxConnections ?? 3,
+    });
 
-  const links = getAllClientLinks(subId);
+    const links = getAllClientLinks(subId);
 
-  return {
-    clientId,
-    subId,
-    email,
-    subscriptionUrl: links.subscriptionUrl,
-    v2raytunLink: links.v2raytun,
-    v2rayngLink: links.v2rayng,
-    hiddifyLink: links.hiddify,
-  };
+    return {
+      clientId,
+      subId,
+      email,
+      subscriptionUrl: links.subscriptionUrl,
+      v2raytunLink: links.v2raytun,
+      v2rayngLink: links.v2rayng,
+      hiddifyLink: links.hiddify,
+    };
+  } catch (err: any) {
+    // If duplicate email, find the existing client and return their links
+    if (err.message?.includes("Duplicate email")) {
+      const existing = await findClientByEmail(email);
+      if (existing) {
+        const links = getAllClientLinks(existing.subId);
+        return {
+          clientId: existing.id,
+          subId: existing.subId,
+          email,
+          subscriptionUrl: links.subscriptionUrl,
+          v2raytunLink: links.v2raytun,
+          v2rayngLink: links.v2rayng,
+          hiddifyLink: links.hiddify,
+        };
+      }
+    }
+    throw err;
+  }
+}
+
+/**
+ * Find an existing client by email across all inbounds.
+ */
+async function findClientByEmail(
+  email: string,
+  inboundId: number = DEFAULT_INBOUND_ID
+): Promise<{ id: string; subId: string } | null> {
+  const inbound = await getInbound(inboundId);
+  const settings = JSON.parse((inbound as any).settings || "{}");
+  const clients: XuiClient[] = settings.clients || [];
+  const match = clients.find((c) => c.email === email);
+  if (!match) return null;
+  return { id: match.id, subId: match.subId };
 }
