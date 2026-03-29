@@ -23,7 +23,16 @@ const DOWNLOADS = [
   { label: 'Linux',   badge: '.run',         url: 'https://vpnclient.app/current/vpnclient/vpnclient.run' },
 ];
 
-function AppDownloads() {
+function AppDownloads({ username, password }: { username?: string; password?: string }) {
+  const [showPw, setShowPw] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -33,6 +42,34 @@ function AppDownloads() {
         </div>
       </CardHeader>
       <CardContent>
+        {/* Login credentials reminder */}
+        {username && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-2">Sign in with these credentials</p>
+            <div className="font-mono text-sm flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-amber-600">Username:</span>
+                <span className="font-semibold text-amber-900">{username}</span>
+                <button onClick={() => copyText(username, 'app-user')} className="ml-1 text-amber-400 hover:text-amber-700 transition" title="Copy">
+                  {copied === 'app-user' ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              {password && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-amber-600">Password:</span>
+                  <span className="font-semibold text-amber-900">{showPw ? password : '••••••••••'}</span>
+                  <button onClick={() => setShowPw((v) => !v)} className="ml-0.5 text-amber-400 hover:text-amber-700 transition">
+                    {showPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                  <button onClick={() => copyText(password, 'app-pass')} className="text-amber-400 hover:text-amber-700 transition" title="Copy">
+                    {copied === 'app-pass' ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {DOWNLOADS.map((d) => (
             <a
@@ -497,6 +534,17 @@ export function DashboardPage() {
   // User has an active VPN in any form
   const hasActiveVpn = !!activeOrder || trial?.status === 'active' || (resellCreds?.status === 'Active');
 
+  // Derive the active VPN username + password (for the "Download app" section)
+  const activeUsername =
+    resellCreds?.username ??
+    activeOrder?.credentials?.username ??
+    trial?.credentials?.username;
+  const activePassword =
+    resellCreds?.password ??
+    activeOrder?.credentials?.password ??
+    extractPassword(activeOrder?.credentials?.notes) ??
+    trial?.credentials?.password;
+
   // Compute days until VPNresellers account expires
   const resellDays = resellCreds?.expiredAt ? daysUntilExpiry(resellCreds.expiredAt) : null;
   const resellExpired = resellCreds?.expiredAt ? isExpired(resellCreds.expiredAt) : false;
@@ -676,7 +724,7 @@ export function DashboardPage() {
           )}
 
           {/* ── App downloads (shown whenever user has active VPN) ── */}
-          {hasActiveVpn && <AppDownloads />}
+          {hasActiveVpn && <AppDownloads username={activeUsername} password={activePassword} />}
 
           {/* ── Trial expired ── */}
           {trial?.status === 'expired' && !activeOrder && !resellCreds && (
