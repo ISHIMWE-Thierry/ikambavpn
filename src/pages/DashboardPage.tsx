@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders, getUserTrial, updateTrial } from '../lib/db-service';
-import { getAccount, disableAccount, listServers } from '../lib/vpnresellers-api';
+import { getAccount, disableAccount, listServers, getAccountByUsername, usernameFromEmail, changePassword, generatePassword } from '../lib/vpnresellers-api';
 import type { VpnrServer } from '../lib/vpnresellers-api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -514,16 +514,43 @@ export function DashboardPage() {
           console.warn('VPNresellers API error for account', accountId, apiErr);
           console.info('Falling back to stored creds:', { storedUsername, storedPassword: storedPassword ? '***' : undefined, storedWgIp });
 
-          // Try to find the account by email if we have no stored username
-          if (!storedUsername && firebaseUser?.email) {
+          // Try to find the account on VPNresellers by stored username or email-derived username
+          const lookupName = storedUsername || (firebaseUser?.email ? usernameFromEmail(firebaseUser.email) : '');
+          if (lookupName) {
             try {
-              const { getAccountByUsername, usernameFromEmail } = await import('../lib/vpnresellers-api');
-              const guessedUsername = usernameFromEmail(firebaseUser.email);
-              const found = await getAccountByUsername(guessedUsername);
+              const found = await getAccountByUsername(lookupName);
               if (found) {
+                let pwd = storedPassword;
+
+                // If no password stored, reset it and persist to Firestore
+                if (!pwd) {
+                  try {
+                    pwd = generatePassword();
+                    await changePassword(found.id, pwd);
+                    // Save the new password + correct account ID back to Firestore
+                    if (trialRec) {
+                      await updateTrial(trialRec.id, {
+                        credentials: {
+                          ...trialRec.credentials,
+                          username: found.username,
+                          password: pwd,
+                          vpnrAccountId: found.id,
+                          wgIp: found.wg_ip,
+                          wgPrivateKey: found.wg_private_key,
+                          wgPublicKey: found.wg_public_key,
+                        },
+                      });
+                    }
+                    console.info('Password reset and saved for account', found.id);
+                  } catch (resetErr) {
+                    console.warn('Failed to reset password:', resetErr);
+                    pwd = undefined;
+                  }
+                }
+
                 setResellCreds({
                   username: found.username,
-                  password: storedPassword,
+                  password: pwd,
                   wgIp: found.wg_ip,
                   wgPrivateKey: found.wg_private_key,
                   wgPublicKey: found.wg_public_key,
@@ -533,7 +560,7 @@ export function DashboardPage() {
                 return;
               }
             } catch {
-              // lookup also failed — continue to fallback
+              // lookup also failed — continue to final fallback
             }
           }
 
