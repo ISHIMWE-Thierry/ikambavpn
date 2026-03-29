@@ -109,7 +109,7 @@ function CredentialsBox({
   const [show, setShow] = useState(false);
   const [dlLoading, setDlLoading] = useState(false);
   const [servers, setServers] = useState<VpnrServer[]>([]);
-  const [tab, setTab] = useState<'openvpn' | 'ikev2' | 'l2tp' | 'stealth' | 'wireguard' | 'vless'>('openvpn');
+  const [tab, setTab] = useState<'openvpn' | 'ikev2' | 'l2tp' | 'stealth' | 'wireguard' | 'vless'>('vless');
   const [copied, setCopied] = useState<string | null>(null);
 
   if (!username && !password && !wgIp) return null;
@@ -173,12 +173,12 @@ function CredentialsBox({
   };
 
   const tabs = [
+    { key: 'vless' as const, label: '⚡ Ikamba VPN' },
     { key: 'openvpn' as const, label: 'OpenVPN' },
     { key: 'ikev2' as const, label: 'IKEv2' },
     { key: 'l2tp' as const, label: 'L2TP' },
-    { key: 'stealth' as const, label: '🛡️ Stealth' },
+    { key: 'stealth' as const, label: 'Stealth' },
     ...(wgPrivateKey ? [{ key: 'wireguard' as const, label: 'WireGuard' }] : []),
-    { key: 'vless' as const, label: '🇷🇺 VLESS' },
   ];
 
   return (
@@ -190,7 +190,11 @@ function CredentialsBox({
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`flex-1 text-xs font-medium py-1.5 px-3 rounded-md transition ${
-              tab === t.key ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              tab === t.key
+                ? t.key === 'vless'
+                  ? 'bg-black text-white shadow-sm'
+                  : 'bg-white text-black shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             {t.label}
@@ -575,7 +579,7 @@ function CredentialsBox({
         </div>
       )}
 
-      {/* ── VLESS+REALITY (Russia / DPI bypass — works on ALL devices including mobile) ── */}
+      {/* ── Ikamba VPN (works on ALL devices including mobile) ── */}
       {tab === 'vless' && (
         <VlessTab />
       )}
@@ -583,7 +587,7 @@ function CredentialsBox({
   );
 }
 
-// ── VLESS+REALITY tab ─────────────────────────────────────────────────────────
+// ── Ikamba VPN tab ────────────────────────────────────────────────────────────
 
 function VlessTab() {
   const { firebaseUser } = useAuth();
@@ -632,12 +636,12 @@ function VlessTab() {
   return (
     <div className="flex flex-col gap-3">
       {/* Banner */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
-        <Globe className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-        <div className="text-xs text-blue-800">
-          <p className="font-semibold">🇷🇺 For Russia, China, Iran &amp; restricted networks</p>
-          <p className="mt-0.5 text-blue-600">
-            VLESS+REALITY bypasses deep packet inspection. Your traffic looks identical to visiting <strong>microsoft.com</strong>.
+      <div className="bg-gradient-to-r from-gray-900 to-black border border-gray-800 rounded-xl p-3 flex items-start gap-2">
+        <Globe className="w-4 h-4 text-white mt-0.5 shrink-0" />
+        <div className="text-xs text-gray-200">
+          <p className="font-semibold text-white">⚡ Ikamba VPN — Works everywhere</p>
+          <p className="mt-0.5 text-gray-400">
+            Next-generation encrypted connection. Your traffic looks identical to visiting <strong className="text-gray-200">microsoft.com</strong> — undetectable by any firewall.
           </p>
         </div>
       </div>
@@ -646,7 +650,7 @@ function VlessTab() {
       <div className="border border-gray-100 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold">1</div>
-          <p className="text-sm font-semibold">Download V2RayTun</p>
+          <p className="text-sm font-semibold">Download the app</p>
         </div>
         <a
           href="https://apps.apple.com/app/id6476628951"
@@ -686,7 +690,7 @@ function VlessTab() {
       <div className="border border-gray-100 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold">2</div>
-          <p className="text-sm font-semibold">Get your connection link</p>
+          <p className="text-sm font-semibold">Activate Ikamba VPN</p>
         </div>
 
         {vlessLink ? (
@@ -708,19 +712,19 @@ function VlessTab() {
           </div>
         ) : stats ? (
           <div className="bg-green-50 border border-green-100 rounded-xl p-3">
-            <p className="text-xs text-green-800 font-medium">✅ You already have a VLESS account</p>
+            <p className="text-xs text-green-800 font-medium">✅ Your Ikamba VPN is active</p>
             <div className="mt-2 text-xs text-green-700 flex flex-col gap-0.5">
               <p>📊 Used: {formatBytes(stats.total)} {stats.limit > 0 ? `/ ${formatBytes(stats.limit)}` : '(unlimited)'}</p>
               <p>⏰ Expires: {formatExpiry(stats.expiryTime)}</p>
             </div>
             <p className="mt-2 text-[11px] text-green-600">
-              Your connection link was shown when you first activated. Contact support if you need it again.
+              Your connection link was shown when you first activated. Open the app — it auto-updates via your subscription. Contact support if you need it again.
             </p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
             <p className="text-xs text-gray-500">
-              Start a free trial to get your VLESS connection link. Paste it into V2RayTun to connect.
+              Start a free trial to activate your Ikamba VPN. You'll get a connection link to paste into the app.
             </p>
             {error && (
               <div className="bg-red-50 border border-red-100 rounded-lg p-2 text-xs text-red-700">
@@ -731,7 +735,7 @@ function VlessTab() {
               {loading ? (
                 <><RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> Creating trial...</>
               ) : (
-                <>🚀 Start free trial (1 GB / 3 days)</>
+                <>🚀 Activate Ikamba VPN — Free trial</>
               )}
             </Button>
           </div>
@@ -756,11 +760,11 @@ function VlessTab() {
       {/* Why it works */}
       <details className="group">
         <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition px-1">
-          Why this works in Russia ▸
+          Why Ikamba VPN works everywhere ▸
         </summary>
         <div className="mt-2 bg-green-50 border border-green-100 rounded-xl p-3 text-xs text-green-800">
           <ul className="list-disc ml-4 flex flex-col gap-1">
-            <li>Your traffic looks <strong>identical</strong> to visiting microsoft.com</li>
+            <li>Your traffic looks <strong>identical</strong> to visiting microsoft.com — completely invisible</li>
             <li>Uses real TLS 1.3 handshakes — DPI cannot detect it</li>
             <li>Works on <strong>all devices</strong>: iPhone, Android, Windows, Mac, Linux</li>
             <li>If server IP changes, your subscription link auto-updates</li>
@@ -773,7 +777,7 @@ function VlessTab() {
         <p className="font-semibold text-gray-700 mb-1">🇷🇺 Краткая инструкция</p>
         <ol className="list-decimal ml-4 flex flex-col gap-0.5">
           <li>Скачайте <strong>V2RayTun</strong> из <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store</a></li>
-          <li>Нажмите <strong>«Start free trial»</strong> выше, чтобы получить ссылку</li>
+          <li>Нажмите <strong>«Activate Ikamba VPN»</strong> выше, чтобы получить ссылку</li>
           <li>Скопируйте ссылку → откройте V2RayTun → <strong>+</strong> → <strong>«Import from URL»</strong></li>
           <li>Нажмите <strong>«Подключиться»</strong> — готово! ✅</li>
         </ol>
@@ -1252,9 +1256,9 @@ export function DashboardPage() {
                     Standard VPN protocols (OpenVPN, WireGuard, IKEv2) are blocked in Russia.
                   </p>
                   <p className="text-xs text-blue-700">
-                    We offer <strong>VLESS+REALITY</strong> — a next-generation protocol that makes your traffic look
+                    <strong>Ikamba VPN</strong> uses next-generation encryption that makes your traffic look
                     like normal HTTPS browsing. It works on <strong>all devices including iPhone</strong> and is
-                    undetectable by Russian DPI systems.
+                    undetectable by DPI systems.
                   </p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -1270,7 +1274,7 @@ export function DashboardPage() {
                   </a>
                 </div>
                 <p className="text-xs text-gray-400 mt-3">
-                  Switch to the <strong>🇷🇺 VLESS</strong> tab in your VPN credentials section above to see the recommended apps and setup instructions.
+                  Switch to the <strong>⚡ Ikamba VPN</strong> tab in your credentials section above to get started.
                 </p>
               </CardContent>
             </Card>

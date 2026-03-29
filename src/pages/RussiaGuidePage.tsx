@@ -10,14 +10,14 @@ const IOS_APPS = [
   {
     name: 'V2RayTun',
     badge: 'Recommended',
-    desc: 'Best experience on iPhone & Mac. Supports VLESS+REALITY and clipboard import.',
+    desc: 'Best experience on iPhone & Mac. Supports Ikamba VPN and clipboard import.',
     url: 'https://apps.apple.com/app/id6476628951',
     free: true,
   },
   {
     name: 'Streisand',
     badge: 'Alternative',
-    desc: 'Free and open source. Supports VLESS+REALITY.',
+    desc: 'Free and open source. Supports Ikamba VPN protocol.',
     url: 'https://apps.apple.com/app/streisand/id6450534064',
     free: true,
   },
@@ -27,7 +27,7 @@ const ANDROID_APPS = [
   {
     name: 'V2RayNG',
     badge: 'Recommended',
-    desc: 'Most popular VLESS client on Android. Supports subscription auto-update.',
+    desc: 'Most popular client on Android. Supports subscription auto-update.',
     url: 'https://play.google.com/store/apps/details?id=com.v2ray.ang',
     free: true,
   },
@@ -87,7 +87,7 @@ export function RussiaGuidePage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-black">🇷🇺 Russia VPN Setup Guide</h1>
-            <p className="text-sm text-gray-500">VLESS+REALITY — works on all devices, invisible to DPI</p>
+            <p className="text-sm text-gray-500">Ikamba VPN — works on all devices, invisible to DPI</p>
           </div>
         </div>
       </div>
@@ -107,7 +107,7 @@ export function RussiaGuidePage() {
               OpenVPN, WireGuard, IKEv2, and even most "stealth" modes are identified and blocked.
             </p>
             <p>
-              <strong>VLESS+REALITY</strong> is a next-generation protocol that solves this by making your
+              <strong>Ikamba VPN</strong> is a next-generation protocol that solves this by making your
               traffic look <em>identical</em> to visiting a normal website like microsoft.com. The DPI system
               sees real TLS 1.3 handshakes with real certificates — it cannot tell it's a VPN.
             </p>
@@ -125,7 +125,7 @@ export function RussiaGuidePage() {
               <div className="bg-green-50 border border-green-100 rounded-xl p-3">
                 <p className="text-xs font-semibold text-green-800 mb-1">✅ Works in Russia</p>
                 <ul className="text-xs text-green-600 flex flex-col gap-0.5">
-                  <li>• <strong>VLESS+REALITY</strong> (what we use)</li>
+                  <li>• <strong>Ikamba VPN</strong> (what we use)</li>
                   <li>• VLESS+WebSocket+TLS</li>
                   <li>• Trojan+REALITY</li>
                   <li>• Hysteria2 (QUIC-based)</li>
@@ -151,8 +151,8 @@ export function RussiaGuidePage() {
             />
             <Step
               num={2}
-              title="Get your VLESS link"
-              desc="Go to your Dashboard → VLESS tab → tap 'Start free trial'. Copy the link that appears."
+              title="Activate Ikamba VPN"
+              desc="Go to your Dashboard → Ikamba VPN tab → tap 'Activate Ikamba VPN'. Copy the link that appears."
             />
             <Step
               num={3}
@@ -185,7 +185,7 @@ export function RussiaGuidePage() {
           <h3 className="text-sm font-semibold mb-2">📱 iPhone step-by-step (V2RayTun)</h3>
           <ol className="text-xs text-gray-700 list-decimal ml-4 flex flex-col gap-1.5">
             <li>Open the <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store link</a> → Install <strong>V2RayTun</strong></li>
-            <li>Go to your <strong>IkambaVPN Dashboard</strong> → tap the <strong>🇷🇺 VLESS</strong> tab</li>
+            <li>Go to your <strong>IkambaVPN Dashboard</strong> → tap the <strong>⚡ Ikamba VPN</strong> tab</li>
             <li>Tap <strong>"Start free trial"</strong> to get your connection link</li>
             <li>Tap <strong>"Copy link"</strong></li>
             <li>Open V2RayTun → tap <strong>+</strong> → <strong>"Import from clipboard"</strong></li>
@@ -278,7 +278,7 @@ export function RussiaGuidePage() {
             />
             <FAQ
               q="Can my ISP see I'm using a VPN?"
-              a="No. VLESS+REALITY makes your traffic indistinguishable from visiting microsoft.com. Your ISP sees encrypted HTTPS traffic to what appears to be a Microsoft server."
+              a="No. Ikamba VPN makes your traffic indistinguishable from visiting microsoft.com. Your ISP sees encrypted HTTPS traffic to what appears to be a Microsoft server."
             />
             <FAQ
               q="The Google Play Store is blocked on my phone"
@@ -301,7 +301,7 @@ export function RussiaGuidePage() {
               <li><strong>Android:</strong> V2RayNG из Google Play или скачайте APK с GitHub</li>
               <li><strong>Компьютер:</strong> Hiddify (Windows/macOS/Linux) с GitHub</li>
             </ul>
-            <p><strong>Шаг 2:</strong> Перейдите в <strong>Панель управления</strong> → вкладка <strong>🇷🇺 VLESS</strong> → нажмите <strong>«Start free trial»</strong></p>
+            <p><strong>Шаг 2:</strong> Перейдите в <strong>Панель управления</strong> → вкладка <strong>⚡ Ikamba VPN</strong> → нажмите <strong>«Activate Ikamba VPN»</strong></p>
             <p><strong>Шаг 3:</strong> Скопируйте ссылку → откройте V2RayTun → <strong>+</strong> → <strong>«Import from clipboard»</strong></p>
             <p><strong>Шаг 4:</strong> Нажмите <strong>«Подключиться»</strong> → готово! ✅</p>
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 mt-1 text-xs text-blue-700">
