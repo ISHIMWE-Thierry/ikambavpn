@@ -1,5 +1,5 @@
 /**
- * Free 1-Day Trial Page — uses VPNresellers API as default provider.
+ * Free Trial Page — uses VPNresellers API as default provider.
  *
  * Flow:
  * 1. Check Firestore — if active trial exists → dashboard
@@ -7,8 +7,7 @@
  * 3. Show confirm screen
  * 4. On confirm:
  *    a. findOrCreateAccount(email) → VPNresellers account
- *    b. setExpiry(id, tomorrow) → 24h window
- *    c. Store in vpn_trials with credentials + vpnrAccountId
+ *    b. Store in vpn_trials with credentials + vpnrAccountId
  * 5. Show success screen + redirect to dashboard
  */
 
@@ -23,7 +22,6 @@ import {
   usernameFromEmail,
   generatePassword,
   getAccountByUsername,
-  setExpiry,
 } from '../lib/vpnresellers-api';
 import { Button } from '../components/ui/button';
 import type { VpnCredentials, VpnTrial } from '../types';
@@ -32,10 +30,10 @@ import toast from 'react-hot-toast';
 type Stage = 'loading' | 'available' | 'used' | 'provisioning' | 'success' | 'error';
 
 const TRIAL_PERKS = [
-  'Full VPN access for 24 hours',
+  'Full VPN access — unlimited',
+  'Unlimited bandwidth & speed',
   'Global server access',
   'No credit card required',
-  'One trial per account',
 ];
 
 
@@ -116,9 +114,7 @@ export function TrialPage() {
       const password = generatePassword();
       const account = await createAccount(username, password);
 
-      // Enforce 24h expiry on VPNresellers side (server-side safety net)
-      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      await setExpiry(account.id, tomorrow).catch(() => {});
+      // Trial has no expiry — unlimited access for great first experience
 
       const creds: VpnCredentials = {
         username: account.username,
@@ -172,7 +168,7 @@ export function TrialPage() {
           <div className="border border-gray-100 rounded-2xl p-6 flex flex-col gap-3">
             <div className="flex items-center gap-2 mb-1">
               <Clock className="w-4 h-4 text-gray-400" />
-              <span className="font-semibold text-sm">What's included (24 hours)</span>
+              <span className="font-semibold text-sm">What's included</span>
             </div>
             {TRIAL_PERKS.map((p) => (
               <div key={p} className="flex items-center gap-2 text-sm text-gray-700">
@@ -183,11 +179,11 @@ export function TrialPage() {
           </div>
 
           <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-500 leading-relaxed">
-            Your trial will automatically expire after 24 hours. Subscribe to keep access.
+            Enjoy full VPN access with unlimited bandwidth. One trial per account.
           </div>
 
           <Button onClick={handleStart} size="lg" className="w-full">
-            Start 1-day free trial
+            Start free trial
           </Button>
         </div>
       )}

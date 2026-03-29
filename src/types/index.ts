@@ -103,7 +103,7 @@ export interface VpnTrial {
   resellServiceId?: number;
   credentials?: VpnCredentials;
   status: TrialStatus;
-  expiresAt: string;       // ISO — now + 24 hours at creation
+  expiresAt: string;       // ISO — effectively unlimited for trial users
   createdAt: string;
   updatedAt: string;
 }

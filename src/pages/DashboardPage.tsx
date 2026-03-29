@@ -612,9 +612,9 @@ function VlessTab() {
     try {
       const result = await provisionXuiAccount({
         email: firebaseUser.email,
-        trafficLimitGB: 1,    // 1 GB trial
-        expiryDays: 3,        // 3 day trial
-        maxConnections: 1,
+        trafficLimitGB: 0,    // unlimited bandwidth
+        expiryDays: 0,        // never expires
+        maxConnections: 2,
       });
       setVlessLink(result.subscriptionUrl);
       // Refresh stats

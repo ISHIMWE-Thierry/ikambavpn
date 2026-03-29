@@ -288,7 +288,7 @@ export async function getAppSettings(): Promise<AppPaymentSettings> {
 
 // ── Trials ────────────────────────────────────────────────────────────────────
 
-const TRIAL_DURATION_HOURS = 24;
+const TRIAL_DURATION_HOURS = 24 * 365 * 10; // effectively unlimited (10 years)
 
 export async function getUserTrial(userId: string): Promise<VpnTrial | null> {
   try {
