@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff } from 'lucide-react';
+import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders, getUserTrial, updateTrial } from '../lib/db-service';
 import { getAccount, disableAccount, listServers } from '../lib/vpnresellers-api';
+import type { VpnrServer } from '../lib/vpnresellers-api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
@@ -68,71 +69,279 @@ function CredentialsBox({
 }) {
   const [show, setShow] = useState(false);
   const [dlLoading, setDlLoading] = useState(false);
+  const [servers, setServers] = useState<VpnrServer[]>([]);
+  const [tab, setTab] = useState<'ikev2' | 'l2tp' | 'wireguard'>('ikev2');
+  const [copied, setCopied] = useState<string | null>(null);
 
   if (!username && !password && !wgIp) return null;
+
+  // Fetch servers once
+  useEffect(() => {
+    listServers().then(setServers).catch(() => {});
+  }, []);
+
+  const copyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const CopyBtn = ({ text, label }: { text: string; label: string }) => (
+    <button onClick={() => copyText(text, label)} className="ml-1.5 text-gray-400 hover:text-black transition" title="Copy">
+      {copied === label ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+
+  const srv = servers[0];
 
   const handleWgDownload = async () => {
     if (!wgPrivateKey || !wgIp) return;
     setDlLoading(true);
-    let serverIp = '';
     try {
-      const servers = await listServers();
-      serverIp = servers[0]?.ip ?? '';
-    } catch { /* use placeholder */ } finally {
+      let srvList = servers;
+      if (!srvList.length) { srvList = await listServers(); setServers(srvList); }
+      const s = srvList[0];
+      if (!s?.wg_public_key) {
+        alert('Server WireGuard public key not available. Contact support.');
+        return;
+      }
+      const cfg = [
+        '[Interface]',
+        `PrivateKey = ${wgPrivateKey}`,
+        `Address = ${wgIp}/32`,
+        'DNS = 1.1.1.1, 8.8.8.8',
+        '',
+        '[Peer]',
+        `PublicKey = ${s.wg_public_key}`,
+        `Endpoint = ${s.ip}:51820`,
+        'AllowedIPs = 0.0.0.0/0',
+        'PersistentKeepalive = 25',
+      ].join('\n');
+      const blob = new Blob([cfg], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${username ?? 'vpn'}-wireguard.conf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to generate config. Try again.');
+    } finally {
       setDlLoading(false);
     }
-    const cfg = [
-      '[Interface]',
-      `PrivateKey = ${wgPrivateKey}`,
-      `Address = ${wgIp}/32`,
-      'DNS = 1.1.1.1, 8.8.8.8',
-      '',
-      '[Peer]',
-      '# Get your server public key from Ikamba VPN support',
-      'PublicKey = REPLACE_WITH_SERVER_PUBLIC_KEY',
-      `Endpoint = ${serverIp || 'SERVER_IP'}:51820`,
-      'AllowedIPs = 0.0.0.0/0',
-      'PersistentKeepalive = 25',
-    ].join('\n');
-    const blob = new Blob([cfg], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${username ?? 'vpn'}-wireguard.conf`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
+
+  const tabs = [
+    { key: 'ikev2' as const, label: 'IKEv2' },
+    { key: 'l2tp' as const, label: 'L2TP/IPSec' },
+    ...(wgPrivateKey ? [{ key: 'wireguard' as const, label: 'WireGuard' }] : []),
+  ];
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-        {username && <p><span className="text-gray-400">Username: </span>{username}</p>}
-        {password && (
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400">Password: </span>
-            <span>{show ? password : '••••••••••'}</span>
-            <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
-              {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        )}
-        {wgIp && <p><span className="text-gray-400">WG IP: </span>{wgIp}</p>}
-        {wgPrivateKey && (
-          <p className="break-all"><span className="text-gray-400">WG Private: </span>{show ? wgPrivateKey : '••••••••••'}</p>
-        )}
-        {wgPublicKey && (
-          <p className="break-all"><span className="text-gray-400">WG Public: </span>{wgPublicKey}</p>
-        )}
+      {/* Protocol tabs */}
+      <div className="flex gap-1 bg-gray-50 rounded-lg p-0.5">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex-1 text-xs font-medium py-1.5 px-3 rounded-md transition ${
+              tab === t.key ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-      {wgPrivateKey && (
-        <button
-          onClick={handleWgDownload}
-          disabled={dlLoading}
-          className="self-start flex items-center gap-1.5 text-xs text-gray-500 hover:text-black transition disabled:opacity-50"
-        >
-          <Download className="w-3.5 h-3.5" />
-          {dlLoading ? 'Preparing…' : 'Download WireGuard config (iOS / Android)'}
-        </button>
+
+      {/* ── IKEv2 ── */}
+      {tab === 'ikev2' && (
+        <div className="flex flex-col gap-3">
+          <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
+            {srv && (
+              <p className="flex items-center flex-wrap">
+                <span className="text-gray-400">Server: </span>{srv.ip}
+                <CopyBtn text={srv.ip} label="ike-srv" />
+                <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
+              </p>
+            )}
+            <p><span className="text-gray-400">Type: </span>IKEv2</p>
+            {username && (
+              <p className="flex items-center">
+                <span className="text-gray-400">Username: </span>{username}
+                <CopyBtn text={username} label="ike-user" />
+              </p>
+            )}
+            {password && (
+              <div className="flex items-center">
+                <span className="text-gray-400">Password: </span>
+                <span className="ml-1">{show ? password : '••••••••••'}</span>
+                <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
+                  {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+                {password && <CopyBtn text={password} label="ike-pw" />}
+              </div>
+            )}
+          </div>
+          <details className="group">
+            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
+              Setup instructions ▸
+            </summary>
+            <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
+              <p className="font-semibold text-blue-900">iOS / macOS</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Settings → VPN → Add VPN → Type: <strong>IKEv2</strong></li>
+                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
+                <li>Remote ID: <strong>{srv?.ip ?? '(see above)'}</strong></li>
+                <li>Authentication: <strong>Username</strong></li>
+                <li>Enter your username &amp; password → Connect</li>
+              </ol>
+              <p className="font-semibold text-blue-900 mt-2">Windows</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Settings → Network → VPN → Add VPN</li>
+                <li>Provider: <strong>Windows (built-in)</strong></li>
+                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong>, Type: <strong>IKEv2</strong></li>
+                <li>Sign-in: <strong>Username and password</strong> → Connect</li>
+              </ol>
+              <p className="font-semibold text-blue-900 mt-2">Android</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Install <strong>strongSwan VPN</strong> from Play Store</li>
+                <li>Add Profile → Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
+                <li>Type: <strong>IKEv2 EAP (Username/Password)</strong></li>
+                <li>Enter credentials → Connect</li>
+              </ol>
+            </div>
+          </details>
+        </div>
+      )}
+
+      {/* ── L2TP/IPSec ── */}
+      {tab === 'l2tp' && (
+        <div className="flex flex-col gap-3">
+          <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
+            {srv && (
+              <p className="flex items-center flex-wrap">
+                <span className="text-gray-400">Server: </span>{srv.ip}
+                <CopyBtn text={srv.ip} label="l2tp-srv" />
+                <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
+              </p>
+            )}
+            <p><span className="text-gray-400">Type: </span>L2TP/IPSec PSK</p>
+            {username && (
+              <p className="flex items-center">
+                <span className="text-gray-400">Username: </span>{username}
+                <CopyBtn text={username} label="l2tp-user" />
+              </p>
+            )}
+            {password && (
+              <div className="flex items-center">
+                <span className="text-gray-400">Password: </span>
+                <span className="ml-1">{show ? password : '••••••••••'}</span>
+                <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
+                  {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+                {password && <CopyBtn text={password} label="l2tp-pw" />}
+              </div>
+            )}
+            <p className="flex items-center">
+              <span className="text-gray-400">Pre-shared Key: </span>
+              <span className="ml-1 font-semibold">vpnresellers</span>
+              <CopyBtn text="vpnresellers" label="l2tp-psk" />
+            </p>
+          </div>
+          <details className="group">
+            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
+              Setup instructions ▸
+            </summary>
+            <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
+              <p className="font-semibold text-blue-900">iOS</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Settings → VPN → Add VPN Configuration</li>
+                <li>Type: <strong>L2TP</strong></li>
+                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
+                <li>Account: your <strong>username</strong></li>
+                <li>Password: your <strong>password</strong></li>
+                <li>Secret: <strong>vpnresellers</strong></li>
+                <li>Send All Traffic: <strong>ON</strong> → Connect</li>
+              </ol>
+              <p className="font-semibold text-blue-900 mt-2">macOS</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>System Settings → Network → + → VPN → <strong>L2TP over IPSec</strong></li>
+                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
+                <li>Auth Settings → Password + Shared Secret: <strong>vpnresellers</strong></li>
+              </ol>
+              <p className="font-semibold text-blue-900 mt-2">Windows</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Settings → Network → VPN → Add VPN</li>
+                <li>Type: <strong>L2TP/IPsec with pre-shared key</strong></li>
+                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
+                <li>Pre-shared key: <strong>vpnresellers</strong></li>
+                <li>Enter username &amp; password → Connect</li>
+              </ol>
+              <p className="font-semibold text-blue-900 mt-2">Android</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Settings → Connections → VPN → Add</li>
+                <li>Type: <strong>L2TP/IPSec PSK</strong></li>
+                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
+                <li>IPSec pre-shared key: <strong>vpnresellers</strong></li>
+                <li>Enter credentials → Connect</li>
+              </ol>
+            </div>
+          </details>
+        </div>
+      )}
+
+      {/* ── WireGuard ── */}
+      {tab === 'wireguard' && wgPrivateKey && (
+        <div className="flex flex-col gap-3">
+          <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
+            {wgIp && (
+              <p className="flex items-center">
+                <span className="text-gray-400">WG IP: </span>{wgIp}
+                <CopyBtn text={wgIp} label="wg-ip" />
+              </p>
+            )}
+            {wgPrivateKey && (
+              <p className="break-all flex items-center flex-wrap">
+                <span className="text-gray-400 shrink-0">Private Key: </span>
+                <span className="ml-1">{show ? wgPrivateKey : '••••••••••'}</span>
+                <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black shrink-0">
+                  {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </p>
+            )}
+            {wgPublicKey && (
+              <p className="break-all"><span className="text-gray-400">Public Key: </span>{wgPublicKey}</p>
+            )}
+            {srv && (
+              <p className="flex items-center flex-wrap">
+                <span className="text-gray-400">Server: </span>{srv.ip}:51820
+                <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
+              </p>
+            )}
+          </div>
+          <button
+            onClick={handleWgDownload}
+            disabled={dlLoading}
+            className="self-start flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-black bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-2 transition disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {dlLoading ? 'Preparing…' : 'Download .conf file'}
+          </button>
+          <details className="group">
+            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
+              Setup instructions ▸
+            </summary>
+            <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-1">
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Install <strong>WireGuard</strong> app on your device</li>
+                <li>Download the <strong>.conf</strong> file above</li>
+                <li>Open WireGuard → tap <strong>+</strong> → <strong>Import from file</strong></li>
+                <li>Select the file → Toggle to connect</li>
+              </ol>
+            </div>
+          </details>
+        </div>
       )}
     </div>
   );

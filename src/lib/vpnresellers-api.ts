@@ -57,6 +57,8 @@ export interface VpnrServer {
   country_code: string;
   city: string;
   capacity: number;
+  wg_public_key?: string;      // Server WireGuard public key (for .conf generation)
+  l2tp_pre_shared_key?: string; // L2TP/IPSec pre-shared key (typically "vpnresellers")
 }
 
 // ── Accounts ──────────────────────────────────────────────────────────────────
