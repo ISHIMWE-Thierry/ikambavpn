@@ -592,6 +592,7 @@ function CredentialsBox({
 function VlessTab() {
   const { firebaseUser } = useAuth();
   const [vlessLink, setVlessLink] = useState<string | null>(null);
+  const [subscriptionUrl, setSubscriptionUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -617,6 +618,7 @@ function VlessTab() {
         maxConnections: 2,
       });
       setVlessLink(result.vlessLink);
+      setSubscriptionUrl(result.subscriptionUrl);
       // Refresh stats
       getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
     } catch (err: any) {
@@ -627,8 +629,8 @@ function VlessTab() {
   }
 
   function copyLink() {
-    if (!vlessLink) return;
-    navigator.clipboard.writeText(vlessLink);
+    if (!subscriptionUrl) return;
+    navigator.clipboard.writeText(subscriptionUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -693,10 +695,10 @@ function VlessTab() {
           <p className="text-sm font-semibold">Activate Ikamba VPN</p>
         </div>
 
-        {vlessLink ? (
+        {subscriptionUrl ? (
           <div className="flex flex-col gap-2">
             <div className="bg-gray-50 rounded-xl p-3 font-mono text-xs break-all text-gray-700 border border-gray-200">
-              {vlessLink}
+              {subscriptionUrl}
             </div>
             <Button
               onClick={copyLink}
@@ -706,7 +708,7 @@ function VlessTab() {
               {copied ? (
                 <><Check className="w-4 h-4 mr-1.5" /> Copied!</>
               ) : (
-                <><Copy className="w-4 h-4 mr-1.5" /> Copy link</>
+                <><Copy className="w-4 h-4 mr-1.5" /> Copy subscription link</>
               )}
             </Button>
           </div>
@@ -749,9 +751,9 @@ function VlessTab() {
           <p className="text-sm font-semibold">Connect</p>
         </div>
         <ol className="text-xs text-gray-600 list-decimal ml-8 flex flex-col gap-1.5">
-          <li>Open the app</li>
-          <li>Tap <strong>+</strong> → <strong>Import from clipboard</strong></li>
-          <li>Tap <strong>Connect</strong></li>
+          <li>Copy the subscription link above</li>
+          <li>Open the app → tap <strong>+</strong> → <strong>Import from URL / clipboard</strong></li>
+          <li>Paste the link and tap <strong>Connect</strong></li>
         </ol>
       </div>
 
@@ -776,7 +778,7 @@ function VlessTab() {
         <ol className="list-decimal ml-4 flex flex-col gap-0.5">
           <li>Скачайте <strong>V2RayTun</strong> (<a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store</a>)</li>
           <li>Нажмите <strong>«Activate»</strong> выше</li>
-          <li>Скопируйте ссылку → V2RayTun → <strong>+</strong> → <strong>Import</strong></li>
+          <li>Скопируйте ссылку → V2RayTun → <strong>+</strong> → <strong>Import from URL</strong></li>
           <li>Нажмите <strong>«Подключиться»</strong></li>
         </ol>
       </div>

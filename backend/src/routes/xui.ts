@@ -29,6 +29,49 @@ import {
 
 export const xuiRouter = Router();
 
+/**
+ * Public router for subscription endpoints — NO auth middleware.
+ * V2RayTun / V2RayNG / Hiddify call these directly.
+ */
+export const xuiPublicRouter = Router();
+
+// ── Public subscription endpoint ──────────────────────────────────────────────
+
+/**
+ * GET /xui-public/sub/:email
+ * Self-hosted subscription endpoint — returns base64-encoded VLESS link.
+ * V2RayTun / V2RayNG / Hiddify all expect this format from subscription URLs.
+ * NO AUTH required — apps call this directly.
+ */
+xuiPublicRouter.get("/sub/:email", async (req: Request, res: Response) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const inbounds = await listInbounds();
+    let clientId = "";
+    for (const inb of inbounds) {
+      const settings = JSON.parse((inb as any).settings || "{}");
+      const client = (settings.clients || []).find((c: any) => c.email === email);
+      if (client) {
+        clientId = client.id;
+        break;
+      }
+    }
+    if (!clientId) {
+      return res.status(404).send("Client not found");
+    }
+    const remark = `IkambaVPN-${email.split("@")[0]}`;
+    const vlessLink = buildVlessLink(clientId, remark);
+    const base64 = Buffer.from(vlessLink).toString("base64");
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", "inline");
+    res.setHeader("Profile-Update-Interval", "24");
+    res.setHeader("Subscription-Userinfo", "upload=0; download=0; total=0; expire=0");
+    return res.send(base64);
+  } catch (err: any) {
+    return res.status(500).send("Error");
+  }
+});
+
 // ── User-facing endpoints ─────────────────────────────────────────────────────
 
 /**
@@ -95,7 +138,7 @@ xuiRouter.get("/links/:email", async (req: AuthedRequest, res: Response) => {
 
 /**
  * GET /xui/subscription/:subId
- * Redirect to the raw subscription URL (for QR code generation, etc.)
+ * Legacy redirect (kept for backwards compatibility).
  */
 xuiRouter.get("/subscription/:subId", async (req: Request, res: Response) => {
   const { subId } = req.params;
@@ -104,11 +147,11 @@ xuiRouter.get("/subscription/:subId", async (req: Request, res: Response) => {
 
 /**
  * GET /xui/deeplink/:subId
- * Redirect to V2RayTun deep link (iOS auto-import).
+ * Legacy redirect.
  */
 xuiRouter.get("/deeplink/:subId", async (req: Request, res: Response) => {
   const { subId } = req.params;
-  return res.redirect(getV2RayTunDeepLink(subId));
+  return res.redirect(getV2RayTunDeepLink(buildVlessLink("", "")));
 });
 
 /**

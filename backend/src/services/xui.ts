@@ -399,16 +399,19 @@ export function getHiddifyDeepLink(vlessLink: string): string {
 
 /**
  * Get all connection links for a client.
+ * subscriptionUrl now points to our self-hosted sub endpoint (not the broken 3X-UI one).
  */
 export function getAllClientLinks(clientId: string, subId: string, email: string) {
   const remark = `IkambaVPN-${email.split("@")[0]}`;
   const vlessLink = buildVlessLink(clientId, remark);
+  // Self-hosted subscription endpoint that returns base64-encoded VLESS config
+  const selfHostedSubUrl = `https://${VPS_IP}:4443/xui-public/sub/${encodeURIComponent(email)}`;
   return {
     vlessLink,
-    subscriptionUrl: getSubscriptionUrl(subId),
-    v2raytun: getV2RayTunDeepLink(vlessLink),
-    v2rayng: getV2RayNGDeepLink(vlessLink),
-    hiddify: getHiddifyDeepLink(vlessLink),
+    subscriptionUrl: selfHostedSubUrl,
+    v2raytun: getV2RayTunDeepLink(selfHostedSubUrl),
+    v2rayng: getV2RayNGDeepLink(selfHostedSubUrl),
+    hiddify: getHiddifyDeepLink(selfHostedSubUrl),
   };
 }
 
