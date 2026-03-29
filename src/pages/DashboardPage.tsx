@@ -139,7 +139,9 @@ function CredentialsBox({
       if (!srvList.length) { srvList = await listServers(); setServers(srvList); }
       const s = srvList[0];
       if (!s?.wg_public_key) {
-        alert('Server WireGuard public key not available. Contact support.');
+        // Try using the user's account public key as a fallback hint
+        // but we actually need the SERVER's public key for the config
+        alert('WireGuard config download is not available for your server. Use IKEv2 or L2TP instead — they work on all devices.');
         return;
       }
       const cfg = [
@@ -357,14 +359,20 @@ function CredentialsBox({
               </p>
             )}
           </div>
-          <button
-            onClick={handleWgDownload}
-            disabled={dlLoading}
-            className="self-start flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-black bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-2 transition disabled:opacity-50"
-          >
-            <Download className="w-3.5 h-3.5" />
-            {dlLoading ? 'Preparing…' : 'Download .conf file'}
-          </button>
+          {srv?.wg_public_key ? (
+            <button
+              onClick={handleWgDownload}
+              disabled={dlLoading}
+              className="self-start flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-black bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-2 transition disabled:opacity-50"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {dlLoading ? 'Preparing…' : 'Download .conf file'}
+            </button>
+          ) : (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+              WireGuard .conf download not available — use <strong>IKEv2</strong> or <strong>L2TP</strong> tabs for easier setup.
+            </p>
+          )}
           <details className="group">
             <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
               Setup instructions ▸
@@ -634,6 +642,16 @@ export function DashboardPage() {
   const resellExpired = resellCreds?.expiredAt ? isExpired(resellCreds.expiredAt) : false;
   const resellIsActive = resellCreds?.status === 'Active' && !resellExpired;
 
+  // Is the user on a free trial (not a paid plan)?
+  const isTrialUser = trial?.status === 'active' && !activeOrder;
+
+  // For trial users, merge resellCreds into the trial display instead of showing the "Your VPN service" card
+  const trialUsername = resellCreds?.username ?? trial?.credentials?.username;
+  const trialPassword = resellCreds?.password ?? trial?.credentials?.password;
+  const trialWgIp = resellCreds?.wgIp ?? trial?.credentials?.wgIp;
+  const trialWgPrivateKey = resellCreds?.wgPrivateKey ?? trial?.credentials?.wgPrivateKey;
+  const trialWgPublicKey = resellCreds?.wgPublicKey ?? trial?.credentials?.wgPublicKey;
+
   return (
     <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-10">
       {/* Header */}
@@ -676,8 +694,8 @@ export function DashboardPage() {
       ) : (
         <div className="flex flex-col gap-6">
 
-          {/* ── ResellPortal live service (always shown if active) ── */}
-          {resellCreds && (
+          {/* ── ResellPortal live service (only for paid users, NOT trial) ── */}
+          {resellCreds && !isTrialUser && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -788,7 +806,7 @@ export function DashboardPage() {
                     <Zap className="w-5 h-5" />
                     <h2 className="font-semibold">Free 1-day trial</h2>
                   </div>
-                  <Badge variant="success">Active</Badge>
+                  <Badge variant="success">Trial active</Badge>
                 </div>
               </CardHeader>
               <CardContent>
@@ -796,7 +814,18 @@ export function DashboardPage() {
                   <Clock className="w-4 h-4 text-gray-400" />
                   <span className="text-sm font-mono font-semibold">{trialTimeLeft} remaining</span>
                 </div>
-                {trial.credentials && (
+                {(trialUsername || trialPassword) ? (
+                  <>
+                    <p className="text-sm font-medium mb-3 border-t border-gray-100 pt-4">VPN credentials</p>
+                    <CredentialsBox
+                      username={trialUsername}
+                      password={trialPassword}
+                      wgIp={trialWgIp}
+                      wgPrivateKey={trialWgPrivateKey}
+                      wgPublicKey={trialWgPublicKey}
+                    />
+                  </>
+                ) : trial.credentials ? (
                   <>
                     <p className="text-sm font-medium mb-3 border-t border-gray-100 pt-4">VPN credentials</p>
                     <CredentialsBox
@@ -807,7 +836,7 @@ export function DashboardPage() {
                       wgPublicKey={trial.credentials.wgPublicKey}
                     />
                   </>
-                )}
+                ) : null}
                 <div className="mt-5">
                   <Link to="/plans"><Button variant="secondary" size="sm">Upgrade to paid plan</Button></Link>
                 </div>
@@ -819,7 +848,7 @@ export function DashboardPage() {
           {hasActiveVpn && <AppDownloads username={activeUsername} password={activePassword} />}
 
           {/* ── Trial expired ── */}
-          {trial?.status === 'expired' && !activeOrder && !resellCreds && (
+          {trial?.status === 'expired' && !activeOrder && (
             <Card>
               <CardContent className="py-6 flex flex-col items-center gap-3 text-center">
                 <AlertCircle className="w-8 h-8 text-gray-300" />
@@ -831,7 +860,7 @@ export function DashboardPage() {
           )}
 
           {/* ── No service at all ── */}
-          {!activeOrder && !resellIsActive && trial?.status !== 'active' && (
+          {!activeOrder && !isTrialUser && trial?.status !== 'active' && trial?.status !== 'expired' && !resellIsActive && (
             <Card>
               <CardContent className="py-10 flex flex-col items-center gap-4 text-center">
                 <Shield className="w-10 h-10 text-gray-300" />
