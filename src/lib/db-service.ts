@@ -123,13 +123,7 @@ export async function getOrder(orderId: string): Promise<VpnOrder | null> {
 }
 
 export async function getUserOrders(userId: string): Promise<VpnOrder[]> {
-  const q = query(
-    collection(db, COLLECTIONS.ORDERS),
-    where('userId', '==', userId),
-    orderBy('createdAt', 'desc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => {
+  const mapDoc = (d: import('firebase/firestore').QueryDocumentSnapshot) => {
     const data = d.data();
     return {
       id: d.id,
@@ -139,7 +133,30 @@ export async function getUserOrders(userId: string): Promise<VpnOrder[]> {
       activatedAt: tsToString(data.activatedAt),
       expiresAt: tsToString(data.expiresAt),
     } as VpnOrder;
-  });
+  };
+
+  try {
+    // Primary query — requires composite index (userId ASC, createdAt DESC)
+    const q = query(
+      collection(db, COLLECTIONS.ORDERS),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(mapDoc);
+  } catch (err) {
+    // Fallback: if composite index is still building, query without orderBy
+    console.warn('getUserOrders: composite index may still be building, using fallback query', err);
+    const fallback = query(
+      collection(db, COLLECTIONS.ORDERS),
+      where('userId', '==', userId)
+    );
+    const snap = await getDocs(fallback);
+    // Manually sort by createdAt desc
+    const results = snap.docs.map(mapDoc);
+    results.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return results;
+  }
 }
 
 export async function getAllOrders(): Promise<VpnOrder[]> {
@@ -274,16 +291,36 @@ export async function getAppSettings(): Promise<AppPaymentSettings> {
 const TRIAL_DURATION_HOURS = 24;
 
 export async function getUserTrial(userId: string): Promise<VpnTrial | null> {
-  const q = query(
-    collection(db, COLLECTIONS.TRIALS),
-    where('userId', '==', userId),
-    orderBy('createdAt', 'desc'),
-    limit(1)
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  const d = snap.docs[0].data();
-  return { id: snap.docs[0].id, ...d } as VpnTrial;
+  try {
+    // Primary query — requires composite index (userId ASC, createdAt DESC)
+    const q = query(
+      collection(db, COLLECTIONS.TRIALS),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    const d = snap.docs[0].data();
+    return { id: snap.docs[0].id, ...d } as VpnTrial;
+  } catch (err) {
+    // Fallback: if the composite index is still building, query without orderBy
+    console.warn('getUserTrial: composite index may still be building, using fallback query', err);
+    const fallback = query(
+      collection(db, COLLECTIONS.TRIALS),
+      where('userId', '==', userId)
+    );
+    const snap = await getDocs(fallback);
+    if (snap.empty) return null;
+    // Manually pick the most recent by createdAt
+    let latest = snap.docs[0];
+    for (const d of snap.docs) {
+      const dCreated = d.data().createdAt || '';
+      const lCreated = latest.data().createdAt || '';
+      if (dCreated > lCreated) latest = d;
+    }
+    return { id: latest.id, ...latest.data() } as VpnTrial;
+  }
 }
 
 export async function createTrial(

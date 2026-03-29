@@ -24,6 +24,14 @@
       ]
     },
     {
+      "collectionGroup": "vpn_trials",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "vpn_payment_accounts",
       "queryScope": "COLLECTION",
       "fields": [

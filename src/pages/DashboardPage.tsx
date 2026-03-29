@@ -183,7 +183,11 @@ export function DashboardPage() {
   // Fetch trial record
   useEffect(() => {
     if (!firebaseUser) return;
-    getUserTrial(firebaseUser.uid).then(setTrial).catch(() => {});
+    getUserTrial(firebaseUser.uid)
+      .then(setTrial)
+      .catch((err) => {
+        console.warn('Failed to fetch trial record:', err?.message || err);
+      });
   }, [firebaseUser]);
 
   // Background check: sync live account from VPNresellers API.
@@ -199,7 +203,14 @@ export function DashboardPage() {
         let storedPassword: string | undefined;
 
         // Check trial first
-        const trialRec = await getUserTrial(firebaseUser!.uid);
+        let trialRec: VpnTrial | null = null;
+        try {
+          trialRec = await getUserTrial(firebaseUser!.uid);
+          // Also populate the trial state so the trial card renders
+          if (trialRec) setTrial(trialRec);
+        } catch {
+          // Index may still be building — ignore
+        }
         if (trialRec?.credentials?.vpnrAccountId) {
           accountId = trialRec.credentials.vpnrAccountId;
           storedPassword = trialRec.credentials.password;
