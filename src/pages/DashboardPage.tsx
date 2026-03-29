@@ -449,20 +449,32 @@ function CredentialsBox({
               Setup instructions ▸
             </summary>
             <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
-              <p className="font-semibold text-blue-900">Desktop (Windows / macOS / Linux)</p>
+              <p className="font-semibold text-blue-900">📱 iPhone / iPad</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Download <strong>VPN Client</strong> from the <a href="https://apps.apple.com/app/id1506797696" target="_blank" rel="noopener noreferrer" className="underline">App Store</a></li>
+                <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
+                <li>Tap the <strong>⚙️ Settings</strong> icon (gear icon, top-right)</li>
+                <li>Tap <strong>Protocol</strong> → select <strong>Stealth</strong></li>
+                <li>Go back → tap <strong>Connect</strong></li>
+                <li>When iOS asks <em>"VPN Client Would Like to Add VPN Configurations"</em> → tap <strong>Allow</strong></li>
+              </ol>
+
+              <p className="font-semibold text-blue-900 mt-3">🤖 Android</p>
+              <ol className="list-decimal ml-4 flex flex-col gap-1">
+                <li>Download <strong>VPN Client</strong> from <a href="https://play.google.com/store/apps/details?id=com.vpn.client" target="_blank" rel="noopener noreferrer" className="underline">Google Play</a> or use the APK (see downloads below)</li>
+                <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
+                <li>Tap <strong>⚙️ Settings</strong> or <strong>Advanced</strong></li>
+                <li>Tap <strong>Protocol</strong> → select <strong>Stealth</strong></li>
+                <li>Go back → tap <strong>Connect</strong></li>
+              </ol>
+
+              <p className="font-semibold text-blue-900 mt-3">💻 Desktop (Windows / macOS / Linux)</p>
               <ol className="list-decimal ml-4 flex flex-col gap-1">
                 <li>Download <strong>VPN Client</strong> from <a href="https://vpnclient.app" target="_blank" rel="noopener noreferrer" className="underline">vpnclient.app</a></li>
                 <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
-                <li>Tap <strong>Advanced</strong> (bottom of the screen)</li>
+                <li>Click <strong>Advanced</strong> (bottom of the screen)</li>
                 <li>Select <strong>Stealth</strong> from the protocol list</li>
-                <li>Tap <strong>Connect</strong> — the connection will look like regular HTTPS traffic</li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-3">Mobile (iOS / Android)</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Install <strong>VPN Client</strong> from the App Store or Google Play</li>
-                <li>Log in with your credentials</li>
-                <li>On some mobile versions, the Stealth option may be under <strong>Settings</strong> or <strong>Protocol</strong></li>
-                <li>If Stealth is not available in the mobile app, the app will auto-select the best working protocol</li>
+                <li>Click <strong>Connect</strong> — the connection will look like regular HTTPS traffic</li>
               </ol>
               <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg">
                 <p className="font-semibold text-red-800">🇷🇺 Tips for use in Russia</p>
