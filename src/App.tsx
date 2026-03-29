@@ -15,6 +15,7 @@ import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminUsersPage } from './pages/admin/AdminUsersPage'
 import { TrialPage } from './pages/TrialPage'
+import { RussiaGuidePage } from './pages/RussiaGuidePage'
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="/signup" element={<SignUpPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/plans" element={<PlansPage />} />
+        <Route path="/russia-guide" element={<RussiaGuidePage />} />
 
         {/* Protected — users */}
         <Route

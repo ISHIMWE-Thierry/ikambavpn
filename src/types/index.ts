@@ -61,6 +61,13 @@ export interface VpnCredentials {
   wgPublicKey?: string;
   // Internal — VPNresellers account ID for status checks
   vpnrAccountId?: number;
+  // VLESS+REALITY (3X-UI) — for Russian users
+  xuiClientId?: string;       // 3X-UI client UUID
+  xuiSubId?: string;          // subscription token
+  xuiSubscriptionUrl?: string;
+  xuiV2raytunLink?: string;   // iOS deep link
+  xuiV2rayngLink?: string;    // Android deep link
+  xuiHiddifyLink?: string;    // Android alt deep link
 }
 
 export interface VpnPlan {

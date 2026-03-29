@@ -9,6 +9,7 @@ import { aiRouter } from "./routes/ai";
 import { metricsRouter } from "./routes/metrics";
 import { heartbeatRouter } from "./routes/heartbeat";
 import { adminRouter } from "./routes/admin";
+import { xuiRouter } from "./routes/xui";
 import { initFirebase } from "./services/firebase";
 import { authMiddleware } from "./middleware/auth";
 
@@ -29,6 +30,7 @@ app.use("/ai", authMiddleware, aiRouter);
 app.use("/servers", metricsRouter);
 app.use("/connection", authMiddleware, heartbeatRouter);
 app.use("/admin", authMiddleware, adminRouter);
+app.use("/xui", authMiddleware, xuiRouter);
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`API running on :${port}`));

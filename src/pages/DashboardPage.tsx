@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff, Copy, Check } from 'lucide-react';
+import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff, Copy, Check, Globe } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders, getUserTrial, updateTrial } from '../lib/db-service';
 import { getAccount, disableAccount, listServers, getAccountByUsername, usernameFromEmail, changePassword, generatePassword } from '../lib/vpnresellers-api';
 import type { VpnrServer } from '../lib/vpnresellers-api';
+import { provisionXuiAccount, getXuiLinks, getXuiStats, formatBytes, formatExpiry } from '../lib/xui-api';
+import type { XuiProvisionResult, XuiClientLinks, XuiClientStat } from '../lib/xui-api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
@@ -107,7 +109,7 @@ function CredentialsBox({
   const [show, setShow] = useState(false);
   const [dlLoading, setDlLoading] = useState(false);
   const [servers, setServers] = useState<VpnrServer[]>([]);
-  const [tab, setTab] = useState<'openvpn' | 'ikev2' | 'l2tp' | 'stealth' | 'wireguard'>('openvpn');
+  const [tab, setTab] = useState<'openvpn' | 'ikev2' | 'l2tp' | 'stealth' | 'wireguard' | 'vless'>('openvpn');
   const [copied, setCopied] = useState<string | null>(null);
 
   if (!username && !password && !wgIp) return null;
@@ -176,6 +178,7 @@ function CredentialsBox({
     { key: 'l2tp' as const, label: 'L2TP' },
     { key: 'stealth' as const, label: '🛡️ Stealth' },
     ...(wgPrivateKey ? [{ key: 'wireguard' as const, label: 'WireGuard' }] : []),
+    { key: 'vless' as const, label: '🇷🇺 VLESS' },
   ];
 
   return (
@@ -571,6 +574,210 @@ function CredentialsBox({
           </details>
         </div>
       )}
+
+      {/* ── VLESS+REALITY (Russia / DPI bypass — works on ALL devices including mobile) ── */}
+      {tab === 'vless' && (
+        <VlessTab />
+      )}
+    </div>
+  );
+}
+
+// ── VLESS+REALITY tab ─────────────────────────────────────────────────────────
+
+function VlessTab() {
+  const { firebaseUser } = useAuth();
+  const [vlessLink, setVlessLink] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<XuiClientStat | null>(null);
+
+  // Check if user already has a VLESS account
+  useEffect(() => {
+    if (!firebaseUser?.email) return;
+    getXuiStats(firebaseUser.email)
+      .then((s) => setStats(s))
+      .catch(() => { /* no account yet */ });
+  }, [firebaseUser?.email]);
+
+  async function handleGetTrial() {
+    if (!firebaseUser?.email) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await provisionXuiAccount({
+        email: firebaseUser.email,
+        trafficLimitGB: 1,    // 1 GB trial
+        expiryDays: 3,        // 3 day trial
+        maxConnections: 1,
+      });
+      setVlessLink(result.subscriptionUrl);
+      // Refresh stats
+      getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
+    } catch (err: any) {
+      setError(err.message || 'Failed to create trial');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function copyLink() {
+    if (!vlessLink) return;
+    navigator.clipboard.writeText(vlessLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Banner */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
+        <Globe className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+        <div className="text-xs text-blue-800">
+          <p className="font-semibold">🇷🇺 For Russia, China, Iran &amp; restricted networks</p>
+          <p className="mt-0.5 text-blue-600">
+            VLESS+REALITY bypasses deep packet inspection. Your traffic looks identical to visiting <strong>microsoft.com</strong>.
+          </p>
+        </div>
+      </div>
+
+      {/* Step 1: Download app */}
+      <div className="border border-gray-100 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold">1</div>
+          <p className="text-sm font-semibold">Download V2RayTun</p>
+        </div>
+        <a
+          href="https://apps.apple.com/app/id6476628951"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 hover:border-blue-300 transition"
+        >
+          <div>
+            <span className="text-sm font-medium text-blue-900">V2RayTun</span>
+            <p className="text-xs text-blue-500">iPhone / iPad / Mac — App Store</p>
+          </div>
+          <Download className="w-4 h-4 text-blue-400" />
+        </a>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <a
+            href="https://play.google.com/store/apps/details?id=com.v2ray.ang"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col gap-0.5 border border-gray-100 rounded-xl px-3 py-2 hover:border-gray-300 transition"
+          >
+            <span className="text-xs font-medium">V2RayNG</span>
+            <span className="text-[10px] text-gray-400">Android — Google Play</span>
+          </a>
+          <a
+            href="https://github.com/hiddify/hiddify-app/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col gap-0.5 border border-gray-100 rounded-xl px-3 py-2 hover:border-gray-300 transition"
+          >
+            <span className="text-xs font-medium">Hiddify</span>
+            <span className="text-[10px] text-gray-400">Windows / macOS / Linux</span>
+          </a>
+        </div>
+      </div>
+
+      {/* Step 2: Get your link */}
+      <div className="border border-gray-100 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold">2</div>
+          <p className="text-sm font-semibold">Get your connection link</p>
+        </div>
+
+        {vlessLink ? (
+          <div className="flex flex-col gap-2">
+            <div className="bg-gray-50 rounded-xl p-3 font-mono text-xs break-all text-gray-700 border border-gray-200">
+              {vlessLink}
+            </div>
+            <Button
+              onClick={copyLink}
+              className="w-full"
+              variant={copied ? 'primary' : 'secondary'}
+            >
+              {copied ? (
+                <><Check className="w-4 h-4 mr-1.5" /> Copied!</>
+              ) : (
+                <><Copy className="w-4 h-4 mr-1.5" /> Copy link</>
+              )}
+            </Button>
+          </div>
+        ) : stats ? (
+          <div className="bg-green-50 border border-green-100 rounded-xl p-3">
+            <p className="text-xs text-green-800 font-medium">✅ You already have a VLESS account</p>
+            <div className="mt-2 text-xs text-green-700 flex flex-col gap-0.5">
+              <p>📊 Used: {formatBytes(stats.total)} {stats.limit > 0 ? `/ ${formatBytes(stats.limit)}` : '(unlimited)'}</p>
+              <p>⏰ Expires: {formatExpiry(stats.expiryTime)}</p>
+            </div>
+            <p className="mt-2 text-[11px] text-green-600">
+              Your connection link was shown when you first activated. Contact support if you need it again.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-gray-500">
+              Start a free trial to get your VLESS connection link. Paste it into V2RayTun to connect.
+            </p>
+            {error && (
+              <div className="bg-red-50 border border-red-100 rounded-lg p-2 text-xs text-red-700">
+                ⚠️ {error}
+              </div>
+            )}
+            <Button onClick={handleGetTrial} disabled={loading} className="w-full">
+              {loading ? (
+                <><RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> Creating trial...</>
+              ) : (
+                <>🚀 Start free trial (1 GB / 3 days)</>
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Step 3: Paste & connect */}
+      <div className="border border-gray-100 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold">3</div>
+          <p className="text-sm font-semibold">Paste link &amp; connect</p>
+        </div>
+        <ol className="text-xs text-gray-600 list-decimal ml-8 flex flex-col gap-1.5">
+          <li>Open <strong>V2RayTun</strong> (or V2RayNG / Hiddify)</li>
+          <li>Tap the <strong>+</strong> button</li>
+          <li>Choose <strong>"Import from clipboard"</strong> or <strong>"Import from URL"</strong></li>
+          <li>Paste the link you copied above</li>
+          <li>Tap <strong>Connect</strong> — done! 🎉</li>
+        </ol>
+      </div>
+
+      {/* Why it works */}
+      <details className="group">
+        <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition px-1">
+          Why this works in Russia ▸
+        </summary>
+        <div className="mt-2 bg-green-50 border border-green-100 rounded-xl p-3 text-xs text-green-800">
+          <ul className="list-disc ml-4 flex flex-col gap-1">
+            <li>Your traffic looks <strong>identical</strong> to visiting microsoft.com</li>
+            <li>Uses real TLS 1.3 handshakes — DPI cannot detect it</li>
+            <li>Works on <strong>all devices</strong>: iPhone, Android, Windows, Mac, Linux</li>
+            <li>If server IP changes, your subscription link auto-updates</li>
+          </ul>
+        </div>
+      </details>
+
+      {/* Russian summary */}
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
+        <p className="font-semibold text-gray-700 mb-1">🇷🇺 Краткая инструкция</p>
+        <ol className="list-decimal ml-4 flex flex-col gap-0.5">
+          <li>Скачайте <strong>V2RayTun</strong> из <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store</a></li>
+          <li>Нажмите <strong>«Start free trial»</strong> выше, чтобы получить ссылку</li>
+          <li>Скопируйте ссылку → откройте V2RayTun → <strong>+</strong> → <strong>«Import from URL»</strong></li>
+          <li>Нажмите <strong>«Подключиться»</strong> — готово! ✅</li>
+        </ol>
+      </div>
     </div>
   );
 }
@@ -1029,6 +1236,45 @@ export function DashboardPage() {
 
           {/* ── App downloads (shown whenever user has active VPN) ── */}
           {hasActiveVpn && <AppDownloads username={activeUsername} password={activePassword} />}
+
+          {/* ── Russia / DPI-bypass recommendation card (always visible for active users) ── */}
+          {hasActiveVpn && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Globe className="w-5 h-5" />
+                  <h2 className="font-semibold">🇷🇺 For users in Russia &amp; restricted countries</h2>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 mb-4">
+                  <p className="text-sm font-medium text-blue-900 mb-1">
+                    Standard VPN protocols (OpenVPN, WireGuard, IKEv2) are blocked in Russia.
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    We offer <strong>VLESS+REALITY</strong> — a next-generation protocol that makes your traffic look
+                    like normal HTTPS browsing. It works on <strong>all devices including iPhone</strong> and is
+                    undetectable by Russian DPI systems.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Link to="/russia-guide">
+                    <Button variant="secondary" size="sm">
+                      📖 Russia setup guide
+                    </Button>
+                  </Link>
+                  <a href="https://t.me/ikambavpn" target="_blank" rel="noopener noreferrer">
+                    <Button variant="secondary" size="sm">
+                      💬 Telegram support
+                    </Button>
+                  </a>
+                </div>
+                <p className="text-xs text-gray-400 mt-3">
+                  Switch to the <strong>🇷🇺 VLESS</strong> tab in your VPN credentials section above to see the recommended apps and setup instructions.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── Trial expired ── */}
           {trial?.status === 'expired' && !activeOrder && (
