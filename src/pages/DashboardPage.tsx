@@ -449,7 +449,7 @@ function CredentialsBox({
               Setup instructions ▸
             </summary>
             <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
-              <p className="font-semibold text-blue-900">� Desktop only — macOS / Windows / Linux</p>
+              <p className="font-semibold text-blue-900">💻 Desktop — macOS / Windows / Linux</p>
               <ol className="list-decimal ml-4 flex flex-col gap-1">
                 <li>Download <strong>VPN Client</strong> from <a href="https://vpnclient.app" target="_blank" rel="noopener noreferrer" className="underline">vpnclient.app</a></li>
                 <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
@@ -458,42 +458,41 @@ function CredentialsBox({
                 <li>Click <strong>Connect</strong> — the connection will look like regular HTTPS traffic</li>
               </ol>
 
-              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="font-semibold text-amber-900">📱 iPhone / iPad — Stealth is NOT available</p>
-                <p className="mt-1 text-amber-700">
-                  The VPN Client iOS app does <strong>not</strong> have a Stealth option. If you're in Russia or a restricted country, try these alternatives:
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="font-semibold text-red-900">📱 iPhone / iPad &amp; Android — Stealth is NOT available</p>
+                <p className="mt-1 text-red-700">
+                  Stealth mode is <strong>only available on the desktop app</strong> (macOS, Windows, Linux).
+                  The iOS and Android apps do not support Stealth.
                 </p>
-                <ol className="list-decimal ml-4 mt-2 flex flex-col gap-1.5 text-amber-800">
+                <p className="mt-2 font-semibold text-red-900">What to do on iPhone in Russia:</p>
+                <ul className="list-disc ml-4 mt-1 flex flex-col gap-1.5 text-red-800">
                   <li>
-                    <strong>Try the VPN Client app anyway</strong> — download from the <a href="https://apps.apple.com/app/id1506797696" target="_blank" rel="noopener noreferrer" className="underline">App Store</a>,
-                    log in, and tap Connect. The app may auto-negotiate a working connection even in restricted networks.
+                    <strong>Connect from a Mac/PC first</strong> — use Stealth on the desktop app, then share the VPN
+                    to your phone via <strong>Wi-Fi hotspot</strong> (Mac: System Settings → General → Sharing → Internet Sharing)
+                    or <strong>USB tethering</strong>. This is the only reliable method.
                   </li>
                   <li>
-                    <strong>Try IKEv2 manually</strong> — go to the <strong>IKEv2</strong> tab above and follow the iOS built-in setup.
-                    IKEv2 sometimes works in Russia depending on the server.
+                    <strong>Try the VPN Client iOS app</strong> — download from the <a href="https://apps.apple.com/app/id1506797696" target="_blank" rel="noopener noreferrer" className="underline">App Store</a>,
+                    log in, and tap Connect. It will attempt to connect but <strong>will likely not work</strong> in Russia without Stealth.
                   </li>
                   <li>
-                    <strong>Use a Mac/PC with Stealth + share internet</strong> — connect your Mac or PC with Stealth mode,
-                    then share the VPN connection to your iPhone via Wi-Fi hotspot or USB tethering.
+                    <strong>Try IKEv2 in iOS Settings</strong> — see the <strong>IKEv2</strong> tab above. This works without
+                    an app but is <strong>also blocked in most of Russia</strong>.
                   </li>
-                </ol>
-              </div>
-
-              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="font-semibold text-amber-900">🤖 Android — Stealth may not be available</p>
-                <p className="mt-1 text-amber-700">
-                  Check if your version has a <strong>Protocol</strong> or <strong>Advanced</strong> option in Settings.
-                  If not, use the same alternatives listed above for iPhone.
+                </ul>
+                <p className="mt-2 text-red-600 text-[11px] leading-relaxed">
+                  ⚠️ There is currently no reliable way to use this VPN on iPhone in Russia.
+                  The only guaranteed method is connecting a Mac or PC with Stealth and sharing
+                  the internet to your phone. We are working on better mobile solutions.
                 </p>
               </div>
 
               <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg">
-                <p className="font-semibold text-red-800">🇷🇺 Tips for use in Russia</p>
+                <p className="font-semibold text-red-800">🇷🇺 Russia summary</p>
                 <ul className="list-disc ml-4 mt-1 flex flex-col gap-0.5 text-red-700">
-                  <li>On desktop: always use <strong>Stealth</strong> — standard protocols are blocked</li>
-                  <li>On iPhone: try the VPN Client app first, then IKEv2 manual setup</li>
+                  <li><strong>Desktop ✅</strong> — use Stealth mode, it works</li>
+                  <li><strong>iPhone / Android ❌</strong> — no Stealth on mobile, use desktop + hotspot sharing</li>
                   <li>If one server doesn't connect, try a different server location</li>
-                  <li>Keep the app updated for latest anti-censorship improvements</li>
                   <li>Connect before opening blocked services (Instagram, etc.)</li>
                 </ul>
               </div>
