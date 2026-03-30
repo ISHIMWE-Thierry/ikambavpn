@@ -95,6 +95,7 @@ function VpnCard() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<XuiClientStat | null>(null);
+  const [activated, setActivated] = useState(false);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const [healthChecking, setHealthChecking] = useState(false);
   const [diagResult, setDiagResult] = useState<DiagnosticResult | null>(null);
@@ -116,11 +117,11 @@ function VpnCard() {
     if (!firebaseUser?.email) return;
     getXuiStats(firebaseUser.email).then((s) => {
       setStats(s);
-      // Only start health polling once we know the user has an account
+      setActivated(true);
       runHealthCheck();
       healthInterval.current = setInterval(runHealthCheck, 60_000);
     }).catch(() => {
-      // No account yet — don't poll, just show Activate button
+      // No account yet — show pre-activation UI
     });
     return () => { if (healthInterval.current) clearInterval(healthInterval.current); };
   }, [firebaseUser?.email, runHealthCheck]);
@@ -131,6 +132,10 @@ function VpnCard() {
     setError(null);
     try {
       await provisionXuiAccount({ email: firebaseUser.email, trafficLimitGB: 0, expiryDays: 0, maxConnections: 2 });
+      // Show connected UI immediately — don't wait for stats to propagate
+      setActivated(true);
+      runHealthCheck();
+      healthInterval.current = setInterval(runHealthCheck, 60_000);
       getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
     } catch (err: any) {
       setError(err.message || 'Activation failed. Please try again.');
@@ -161,7 +166,7 @@ function VpnCard() {
   }
 
   // ── Not yet activated ─────────────────────────────────────────────────────
-  if (!stats) {
+  if (!activated) {
     return (
       <Card>
         <CardHeader>
@@ -172,13 +177,35 @@ function VpnCard() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-4">
-            <p className="text-sm text-gray-500">Activate your free VPN — takes 10 seconds.</p>
-            {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-            <Button onClick={handleActivate} disabled={loading} className="w-full">
-              {loading
-                ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Activating…</>
-                : 'Activate Ikamba VPN'}
-            </Button>
+            <p className="text-sm text-gray-500">Get connected in seconds — no configuration needed.</p>
+
+            {/* Download app first */}
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 1 — Download the app</p>
+              <a
+                href={cfg.appUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3 hover:border-black transition"
+              >
+                <div>
+                  <p className="text-sm font-semibold">{cfg.appName}</p>
+                  <p className="text-xs text-gray-400">{cfg.appStore}</p>
+                </div>
+                <Download className="w-4 h-4 text-gray-400" />
+              </a>
+            </div>
+
+            {/* Activate */}
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 2 — Activate your account</p>
+              {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+              <Button onClick={handleActivate} disabled={loading} className="w-full">
+                {loading
+                  ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Activating…</>
+                  : 'Activate Ikamba VPN'}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -217,7 +244,7 @@ function VpnCard() {
 
           {/* Step 1 — Copy link */}
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 1 — Copy your link</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 1 — Copy your VPN link</p>
             <button
               onClick={copyLink}
               className={`w-full flex items-center justify-between rounded-xl px-4 py-3.5 font-medium text-sm transition ${
@@ -227,12 +254,12 @@ function VpnCard() {
               <span>{copied ? 'Copied to clipboard!' : 'Copy VPN link'}</span>
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             </button>
-            {copied && <p className="text-xs text-gray-500 text-center">Now open the app below ↓</p>}
+            {copied && <p className="text-xs text-gray-500 text-center">Now open {cfg.appName} below ↓</p>}
           </div>
 
-          {/* Step 2 — App + instructions for this device */}
+          {/* Step 2 — App + instructions */}
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 2 — Open the app</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 2 — Open {cfg.appName} and connect</p>
             <a
               href={cfg.appUrl}
               target="_blank"
@@ -257,12 +284,14 @@ function VpnCard() {
             </ol>
           </div>
 
-          {/* Usage */}
-          <div className="flex items-center gap-3 text-xs text-gray-400 border-t border-gray-100 pt-3">
-            <span>Used: {formatBytes(stats.total)}</span>
-            <span>·</span>
-            <span>Expires: {formatExpiry(stats.expiryTime)}</span>
-          </div>
+          {/* Usage — only when stats are loaded */}
+          {stats && (
+            <div className="flex items-center gap-3 text-xs text-gray-400 border-t border-gray-100 pt-3">
+              <span>Used: {formatBytes(stats.total)}</span>
+              <span>·</span>
+              <span>Expires: {formatExpiry(stats.expiryTime)}</span>
+            </div>
+          )}
 
           {/* Troubleshoot */}
           <details className="group">
