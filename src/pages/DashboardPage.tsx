@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff, Copy, Check, Globe } from 'lucide-react';
+import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff, Copy, Check, Globe, Activity, Wifi, WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders, getUserTrial, updateTrial } from '../lib/db-service';
 import { getAccount, disableAccount, listServers, getAccountByUsername, usernameFromEmail, changePassword, generatePassword } from '../lib/vpnresellers-api';
 import type { VpnrServer } from '../lib/vpnresellers-api';
-import { provisionXuiAccount, getXuiLinks, getXuiStats, formatBytes, formatExpiry, checkVpnServerHealth } from '../lib/xui-api';
-import type { XuiProvisionResult, XuiClientLinks, XuiClientStat } from '../lib/xui-api';
+import { provisionXuiAccount, getXuiLinks, getXuiStats, formatBytes, formatExpiry, checkVpnServerHealth, runDiagnostics } from '../lib/xui-api';
+import type { XuiProvisionResult, XuiClientLinks, XuiClientStat, DiagnosticResult } from '../lib/xui-api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
@@ -106,485 +106,8 @@ function CredentialsBox({
   username?: string; password?: string;
   wgIp?: string; wgPrivateKey?: string; wgPublicKey?: string;
 }) {
-  const [show, setShow] = useState(false);
-  const [dlLoading, setDlLoading] = useState(false);
-  const [servers, setServers] = useState<VpnrServer[]>([]);
-  const [tab, setTab] = useState<'openvpn' | 'ikev2' | 'l2tp' | 'stealth' | 'wireguard' | 'vless'>('vless');
-  const [copied, setCopied] = useState<string | null>(null);
-
-  if (!username && !password && !wgIp) return null;
-
-  // Fetch servers once
-  useEffect(() => {
-    listServers().then(setServers).catch(() => {});
-  }, []);
-
-  const copyText = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
-  const CopyBtn = ({ text, label }: { text: string; label: string }) => (
-    <button onClick={() => copyText(text, label)} className="ml-1.5 text-gray-400 hover:text-black transition" title="Copy">
-      {copied === label ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-    </button>
-  );
-
-  const srv = servers[0];
-
-  const handleWgDownload = async () => {
-    if (!wgPrivateKey || !wgIp) return;
-    setDlLoading(true);
-    try {
-      let srvList = servers;
-      if (!srvList.length) { srvList = await listServers(); setServers(srvList); }
-      const s = srvList[0];
-      if (!s?.wg_public_key) {
-        // Try using the user's account public key as a fallback hint
-        // but we actually need the SERVER's public key for the config
-        alert('WireGuard config download is not available for your server. Use the VPN Client app with OpenVPN or Stealth protocol instead.');
-        return;
-      }
-      const cfg = [
-        '[Interface]',
-        `PrivateKey = ${wgPrivateKey}`,
-        `Address = ${wgIp}/32`,
-        'DNS = 1.1.1.1, 8.8.8.8',
-        '',
-        '[Peer]',
-        `PublicKey = ${s.wg_public_key}`,
-        `Endpoint = ${s.ip}:51820`,
-        'AllowedIPs = 0.0.0.0/0',
-        'PersistentKeepalive = 25',
-      ].join('\n');
-      const blob = new Blob([cfg], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${username ?? 'vpn'}-wireguard.conf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      alert('Failed to generate config. Try again.');
-    } finally {
-      setDlLoading(false);
-    }
-  };
-
-  const tabs = [
-    { key: 'vless' as const, label: 'Ikamba VPN' },
-    { key: 'openvpn' as const, label: 'OpenVPN' },
-    { key: 'ikev2' as const, label: 'IKEv2' },
-    { key: 'l2tp' as const, label: 'L2TP' },
-    { key: 'stealth' as const, label: 'Stealth' },
-    ...(wgPrivateKey ? [{ key: 'wireguard' as const, label: 'WireGuard' }] : []),
-  ];
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Protocol tabs */}
-      <div className="flex flex-wrap gap-1 bg-gray-50 rounded-lg p-0.5">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`text-xs font-medium py-1.5 px-3 rounded-md transition whitespace-nowrap ${
-              tab === t.key
-                ? t.key === 'vless'
-                  ? 'bg-black text-white shadow-sm'
-                  : 'bg-white text-black shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── OpenVPN (UDP / TCP) ── */}
-      {tab === 'openvpn' && (
-        <div className="flex flex-col gap-3">
-          <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-            {srv && (
-              <p className="flex items-center flex-wrap">
-                <span className="text-gray-400">Server: </span>{srv.ip}
-                <CopyBtn text={srv.ip} label="ovpn-srv" />
-                <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
-              </p>
-            )}
-            <p><span className="text-gray-400">Protocol: </span>OpenVPN (UDP or TCP)</p>
-            {username && (
-              <p className="flex items-center">
-                <span className="text-gray-400">Username: </span>{username}
-                <CopyBtn text={username} label="ovpn-user" />
-              </p>
-            )}
-            {password && (
-              <div className="flex items-center">
-                <span className="text-gray-400">Password: </span>
-                <span className="ml-1">{show ? password : '••••••••••'}</span>
-                <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
-                  {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-                {password && <CopyBtn text={password} label="ovpn-pw" />}
-              </div>
-            )}
-          </div>
-          <details className="group">
-            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
-              Setup instructions ▸
-            </summary>
-            <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
-              <p className="font-semibold text-blue-900">Using VPN Client app (all platforms)</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Download <strong>VPN Client</strong> from <a href="https://vpnclient.app" target="_blank" rel="noopener noreferrer" className="underline">vpnclient.app</a> (see downloads below)</li>
-                <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
-                <li>The app connects with <strong>UDP-OpenVPN</strong> by default — this is the fastest option</li>
-                <li>To switch protocol: tap <strong>Advanced</strong> → choose <strong>UDP-OpenVPN</strong> or <strong>TCP-OpenVPN</strong></li>
-              </ol>
-              <div className="mt-2 p-2 bg-blue-100 rounded-lg">
-                <p className="font-semibold text-blue-900">UDP vs TCP</p>
-                <ul className="list-disc ml-4 mt-1 flex flex-col gap-0.5">
-                  <li><strong>UDP-OpenVPN</strong> — Faster, best for streaming &amp; general use</li>
-                  <li><strong>TCP-OpenVPN</strong> — More reliable on unstable networks, may work when UDP is blocked</li>
-                </ul>
-              </div>
-              <p className="mt-2 text-blue-600 text-[11px]">
-                If OpenVPN is blocked in your country (Russia, China, Iran), switch to the <strong>Stealth</strong> tab.
-              </p>
-            </div>
-          </details>
-        </div>
-      )}
-
-      {/* ── IKEv2 ── */}
-      {tab === 'ikev2' && (
-        <div className="flex flex-col gap-3">
-          <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-            {srv && (
-              <p className="flex items-center flex-wrap">
-                <span className="text-gray-400">Server: </span>{srv.ip}
-                <CopyBtn text={srv.ip} label="ike-srv" />
-                <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
-              </p>
-            )}
-            <p><span className="text-gray-400">Protocol: </span>IKEv2</p>
-            {username && (
-              <p className="flex items-center">
-                <span className="text-gray-400">Username: </span>{username}
-                <CopyBtn text={username} label="ike-user" />
-              </p>
-            )}
-            {password && (
-              <div className="flex items-center">
-                <span className="text-gray-400">Password: </span>
-                <span className="ml-1">{show ? password : '••••••••••'}</span>
-                <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
-                  {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-                {password && <CopyBtn text={password} label="ike-pw" />}
-              </div>
-            )}
-          </div>
-          <details className="group">
-            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
-              Setup instructions ▸
-            </summary>
-            <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
-              <p className="font-semibold text-blue-900">Using VPN Client app (recommended)</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Open <strong>VPN Client</strong> → enter your credentials</li>
-                <li>Tap <strong>Advanced</strong> → select <strong>IKEv2</strong></li>
-                <li>Tap <strong>Connect</strong></li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">iOS / macOS (built-in)</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → VPN → Add VPN → Type: <strong>IKEv2</strong></li>
-                <li>Server &amp; Remote ID: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Authentication: <strong>Username</strong></li>
-                <li>Enter your username &amp; password → Connect</li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">Windows (built-in)</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → Network → VPN → Add VPN</li>
-                <li>Provider: <strong>Windows (built-in)</strong>, Type: <strong>IKEv2</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Sign-in: <strong>Username and password</strong> → Connect</li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">Android</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Install <strong>strongSwan VPN</strong> from Play Store</li>
-                <li>Add Profile → Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Type: <strong>IKEv2 EAP (Username/Password)</strong></li>
-                <li>Enter credentials → Connect</li>
-              </ol>
-              <p className="mt-2 text-blue-600 text-[11px]">
-                IKEv2 is blocked in Russia. Use <strong>Stealth</strong> mode to tunnel IKEv2 through TLS.
-              </p>
-            </div>
-          </details>
-        </div>
-      )}
-
-      {/* ── L2TP/IPSec ── */}
-      {tab === 'l2tp' && (
-        <div className="flex flex-col gap-3">
-          <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-            {srv && (
-              <p className="flex items-center flex-wrap">
-                <span className="text-gray-400">Server: </span>{srv.ip}
-                <CopyBtn text={srv.ip} label="l2tp-srv" />
-                <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
-              </p>
-            )}
-            <p><span className="text-gray-400">Protocol: </span>L2TP/IPSec PSK</p>
-            {username && (
-              <p className="flex items-center">
-                <span className="text-gray-400">Username: </span>{username}
-                <CopyBtn text={username} label="l2tp-user" />
-              </p>
-            )}
-            {password && (
-              <div className="flex items-center">
-                <span className="text-gray-400">Password: </span>
-                <span className="ml-1">{show ? password : '••••••••••'}</span>
-                <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
-                  {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-                {password && <CopyBtn text={password} label="l2tp-pw" />}
-              </div>
-            )}
-            <p className="flex items-center">
-              <span className="text-gray-400">Pre-shared Key: </span>
-              <span className="ml-1 font-semibold">vpnresellers</span>
-              <CopyBtn text="vpnresellers" label="l2tp-psk" />
-            </p>
-          </div>
-          <details className="group">
-            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
-              Setup instructions ▸
-            </summary>
-            <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
-              <p className="font-semibold text-blue-900">Using VPN Client app (recommended)</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Open <strong>VPN Client</strong> → enter your credentials</li>
-                <li>The app may use L2TP automatically when it's the best option</li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">iOS</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → VPN → Add VPN Configuration</li>
-                <li>Type: <strong>L2TP</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Account: your <strong>username</strong>, Password: your <strong>password</strong></li>
-                <li>Secret: <strong>vpnresellers</strong></li>
-                <li>Send All Traffic: <strong>ON</strong> → Connect</li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">macOS</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>System Settings → Network → + → VPN → <strong>L2TP over IPSec</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Auth Settings → Password + Shared Secret: <strong>vpnresellers</strong></li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">Windows</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → Network → VPN → Add VPN</li>
-                <li>Type: <strong>L2TP/IPsec with pre-shared key</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>Pre-shared key: <strong>vpnresellers</strong>, enter credentials → Connect</li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">Android</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Settings → Connections → VPN → Add</li>
-                <li>Type: <strong>L2TP/IPSec PSK</strong></li>
-                <li>Server: <strong>{srv?.ip ?? '(see above)'}</strong></li>
-                <li>IPSec pre-shared key: <strong>vpnresellers</strong></li>
-                <li>Enter credentials → Connect</li>
-              </ol>
-              <p className="mt-2 text-blue-600 text-[11px]">
-                L2TP is blocked in Russia. Use <strong>Stealth</strong> mode to tunnel L2TP through TLS.
-              </p>
-            </div>
-          </details>
-        </div>
-      )}
-
-      {/* ── Stealth (IKEv2 / L2TP tunneled over TLS — for Russia / restricted networks) ── */}
-      {tab === 'stealth' && (
-        <div className="flex flex-col gap-3">
-          {/* Russia / restricted country warning */}
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
-            <Shield className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-            <div className="text-xs text-red-800">
-              <p className="font-semibold">For Russia, China, Iran &amp; restricted networks</p>
-              <p className="mt-0.5 text-red-600">
-                Stealth mode tunnels your <strong>IKEv2</strong> or <strong>L2TP</strong> connection through
-                TLS/SSL encryption, making it look like normal HTTPS web traffic. This bypasses
-                deep packet inspection (DPI) used to block VPN protocols.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-            {srv && (
-              <p className="flex items-center flex-wrap">
-                <span className="text-gray-400">Server: </span>{srv.ip}
-                <CopyBtn text={srv.ip} label="stealth-srv" />
-                <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
-              </p>
-            )}
-            <p><span className="text-gray-400">Protocol: </span>Stealth (IKEv2/L2TP over TLS)</p>
-            {username && (
-              <p className="flex items-center">
-                <span className="text-gray-400">Username: </span>{username}
-                <CopyBtn text={username} label="stealth-user" />
-              </p>
-            )}
-            {password && (
-              <div className="flex items-center">
-                <span className="text-gray-400">Password: </span>
-                <span className="ml-1">{show ? password : '••••••••••'}</span>
-                <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black">
-                  {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-                {password && <CopyBtn text={password} label="stealth-pw" />}
-              </div>
-            )}
-          </div>
-          <details className="group" open>
-            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
-              Setup instructions ▸
-            </summary>
-            <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-2">
-              <p className="font-semibold text-blue-900">💻 Desktop — macOS / Windows / Linux</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Download <strong>VPN Client</strong> from <a href="https://vpnclient.app" target="_blank" rel="noopener noreferrer" className="underline">vpnclient.app</a></li>
-                <li>Open the app → enter your <strong>username</strong> &amp; <strong>password</strong></li>
-                <li>Click <strong>Advanced</strong> (bottom of the screen)</li>
-                <li>Select <strong>Stealth</strong> from the protocol list</li>
-                <li>Click <strong>Connect</strong> — the connection will look like regular HTTPS traffic</li>
-              </ol>
-
-              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="font-semibold text-red-900">📱 iPhone / iPad &amp; Android — Stealth is NOT available</p>
-                <p className="mt-1 text-red-700">
-                  Stealth mode is <strong>only available on the desktop app</strong> (macOS, Windows, Linux).
-                  The iOS and Android apps do not support Stealth.
-                </p>
-                <p className="mt-2 font-semibold text-red-900">What to do on iPhone in Russia:</p>
-                <ul className="list-disc ml-4 mt-1 flex flex-col gap-1.5 text-red-800">
-                  <li>
-                    <strong>Connect from a Mac/PC first</strong> — use Stealth on the desktop app, then share the VPN
-                    to your phone via <strong>Wi-Fi hotspot</strong> (Mac: System Settings → General → Sharing → Internet Sharing)
-                    or <strong>USB tethering</strong>. This is the only reliable method.
-                  </li>
-                  <li>
-                    <strong>Try the VPN Client iOS app</strong> — download from the <a href="https://apps.apple.com/app/id1506797696" target="_blank" rel="noopener noreferrer" className="underline">App Store</a>,
-                    log in, and tap Connect. It will attempt to connect but <strong>will likely not work</strong> in Russia without Stealth.
-                  </li>
-                  <li>
-                    <strong>Try IKEv2 in iOS Settings</strong> — see the <strong>IKEv2</strong> tab above. This works without
-                    an app but is <strong>also blocked in most of Russia</strong>.
-                  </li>
-                </ul>
-                <p className="mt-2 text-red-600 text-[11px] leading-relaxed">
-                  Not available on iPhone in Russia.
-                  The only method is connecting a Mac or PC with Stealth and sharing
-                  the internet to your phone.
-                </p>
-              </div>
-
-              <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg">
-                <p className="font-semibold text-red-800">Russia summary</p>
-                <ul className="list-disc ml-4 mt-1 flex flex-col gap-0.5 text-red-700">
-                  <li><strong>Desktop</strong> — use Stealth mode, it works</li>
-                  <li><strong>iPhone / Android</strong> — no Stealth on mobile, use desktop + hotspot sharing</li>
-                  <li>If one server doesn't connect, try a different server location</li>
-                  <li>Connect before opening blocked services (Instagram, etc.)</li>
-                </ul>
-              </div>
-            </div>
-          </details>
-        </div>
-      )}
-
-      {/* ── WireGuard ── */}
-      {tab === 'wireguard' && wgPrivateKey && (
-        <div className="flex flex-col gap-3">
-          <div className="bg-gray-50 rounded-xl p-4 font-mono text-sm flex flex-col gap-1.5">
-            {wgIp && (
-              <p className="flex items-center">
-                <span className="text-gray-400">WG IP: </span>{wgIp}
-                <CopyBtn text={wgIp} label="wg-ip" />
-              </p>
-            )}
-            {wgPrivateKey && (
-              <p className="break-all flex items-center flex-wrap">
-                <span className="text-gray-400 shrink-0">Private Key: </span>
-                <span className="ml-1">{show ? wgPrivateKey : '••••••••••'}</span>
-                <button onClick={() => setShow((v) => !v)} className="ml-1 text-gray-400 hover:text-black shrink-0">
-                  {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </p>
-            )}
-            {wgPublicKey && (
-              <p className="break-all"><span className="text-gray-400">Public Key: </span>{wgPublicKey}</p>
-            )}
-            {srv && (
-              <p className="flex items-center flex-wrap">
-                <span className="text-gray-400">Server: </span>{srv.ip}:51820
-                <span className="text-xs text-gray-400 ml-2">({srv.name})</span>
-              </p>
-            )}
-          </div>
-          {srv?.wg_public_key ? (
-            <button
-              onClick={handleWgDownload}
-              disabled={dlLoading}
-              className="self-start flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-black bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-2 transition disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              {dlLoading ? 'Preparing…' : 'Download .conf file'}
-            </button>
-          ) : (
-            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-              WireGuard .conf download not available — use the <strong>VPN Client</strong> app with <strong>OpenVPN</strong> or <strong>Stealth</strong> protocol instead.
-            </p>
-          )}
-          <details className="group">
-            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition">
-              Setup instructions ▸
-            </summary>
-            <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex flex-col gap-1">
-              <p className="font-semibold text-blue-900">Using VPN Client app</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Open <strong>VPN Client</strong> → log in with your credentials</li>
-                <li>Tap <strong>Advanced</strong> → select <strong>WireGuard</strong></li>
-                <li>The app handles configuration automatically</li>
-              </ol>
-              <p className="font-semibold text-blue-900 mt-2">Manual setup (with .conf file)</p>
-              <ol className="list-decimal ml-4 flex flex-col gap-1">
-                <li>Install <strong>WireGuard</strong> app on your device</li>
-                <li>Download the <strong>.conf</strong> file above (if available)</li>
-                <li>Open WireGuard → tap <strong>+</strong> → <strong>Import from file</strong></li>
-                <li>Select the file → Toggle to connect</li>
-              </ol>
-              <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded-lg">
-                <p className="text-amber-700 text-[11px]">
-                  WireGuard may be blocked in Russia and some restricted countries. Use <strong>Stealth</strong> mode instead.
-                </p>
-              </div>
-            </div>
-          </details>
-        </div>
-      )}
-
-      {/* ── Ikamba VPN (works on ALL devices including mobile) ── */}
-      {tab === 'vless' && (
-        <VlessTab />
-      )}
-    </div>
-  );
+  // Old protocol props kept for backward compatibility but ignored — VLESS only now
+  return <VlessTab />;
 }
 
 // ── Ikamba VPN tab ────────────────────────────────────────────────────────────
@@ -600,22 +123,44 @@ function VlessTab() {
   // null = still checking, true = online, false = offline
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const [healthChecking, setHealthChecking] = useState(false);
+  const [lastChecked, setLastChecked] = useState<string>('');
+  const [diagResult, setDiagResult] = useState<DiagnosticResult | null>(null);
+  const [diagRunning, setDiagRunning] = useState(false);
+  const healthInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  async function runHealthCheck() {
+  const runHealthCheck = useCallback(async () => {
     setHealthChecking(true);
     const { online } = await checkVpnServerHealth();
     setServerOnline(online);
     setHealthChecking(false);
-  }
+    setLastChecked(new Date().toLocaleTimeString());
+  }, []);
 
   // Check if user already has a VLESS account + server health on mount
+  // + start periodic health polling every 60 seconds
   useEffect(() => {
     if (!firebaseUser?.email) return;
     getXuiStats(firebaseUser.email)
       .then((s) => setStats(s))
       .catch(() => { /* no account yet */ });
     runHealthCheck();
-  }, [firebaseUser?.email]);
+    healthInterval.current = setInterval(runHealthCheck, 60_000);
+    return () => { if (healthInterval.current) clearInterval(healthInterval.current); };
+  }, [firebaseUser?.email, runHealthCheck]);
+
+  async function handleRunDiagnostics() {
+    setDiagRunning(true);
+    setDiagResult(null);
+    try {
+      const result = await runDiagnostics();
+      setDiagResult(result);
+      setServerOnline(result.xrayRunning);
+    } catch {
+      setDiagResult(null);
+    } finally {
+      setDiagRunning(false);
+    }
+  }
 
   async function handleGetTrial() {
     if (!firebaseUser?.email) return;
@@ -838,6 +383,43 @@ function VlessTab() {
                 {healthChecking ? 'Checking…' : 'Recheck'}
               </button>
             </div>
+          </div>
+
+          {/* Run diagnostics */}
+          <div className="border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
+            <p className="font-semibold text-gray-700 mb-2">Run connection test</p>
+            <Button
+              onClick={handleRunDiagnostics}
+              disabled={diagRunning}
+              variant="secondary"
+              size="sm"
+            >
+              {diagRunning ? (
+                <><RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Testing…</>
+              ) : (
+                <><Activity className="w-3 h-3 mr-1" /> Diagnose now</>
+              )}
+            </Button>
+            {diagResult && (
+              <div className={`mt-2 rounded-lg p-2 border ${
+                diagResult.verdict === 'healthy'
+                  ? 'bg-green-50 border-green-200 text-green-800'
+                  : diagResult.verdict === 'degraded'
+                  ? 'bg-amber-50 border-amber-200 text-amber-800'
+                  : 'bg-red-50 border-red-200 text-red-800'
+              }`}>
+                <div className="flex items-center gap-1.5 font-medium">
+                  {diagResult.verdict === 'healthy'
+                    ? <Wifi className="w-3.5 h-3.5" />
+                    : <WifiOff className="w-3.5 h-3.5" />}
+                  {diagResult.verdict === 'healthy' && 'Everything looks good'}
+                  {diagResult.verdict === 'degraded' && 'VPN server is degraded'}
+                  {diagResult.verdict === 'down' && 'VPN server is down'}
+                  {diagResult.verdict !== 'healthy' && diagResult.verdict !== 'degraded' && diagResult.verdict !== 'down' && 'Could not determine the issue'}
+                </div>
+                <p className="mt-1">{diagResult.suggestion}</p>
+              </div>
+            )}
           </div>
 
           {/* VPN keeps disconnecting */}

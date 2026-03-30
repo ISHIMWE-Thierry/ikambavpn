@@ -132,18 +132,76 @@ log "3X-UI installed and configured."
 # ║  STEP 5 — Enable BBR                                          ║
 # ╚══════════════════════════════════════════════════════════════════╝
 
-log "Step 5/8: Enabling BBR congestion control..."
-if ! sysctl net.ipv4.tcp_congestion_control 2>/dev/null | grep -q bbr; then
-  cat >> /etc/sysctl.conf <<SYSCTL
-# BBR congestion control
+log "Step 5/8: Enabling BBR + VLESS kernel tuning..."
+
+# Write all sysctl settings at once — BBR + VLESS performance tuning.
+# Without these, connections drop under moderate load because the default
+# Linux conntrack table fills up and new connections get rejected silently.
+cat > /etc/sysctl.d/99-ikambavpn.conf <<SYSCTL
+# ── BBR congestion control ──
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
+
+# ── Connection tracking (CRITICAL for VLESS) ──
+# Default is 65536 — fills up at ~30 concurrent users.
+# Each VLESS client opens multiple TCP streams. When the table is full,
+# new connections are silently dropped → "connected but no internet".
+net.netfilter.nf_conntrack_max = 262144
+net.nf_conntrack_max = 262144
+
+# ── TCP keepalive — detect dead connections faster ──
+# Default keepalive waits 2 hours before probing. For VPN traffic,
+# we need much faster detection so Xray can clean up dead sockets.
+net.ipv4.tcp_keepalive_time = 120
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_keepalive_probes = 4
+
+# ── TCP buffer sizes — bigger buffers for high-throughput VPN ──
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+
+# ── Prevent connection resets on busy server ──
+net.ipv4.tcp_max_syn_backlog = 8192
+net.core.somaxconn = 8192
+net.core.netdev_max_backlog = 8192
+
+# ── Allow reusing TIME_WAIT sockets (prevents port exhaustion) ──
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 15
+
+# ── Increase local port range for outbound connections ──
+net.ipv4.ip_local_port_range = 1024 65535
+
+# ── Open file limits for Xray (many concurrent connections) ──
+fs.file-max = 1048576
+fs.nr_open = 1048576
 SYSCTL
-  sysctl -p
-  log "BBR enabled."
-else
-  info "BBR already active."
-fi
+
+sysctl --system >/dev/null 2>&1
+log "BBR + VLESS kernel tuning applied."
+
+# ── Raise file descriptor limits for Xray process ──
+# Without this, Xray hits the default 1024 fd limit and silently drops
+# new connections — users see "connected" but traffic doesn't flow.
+mkdir -p /etc/systemd/system/x-ui.service.d
+cat > /etc/systemd/system/x-ui.service.d/limits.conf <<LIMITS
+[Service]
+LimitNOFILE=1048576
+LimitNPROC=512000
+LIMITS
+
+# Also set system-wide limits
+cat > /etc/security/limits.d/99-ikambavpn.conf <<ULIMITS
+*       soft    nofile    1048576
+*       hard    nofile    1048576
+root    soft    nofile    1048576
+root    hard    nofile    1048576
+ULIMITS
+
+systemctl daemon-reload
+log "File descriptor limits raised for Xray."
 
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║  STEP 6 — Unattended upgrades                                 ║

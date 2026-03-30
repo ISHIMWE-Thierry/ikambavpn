@@ -34,4 +34,30 @@ app.use("/xui", authMiddleware, xuiRouter);
 app.use("/xui-public", xuiPublicRouter);  // No auth — V2RayTun calls this directly
 
 const port = process.env.PORT || 4000;
-app.listen(port, () => console.log(`API running on :${port}`));
+app.listen(port, () => {
+  console.log(`API running on :${port}`);
+
+  // Startup health check — verify 3X-UI panel is reachable
+  const panelUrl = process.env.XPANEL_URL || "";
+  if (panelUrl) {
+    fetch(`${panelUrl}/server/status`, {
+      headers: { Accept: "application/json" },
+    })
+      .then((res) => {
+        if (res.ok || res.status === 401) {
+          console.log(`✅ 3X-UI panel reachable at ${panelUrl}`);
+        } else {
+          console.warn(`⚠️ 3X-UI panel returned ${res.status} at ${panelUrl} — check XPANEL_URL`);
+        }
+      })
+      .catch((err) => {
+        console.error(
+          `❌ Cannot reach 3X-UI panel at ${panelUrl} — VLESS features will not work!\n` +
+          `   Error: ${err.message}\n` +
+          `   Fix: check XPANEL_URL in .env, ensure port matches (run 'x-ui setting -show' on VPS)`
+        );
+      });
+  } else {
+    console.warn("⚠️ XPANEL_URL not set — VLESS+REALITY features are disabled");
+  }
+});

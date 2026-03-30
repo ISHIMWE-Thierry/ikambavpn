@@ -91,6 +91,119 @@ export async function checkVpnServerHealth(): Promise<{ online: boolean; latency
   }
 }
 
+/**
+ * Run a full connection diagnostic.
+ * Calls /xui-public/diagnose (no auth) and also runs client-side checks.
+ * Returns a structured result that tells users exactly where the problem is.
+ */
+export interface DiagnosticResult {
+  // Client-side checks
+  browserOnline: boolean;
+  canReachApi: boolean;
+  apiLatencyMs: number;
+  // Server-side checks (from /diagnose endpoint)
+  xrayRunning: boolean;
+  xrayState: string;
+  panelReachable: boolean;
+  serverCpu: number;
+  serverMemPct: number;
+  // Overall
+  verdict: string;
+  suggestion: string;
+  userIp: string;
+}
+
+export async function runDiagnostics(): Promise<DiagnosticResult> {
+  const result: DiagnosticResult = {
+    browserOnline: navigator.onLine,
+    canReachApi: false,
+    apiLatencyMs: 0,
+    xrayRunning: false,
+    xrayState: 'unknown',
+    panelReachable: false,
+    serverCpu: 0,
+    serverMemPct: 0,
+    verdict: '',
+    suggestion: '',
+    userIp: '',
+  };
+
+  // Check 1: Is the browser even online?
+  if (!navigator.onLine) {
+    result.verdict = '❌ Your device is offline.';
+    result.suggestion =
+      'You have no internet connection. Check your Wi-Fi or mobile data, ' +
+      'then try again. This is NOT a VPN problem — your device cannot reach the internet at all.';
+    return result;
+  }
+
+  // Check 2: Can we reach our API?
+  const start = Date.now();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(`${API_BASE}/xui-public/diagnose`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    result.apiLatencyMs = Date.now() - start;
+
+    if (res.ok) {
+      result.canReachApi = true;
+      const data = await res.json();
+      result.xrayRunning = data.xrayRunning ?? false;
+      result.xrayState = data.xrayState ?? 'unknown';
+      result.panelReachable = data.panelReachable ?? false;
+      result.serverCpu = data.serverCpu ?? 0;
+      result.serverMemPct = data.serverMemPct ?? 0;
+      result.verdict = data.verdict ?? '';
+      result.suggestion = data.suggestion ?? '';
+      result.userIp = data.userIp ?? '';
+    } else {
+      result.canReachApi = true; // We got a response, just not 200
+      result.verdict = '⚠️ Our API responded with an error.';
+      result.suggestion = 'The server is reachable but returned an error. Try again in a few minutes.';
+    }
+  } catch {
+    result.apiLatencyMs = Date.now() - start;
+    result.canReachApi = false;
+
+    // Can't reach our API — but is the user's internet working?
+    // Try fetching a well-known public endpoint
+    try {
+      const controller2 = new AbortController();
+      const timer2 = setTimeout(() => controller2.abort(), 5000);
+      await fetch('https://www.google.com/generate_204', {
+        mode: 'no-cors',
+        signal: controller2.signal,
+      });
+      clearTimeout(timer2);
+      // Google is reachable but our API isn't
+      result.verdict = '⚠️ Your internet works, but our VPN server is unreachable.';
+      result.suggestion =
+        'Your internet connection is fine — the problem is on our end. ' +
+        'Our server may be down for maintenance or the IP might be blocked in your country. ' +
+        'Try again in 5-10 minutes. If it persists, contact support.';
+    } catch {
+      // Can't reach Google either
+      result.verdict = '❌ Your internet connection is unstable.';
+      result.suggestion =
+        'Your device says it\'s online, but cannot reach external servers. ' +
+        'This is a problem with YOUR connection, not our VPN. ' +
+        'Try: switch between Wi-Fi and mobile data, restart your router, ' +
+        'or move to a location with better signal.';
+    }
+  }
+
+  // Add latency warning
+  if (result.canReachApi && result.apiLatencyMs > 3000) {
+    result.suggestion += ' ⚠️ Your connection to our server is very slow (' +
+      result.apiLatencyMs + 'ms). This may cause the VPN to disconnect frequently.';
+  }
+
+  return result;
+}
+
 // ── User endpoints ────────────────────────────────────────────────────────────
 
 /**

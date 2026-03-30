@@ -113,6 +113,71 @@ function genSubId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 16);
 }
 
+// ── In-memory subscription cache ──────────────────────────────────────────────
+// Caches VLESS links so subscription requests survive brief 3X-UI panel outages.
+// This is the #1 fix for "VPN auto goes off" — V2RayTun/V2RayNG poll the sub URL
+// every few minutes. If it returns an error, they disconnect the user.
+
+interface SubCacheEntry {
+  vlessLink: string;
+  userInfo: string;
+  cachedAt: number;
+}
+
+const subCache = new Map<string, SubCacheEntry>();
+const SUB_CACHE_TTL = 5 * 60 * 1000; // 5 minutes — long enough to survive panel restarts
+
+/**
+ * Get or refresh a cached subscription entry for an email.
+ * Returns cached data if fresh, otherwise fetches from 3X-UI.
+ * On fetch failure, returns stale cache if available (better than nothing).
+ */
+export async function getCachedSubscription(email: string): Promise<SubCacheEntry | null> {
+  const cached = subCache.get(email);
+  const isFresh = cached && (Date.now() - cached.cachedAt) < SUB_CACHE_TTL;
+
+  if (isFresh) return cached;
+
+  // Try to fetch fresh data from 3X-UI panel
+  try {
+    const inbounds = await listInbounds();
+    let clientId = "";
+    for (const inb of inbounds) {
+      const settings = JSON.parse((inb as any).settings || "{}");
+      const client = (settings.clients || []).find((c: any) => c.email === email);
+      if (client) {
+        clientId = client.id;
+        break;
+      }
+    }
+    if (!clientId) return null;
+
+    const remark = `IkambaVPN-${email.split("@")[0]}`;
+    const vlessLink = buildVlessLink(clientId, remark);
+
+    // Build user info
+    let userInfo = "upload=0; download=0; total=0; expire=0";
+    try {
+      const stat = await getClientStatByEmail(email);
+      if (stat) {
+        const expireSec = stat.expiryTime ? Math.floor(stat.expiryTime / 1000) : 0;
+        userInfo = `upload=${stat.up}; download=${stat.down}; total=${stat.total}; expire=${expireSec}`;
+      }
+    } catch { /* non-fatal */ }
+
+    const entry: SubCacheEntry = { vlessLink, userInfo, cachedAt: Date.now() };
+    subCache.set(email, entry);
+    return entry;
+  } catch (err) {
+    // Panel is down — return stale cache if we have it (this prevents disconnections!)
+    if (cached) {
+      console.warn(`[sub-cache] Panel unreachable, serving stale cache for ${email}`);
+      return cached;
+    }
+    throw err;
+  }
+}
+
 // ── Session Management ────────────────────────────────────────────────────────
 
 let session: XuiSession | null = null;
@@ -354,19 +419,37 @@ export async function getClientStatByEmail(
 /**
  * Build a direct VLESS+REALITY link for a client.
  * Bypasses the broken 3X-UI subscription endpoint entirely.
+ *
+ * IMPORTANT: We build the query string manually instead of using URLSearchParams
+ * because URLSearchParams encodes special characters (e.g. / → %2F) which causes
+ * V2RayNG, V2RayTun, and Hiddify to fail parsing the link silently — users see
+ * "connected" but traffic doesn't flow, or the connection drops after a few seconds.
  */
 export function buildVlessLink(clientId: string, remark: string): string {
-  const params = new URLSearchParams({
-    type: "tcp",
-    security: "reality",
-    pbk: REALITY_PUBLIC_KEY,
-    fp: REALITY_FINGERPRINT,
-    sni: REALITY_SNI,
-    sid: REALITY_SHORT_ID,
-    spx: "/",
-    flow: "xtls-rprx-vision",
-  });
-  return `vless://${clientId}@${VPS_IP}:${VLESS_PORT}?${params.toString()}#${encodeURIComponent(remark)}`;
+  if (!clientId) {
+    throw new Error("buildVlessLink: clientId is required");
+  }
+  if (!REALITY_PUBLIC_KEY) {
+    throw new Error("buildVlessLink: XPANEL_REALITY_PUBLIC_KEY env var is not set");
+  }
+  if (!REALITY_SHORT_ID) {
+    throw new Error("buildVlessLink: XPANEL_REALITY_SHORT_ID env var is not set");
+  }
+
+  // Build query string manually — URLSearchParams encodes `/` and `-` which
+  // breaks V2RayNG/V2RayTun/Hiddify VLESS URI parsing on Android & iOS.
+  const query = [
+    `type=tcp`,
+    `security=reality`,
+    `pbk=${REALITY_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=${REALITY_SNI}`,
+    `sid=${REALITY_SHORT_ID}`,
+    `spx=/`,
+    `flow=xtls-rprx-vision`,
+  ].join("&");
+
+  return `vless://${clientId}@${VPS_IP}:${VLESS_PORT}?${query}#${encodeURIComponent(remark)}`;
 }
 
 /**
