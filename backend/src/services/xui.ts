@@ -510,7 +510,7 @@ export interface XuiSystemStatus {
 
 /** Get server system status */
 export async function getSystemStatus(): Promise<XuiSystemStatus> {
-  return apiRequest<XuiSystemStatus>("/server/status");
+  return apiRequest<XuiSystemStatus>("/panel/api/server/status");
 }
 
 /** Get Xray version */
