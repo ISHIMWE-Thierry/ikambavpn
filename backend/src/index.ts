@@ -40,7 +40,7 @@ app.listen(port, () => {
   // Startup health check — verify 3X-UI panel is reachable
   const panelUrl = process.env.XPANEL_URL || "";
   if (panelUrl) {
-    fetch(`${panelUrl}/server/status`, {
+    fetch(`${panelUrl}/`, {
       headers: { Accept: "application/json" },
     })
       .then((res) => {
