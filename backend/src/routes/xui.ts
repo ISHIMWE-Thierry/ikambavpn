@@ -148,7 +148,7 @@ xuiPublicRouter.get("/stats/:email", async (req: Request, res: Response) => {
   try {
     const email = decodeURIComponent(req.params.email);
     const stat = await getClientStatByEmail(email);
-    if (!stat) return res.status(404).json({ ok: false, error: "Client not found" });
+    if (!stat) return res.json({ ok: false, error: "Client not found" });
     return res.json({
       ok: true,
       data: {
