@@ -38,6 +38,21 @@ export const xuiPublicRouter = Router();
 // ── Public subscription endpoint ──────────────────────────────────────────────
 
 /**
+ * GET /xui-public/health
+ * Public health check — no auth. Frontend and users can call this to check
+ * whether our VPN server / Xray process is running.
+ */
+xuiPublicRouter.get("/health", async (_req: Request, res: Response) => {
+  try {
+    const status = await getSystemStatus();
+    const online = status.xray?.state === "running";
+    return res.json({ ok: true, online, xray: status.xray?.state, ts: Date.now() });
+  } catch {
+    return res.status(503).json({ ok: false, online: false, ts: Date.now() });
+  }
+});
+
+/**
  * GET /xui-public/sub/:email
  * Self-hosted subscription endpoint — returns base64-encoded VLESS link.
  * V2RayTun / V2RayNG / Hiddify all expect this format from subscription URLs.
@@ -62,10 +77,21 @@ xuiPublicRouter.get("/sub/:email", async (req: Request, res: Response) => {
     const remark = `IkambaVPN-${email.split("@")[0]}`;
     const vlessLink = buildVlessLink(clientId, remark);
     const base64 = Buffer.from(vlessLink).toString("base64");
+
+    // Real usage info so V2RayTun/V2RayNG can show the user their data consumption
+    let userInfo = "upload=0; download=0; total=0; expire=0";
+    try {
+      const stat = await getClientStatByEmail(email);
+      if (stat) {
+        const expireSec = stat.expiryTime ? Math.floor(stat.expiryTime / 1000) : 0;
+        userInfo = `upload=${stat.up}; download=${stat.down}; total=${stat.total}; expire=${expireSec}`;
+      }
+    } catch { /* non-fatal — fall back to zeros */ }
+
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Content-Disposition", "inline");
     res.setHeader("Profile-Update-Interval", "24");
-    res.setHeader("Subscription-Userinfo", "upload=0; download=0; total=0; expire=0");
+    res.setHeader("Subscription-Userinfo", userInfo);
     return res.send(base64);
   } catch (err: any) {
     return res.status(500).send("Error");

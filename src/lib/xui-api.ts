@@ -68,6 +68,29 @@ export interface XuiClientStat {
   expiryTime: number;
 }
 
+// ── Public endpoints (no auth) ────────────────────────────────────────────────
+
+/**
+ * Check whether the VPN server / Xray process is online.
+ * Calls the public /xui-public/health endpoint — no login required.
+ * Returns { online, latencyMs }.
+ */
+export async function checkVpnServerHealth(): Promise<{ online: boolean; latencyMs: number }> {
+  const start = Date.now();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(`${API_BASE}/xui-public/health`, { signal: controller.signal });
+    clearTimeout(timer);
+    const latencyMs = Date.now() - start;
+    if (!res.ok) return { online: false, latencyMs };
+    const json = await res.json() as { online?: boolean };
+    return { online: json.online ?? false, latencyMs };
+  } catch {
+    return { online: false, latencyMs: Date.now() - start };
+  }
+}
+
 // ── User endpoints ────────────────────────────────────────────────────────────
 
 /**

@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders, getUserTrial, updateTrial } from '../lib/db-service';
 import { getAccount, disableAccount, listServers, getAccountByUsername, usernameFromEmail, changePassword, generatePassword } from '../lib/vpnresellers-api';
 import type { VpnrServer } from '../lib/vpnresellers-api';
-import { provisionXuiAccount, getXuiLinks, getXuiStats, formatBytes, formatExpiry } from '../lib/xui-api';
+import { provisionXuiAccount, getXuiLinks, getXuiStats, formatBytes, formatExpiry, checkVpnServerHealth } from '../lib/xui-api';
 import type { XuiProvisionResult, XuiClientLinks, XuiClientStat } from '../lib/xui-api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -597,13 +597,24 @@ function VlessTab() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<XuiClientStat | null>(null);
+  // null = still checking, true = online, false = offline
+  const [serverOnline, setServerOnline] = useState<boolean | null>(null);
+  const [healthChecking, setHealthChecking] = useState(false);
 
-  // Check if user already has a VLESS account
+  async function runHealthCheck() {
+    setHealthChecking(true);
+    const { online } = await checkVpnServerHealth();
+    setServerOnline(online);
+    setHealthChecking(false);
+  }
+
+  // Check if user already has a VLESS account + server health on mount
   useEffect(() => {
     if (!firebaseUser?.email) return;
     getXuiStats(firebaseUser.email)
       .then((s) => setStats(s))
       .catch(() => { /* no account yet */ });
+    runHealthCheck();
   }, [firebaseUser?.email]);
 
   async function handleGetTrial() {
@@ -646,6 +657,30 @@ function VlessTab() {
             Undetectable encrypted connection. Works on all devices.
           </p>
         </div>
+      </div>
+
+      {/* Server status */}
+      <div className="flex items-center gap-2 px-1">
+        <span className={`w-2 h-2 rounded-full shrink-0 ${
+          serverOnline === null ? 'bg-gray-300' :
+          serverOnline ? 'bg-green-500' : 'bg-red-500'
+        }`} />
+        <span className="text-xs text-gray-500">
+          {serverOnline === null
+            ? 'Checking server…'
+            : serverOnline
+            ? 'Server online'
+            : 'Server may be down'}
+        </span>
+        {serverOnline === false && (
+          <button
+            onClick={runHealthCheck}
+            disabled={healthChecking}
+            className="text-xs text-blue-600 underline ml-1 disabled:opacity-50"
+          >
+            {healthChecking ? 'Checking…' : 'Retry'}
+          </button>
+        )}
       </div>
 
       {/* Step 1: Download app */}
@@ -769,6 +804,79 @@ function VlessTab() {
             <li>All devices: iPhone, Android, Windows, Mac, Linux</li>
             <li>Subscription link auto-updates if server changes</li>
           </ul>
+        </div>
+      </details>
+
+      {/* Troubleshoot */}
+      <details className="group">
+        <summary className="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-700 transition px-1">
+          Having issues? Troubleshoot ▸
+        </summary>
+        <div className="mt-2 flex flex-col gap-2">
+
+          {/* Diagnose: their internet vs our VPN */}
+          <div className="border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
+            <p className="font-semibold text-gray-700 mb-1">Is it your internet or our VPN?</p>
+            <p className="text-gray-500 mb-2">
+              Turn off the VPN and try opening YouTube directly. If it doesn't open — your internet is the problem, not our VPN.
+            </p>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                serverOnline === null ? 'bg-gray-300' :
+                serverOnline ? 'bg-green-400' : 'bg-red-500'
+              }`} />
+              <span className={serverOnline === false ? 'text-red-600 font-medium' : 'text-gray-500'}>
+                {serverOnline === null ? 'Checking VPN server…' :
+                 serverOnline ? 'Our VPN server is online ✓' :
+                 'Our VPN server appears to be down — contact support'}
+              </span>
+              <button
+                onClick={runHealthCheck}
+                disabled={healthChecking}
+                className="text-blue-600 underline ml-1 disabled:opacity-50"
+              >
+                {healthChecking ? 'Checking…' : 'Recheck'}
+              </button>
+            </div>
+          </div>
+
+          {/* VPN keeps disconnecting */}
+          <div className="border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
+            <p className="font-semibold text-gray-700 mb-1">VPN keeps disconnecting</p>
+            <ul className="list-disc ml-4 flex flex-col gap-1.5">
+              <li>
+                <strong>iPhone / iPad:</strong> iOS kills VPN tunnels to save battery.
+                In V2RayTun → <strong>Settings → Enable On-Demand</strong> to stay connected in background.
+              </li>
+              <li>
+                <strong>Device limit:</strong> Your account allows 2 devices at the same time.
+                If a 3rd device connects, one gets kicked off. Disconnect unused devices first.
+              </li>
+              <li>
+                <strong>Network switch (WiFi ↔ mobile data):</strong> Wait 5–10 seconds — VLESS reconnects automatically.
+              </li>
+            </ul>
+          </div>
+
+          {/* Connected but YouTube / WhatsApp don't work */}
+          <div className="border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
+            <p className="font-semibold text-gray-700 mb-1">Connected but YouTube / WhatsApp still blocked</p>
+            <p className="text-gray-500 mb-1.5">
+              The VPN is on but not routing all traffic. Change routing to <strong>Global</strong> in your app:
+            </p>
+            <ul className="list-disc ml-4 flex flex-col gap-1.5">
+              <li>
+                <strong>V2RayTun (iOS/Mac):</strong> Tap your config → <strong>Routing</strong> → select <strong>Global</strong>
+              </li>
+              <li>
+                <strong>V2RayNG (Android):</strong> ⋮ menu → <strong>Settings → Routing → Global</strong>
+              </li>
+              <li>
+                <strong>Hiddify:</strong> Settings → Routing → <strong>Block None</strong>
+              </li>
+            </ul>
+          </div>
+
         </div>
       </details>
 
