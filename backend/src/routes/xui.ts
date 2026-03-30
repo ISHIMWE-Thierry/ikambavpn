@@ -185,7 +185,7 @@ xuiRouter.get("/stats/:email", async (req: AuthedRequest, res: Response) => {
 
 /**
  * GET /xui/admin/clients
- * List all client stats (admin only).
+ * List all clients with stats, UUIDs, and subscription URLs (admin only).
  */
 xuiRouter.get("/admin/clients", async (req: AuthedRequest, res: Response) => {
   try {
@@ -197,7 +197,30 @@ xuiRouter.get("/admin/clients", async (req: AuthedRequest, res: Response) => {
     }
 
     const stats = await getClientStats();
-    return res.json({ ok: true, data: stats });
+    // Merge with client config (UUIDs, subIds) from inbound settings
+    const inbounds = await listInbounds();
+    const clientMap = new Map<string, { uuid: string; subId: string; limitIp: number }>();
+    for (const inb of inbounds) {
+      const settings = JSON.parse((inb as any).settings || "{}");
+      for (const c of settings.clients || []) {
+        clientMap.set(c.email, { uuid: c.id, subId: c.subId || "", limitIp: c.limitIp || 0 });
+      }
+    }
+
+    const enriched = stats.map((s: any) => {
+      const cfg = clientMap.get(s.email);
+      const links = cfg ? getAllClientLinks(cfg.uuid, cfg.subId, s.email) : null;
+      return {
+        ...s,
+        uuid: cfg?.uuid || "",
+        subId: cfg?.subId || "",
+        limitIp: cfg?.limitIp || 0,
+        subscriptionUrl: links?.subscriptionUrl || "",
+        vlessLink: links?.vlessLink || "",
+      };
+    });
+
+    return res.json({ ok: true, data: enriched });
   } catch (err: any) {
     return res.status(500).json({ ok: false, error: err.message });
   }

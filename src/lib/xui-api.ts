@@ -99,6 +99,81 @@ export async function getXuiStats(email: string): Promise<XuiClientStat> {
   return xuiRequest<XuiClientStat>(`/stats/${encodeURIComponent(email)}`);
 }
 
+// ── Admin endpoints ───────────────────────────────────────────────────────────
+
+export interface XuiAdminClient {
+  id: number;
+  inboundId: number;
+  enable: boolean;
+  email: string;
+  up: number;
+  down: number;
+  total: number;
+  expiryTime: number;
+  reset: number;
+  uuid: string;
+  subId: string;
+  limitIp: number;
+  subscriptionUrl: string;
+  vlessLink: string;
+}
+
+export interface XuiSystemStatus {
+  cpu: number;
+  mem: { current: number; total: number };
+  disk: { current: number; total: number };
+  uptime: number;
+  xray: { state: string; version: string };
+}
+
+/** List all VPN clients (admin) */
+export async function getAdminClients(): Promise<XuiAdminClient[]> {
+  return xuiRequest<XuiAdminClient[]>('/admin/clients');
+}
+
+/** Get server system status (admin) */
+export async function getAdminServerStatus(): Promise<XuiSystemStatus> {
+  return xuiRequest<XuiSystemStatus>('/admin/status');
+}
+
+/** Add a new VPN client (admin) */
+export async function addAdminClient(options: {
+  email: string;
+  trafficLimitGB?: number;
+  expiryDays?: number;
+  maxConnections?: number;
+}): Promise<XuiProvisionResult> {
+  return xuiRequest<XuiProvisionResult>('/admin/add', {
+    method: 'POST',
+    body: JSON.stringify(options),
+  });
+}
+
+/** Enable a VPN client (admin) */
+export async function enableAdminClient(clientId: string): Promise<void> {
+  await xuiRequest<void>(`/admin/enable/${clientId}`, { method: 'POST' });
+}
+
+/** Disable a VPN client (admin) */
+export async function disableAdminClient(clientId: string): Promise<void> {
+  await xuiRequest<void>(`/admin/disable/${clientId}`, { method: 'POST' });
+}
+
+/** Delete a VPN client (admin) */
+export async function deleteAdminClient(clientId: string): Promise<void> {
+  await xuiRequest<void>(`/admin/delete/${clientId}`, { method: 'DELETE' });
+}
+
+/** Reset traffic for a VPN client (admin) */
+export async function resetAdminClientTraffic(email: string): Promise<void> {
+  await xuiRequest<void>(`/admin/reset-traffic/${encodeURIComponent(email)}`, { method: 'POST' });
+}
+
+/** Get all connection links for a client by email (admin) */
+export async function getAdminClientLinks(email: string): Promise<XuiClientLinks> {
+  return xuiRequest<XuiClientLinks>(`/links/${encodeURIComponent(email)}`);
+}
+
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 /** Format bytes to human-readable string */

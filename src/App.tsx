@@ -14,6 +14,7 @@ import { AccountPage } from './pages/AccountPage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminUsersPage } from './pages/admin/AdminUsersPage'
+import { AdminVpnPanelPage } from './pages/admin/AdminVpnPanelPage'
 import { TrialPage } from './pages/TrialPage'
 import { RussiaGuidePage } from './pages/RussiaGuidePage'
 
@@ -87,6 +88,14 @@ export default function App() {
           element={
             <ProtectedRoute adminOnly>
               <AdminUsersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/vpn"
+          element={
+            <ProtectedRoute adminOnly>
+              <AdminVpnPanelPage />
             </ProtectedRoute>
           }
         />
