@@ -112,10 +112,16 @@ function CredentialsBox({
 
 // ── Ikamba VPN tab ────────────────────────────────────────────────────────────
 
+/** Derive the subscription URL from email — deterministic, never changes. */
+function getSubUrl(email: string): string {
+  const base = import.meta.env.DEV
+    ? 'http://localhost:4000'
+    : (import.meta.env.VITE_API_URL || 'https://194.76.217.4:4443');
+  return `${base}/xui-public/sub/${encodeURIComponent(email)}`;
+}
+
 function VlessTab() {
   const { firebaseUser } = useAuth();
-  const [vlessLink, setVlessLink] = useState<string | null>(null);
-  const [subscriptionUrl, setSubscriptionUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,20 +168,20 @@ function VlessTab() {
     }
   }
 
+  // Deterministic — derived from email, never needs to be stored
+  const subscriptionUrl = firebaseUser?.email ? getSubUrl(firebaseUser.email) : null;
+
   async function handleGetTrial() {
     if (!firebaseUser?.email) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await provisionXuiAccount({
+      await provisionXuiAccount({
         email: firebaseUser.email,
-        trafficLimitGB: 0,    // unlimited bandwidth
-        expiryDays: 0,        // never expires
+        trafficLimitGB: 0,
+        expiryDays: 0,
         maxConnections: 2,
       });
-      setVlessLink(result.vlessLink);
-      setSubscriptionUrl(result.subscriptionUrl);
-      // Refresh stats
       getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
     } catch (err: any) {
       setError(err.message || 'Failed to create trial');
@@ -275,7 +281,7 @@ function VlessTab() {
           <p className="text-sm font-semibold">Activate Ikamba VPN</p>
         </div>
 
-        {subscriptionUrl ? (
+        {stats ? (
           <div className="flex flex-col gap-2">
             <div className="bg-gray-50 rounded-xl p-3 font-mono text-xs break-all text-gray-700 border border-gray-200">
               {subscriptionUrl}
@@ -291,17 +297,10 @@ function VlessTab() {
                 <><Copy className="w-4 h-4 mr-1.5" /> Copy subscription link</>
               )}
             </Button>
-          </div>
-        ) : stats ? (
-          <div className="bg-green-50 border border-green-100 rounded-xl p-3">
-            <p className="text-xs text-green-800 font-medium">Your Ikamba VPN is active</p>
-            <div className="mt-2 text-xs text-green-700 flex flex-col gap-0.5">
+            <div className="text-xs text-gray-400 flex flex-col gap-0.5 px-1">
               <p>Used: {formatBytes(stats.total)} {stats.limit > 0 ? `/ ${formatBytes(stats.limit)}` : '(unlimited)'}</p>
               <p>Expires: {formatExpiry(stats.expiryTime)}</p>
             </div>
-            <p className="mt-2 text-[11px] text-green-600">
-              Link shown on activation. App auto-updates via subscription.
-            </p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
