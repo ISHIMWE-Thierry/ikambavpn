@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, Clock, AlertCircle, RefreshCw, ChevronRight, Zap, Download, Eye, EyeOff, Copy, Check, Globe, Activity, Wifi, WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -120,39 +120,147 @@ function getSubUrl(email: string): string {
   return `${base}/xui-public/sub/${encodeURIComponent(email)}`;
 }
 
+type DeviceType = 'ios' | 'android' | 'mac' | 'windows' | 'linux' | 'unknown';
+
+function detectDevice(): DeviceType {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'ios' as DeviceType;
+  if (/Android/i.test(ua)) return 'android' as DeviceType;
+  if (/Mac/i.test(ua) && !/iPhone|iPad|iPod/i.test(ua)) return 'mac' as DeviceType;
+  if (/Win/i.test(ua)) return 'windows' as DeviceType;
+  if (/Linux/i.test(ua)) return 'linux' as DeviceType;
+  return 'unknown' as DeviceType;
+}
+
+const DEVICE_CONFIG: Record<DeviceType, {
+  appName: string;
+  appUrl: string;
+  appStore: string;
+  steps: string[];
+  disconnectTip?: string;
+  routingTip?: string;
+}> = {
+  ios: {
+    appName: 'V2RayTun',
+    appUrl: 'https://apps.apple.com/app/id6476628951',
+    appStore: 'App Store',
+    steps: [
+      'Open V2RayTun',
+      'Tap + → Import from clipboard',
+      'Tap Connect',
+    ],
+    disconnectTip: 'Go to V2RayTun → Settings → enable On-Demand to stay connected in background.',
+    routingTip: 'Tap your config → Routing → select Global.',
+  },
+  android: {
+    appName: 'V2RayNG',
+    appUrl: 'https://play.google.com/store/apps/details?id=com.v2ray.ang',
+    appStore: 'Google Play',
+    steps: [
+      'Open V2RayNG',
+      'Tap + → Import config from clipboard',
+      'Tap the play button to connect',
+    ],
+    disconnectTip: 'Make sure battery optimisation is off for V2RayNG in Android Settings.',
+    routingTip: '⋮ menu → Settings → Routing → select Global.',
+  },
+  mac: {
+    appName: 'V2RayTun',
+    appUrl: 'https://apps.apple.com/app/id6476628951',
+    appStore: 'App Store',
+    steps: [
+      'Open V2RayTun',
+      'Click + → Import from clipboard',
+      'Click Connect',
+    ],
+    routingTip: 'Click your config → Routing → select Global.',
+  },
+  windows: {
+    appName: 'Hiddify',
+    appUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    appStore: 'Download',
+    steps: [
+      'Open Hiddify',
+      'Click + → Add from clipboard',
+      'Click Connect',
+    ],
+    routingTip: 'Settings → Routing → Block None.',
+  },
+  linux: {
+    appName: 'Hiddify',
+    appUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    appStore: 'Download',
+    steps: [
+      'Open Hiddify',
+      'Click + → Add from clipboard',
+      'Click Connect',
+    ],
+    routingTip: 'Settings → Routing → Block None.',
+  },
+  unknown: {
+    appName: 'Hiddify',
+    appUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    appStore: 'Download',
+    steps: [
+      'Open your VPN app',
+      'Import from clipboard',
+      'Connect',
+    ],
+  },
+};
+
 function VlessTab() {
   const { firebaseUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<XuiClientStat | null>(null);
-  // null = still checking, true = online, false = offline
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const [healthChecking, setHealthChecking] = useState(false);
-  const [lastChecked, setLastChecked] = useState<string>('');
   const [diagResult, setDiagResult] = useState<DiagnosticResult | null>(null);
   const [diagRunning, setDiagRunning] = useState(false);
   const healthInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const device = useMemo(() => detectDevice(), []);
+  const cfg = DEVICE_CONFIG[device];
+
+  const subscriptionUrl = firebaseUser?.email ? getSubUrl(firebaseUser.email) : null;
 
   const runHealthCheck = useCallback(async () => {
     setHealthChecking(true);
     const { online } = await checkVpnServerHealth();
     setServerOnline(online);
     setHealthChecking(false);
-    setLastChecked(new Date().toLocaleTimeString());
   }, []);
 
-  // Check if user already has a VLESS account + server health on mount
-  // + start periodic health polling every 60 seconds
   useEffect(() => {
     if (!firebaseUser?.email) return;
     getXuiStats(firebaseUser.email)
       .then((s) => setStats(s))
-      .catch(() => { /* no account yet */ });
+      .catch(() => {});
     runHealthCheck();
     healthInterval.current = setInterval(runHealthCheck, 60_000);
     return () => { if (healthInterval.current) clearInterval(healthInterval.current); };
   }, [firebaseUser?.email, runHealthCheck]);
+
+  async function handleActivate() {
+    if (!firebaseUser?.email) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await provisionXuiAccount({
+        email: firebaseUser.email,
+        trafficLimitGB: 0,
+        expiryDays: 0,
+        maxConnections: 2,
+      });
+      getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
+    } catch (err: any) {
+      setError(err.message || 'Failed to activate. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleRunDiagnostics() {
     setDiagRunning(true);
@@ -168,309 +276,155 @@ function VlessTab() {
     }
   }
 
-  // Deterministic — derived from email, never needs to be stored
-  const subscriptionUrl = firebaseUser?.email ? getSubUrl(firebaseUser.email) : null;
-
-  async function handleGetTrial() {
-    if (!firebaseUser?.email) return;
-    setLoading(true);
-    setError(null);
-    try {
-      await provisionXuiAccount({
-        email: firebaseUser.email,
-        trafficLimitGB: 0,
-        expiryDays: 0,
-        maxConnections: 2,
-      });
-      getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
-    } catch (err: any) {
-      setError(err.message || 'Failed to create trial');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function copyLink() {
     if (!subscriptionUrl) return;
     navigator.clipboard.writeText(subscriptionUrl);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 3000);
   }
 
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Banner */}
-      <div className="bg-gradient-to-r from-gray-900 to-black border border-gray-800 rounded-xl p-3 flex items-start gap-2">
-        <Globe className="w-4 h-4 text-white mt-0.5 shrink-0" />
-        <div className="text-xs text-gray-200">
-          <p className="font-semibold text-white">Ikamba VPN</p>
-          <p className="mt-0.5 text-gray-400">
-            Undetectable encrypted connection. Works on all devices.
-          </p>
+  // ── Not yet activated ─────────────────────────────────────────────────────
+  if (!stats) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-base font-semibold">Get started</h2>
+          <p className="text-sm text-gray-500">Activate your free VPN — takes 10 seconds.</p>
         </div>
+        {error && (
+          <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+        )}
+        <Button onClick={handleActivate} disabled={loading} className="w-full">
+          {loading
+            ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Activating…</>
+            : 'Activate Ikamba VPN — Free'}
+        </Button>
+        <p className="text-xs text-center text-gray-400">No credit card required</p>
       </div>
+    );
+  }
 
-      {/* Server status */}
-      <div className="flex items-center gap-2 px-1">
-        <span className={`w-2 h-2 rounded-full shrink-0 ${
-          serverOnline === null ? 'bg-gray-300' :
-          serverOnline ? 'bg-green-500' : 'bg-red-500'
-        }`} />
-        <span className="text-xs text-gray-500">
-          {serverOnline === null
-            ? 'Checking server…'
-            : serverOnline
-            ? 'Server online'
-            : 'Server may be down'}
-        </span>
-        {serverOnline === false && (
-          <button
-            onClick={runHealthCheck}
-            disabled={healthChecking}
-            className="text-xs text-blue-600 underline ml-1 disabled:opacity-50"
-          >
+  // ── Activated ─────────────────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col gap-5">
+
+      {/* Server status — only show if something is wrong */}
+      {serverOnline === false && (
+        <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+          <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+          Server may be down.
+          <button onClick={runHealthCheck} disabled={healthChecking} className="underline ml-1 disabled:opacity-50">
             {healthChecking ? 'Checking…' : 'Retry'}
           </button>
+        </div>
+      )}
+
+      {/* Step 1 — Copy link */}
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 1 — Copy your link</p>
+        <button
+          onClick={copyLink}
+          className={`w-full flex items-center justify-between rounded-xl px-4 py-3.5 transition font-medium text-sm ${
+            copied
+              ? 'bg-green-50 border border-green-200 text-green-700'
+              : 'bg-black text-white hover:bg-gray-900'
+          }`}
+        >
+          <span>{copied ? 'Copied to clipboard!' : 'Copy VPN link'}</span>
+          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+        </button>
+        {copied && (
+          <p className="text-xs text-gray-500 text-center">Now go to step 2 ↓</p>
         )}
       </div>
 
-      {/* Step 1: Download app */}
-      <div className="border border-gray-100 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold">1</div>
-          <p className="text-sm font-semibold">Download the app</p>
-        </div>
+      {/* Step 2 — Download & connect */}
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 2 — Open the app</p>
         <a
-          href="https://apps.apple.com/app/id6476628951"
+          href={cfg.appUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 hover:border-blue-300 transition"
+          className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3 hover:border-black transition"
         >
           <div>
-            <span className="text-sm font-medium text-blue-900">V2RayTun</span>
-            <p className="text-xs text-blue-500">iPhone / iPad / Mac — App Store</p>
+            <p className="text-sm font-semibold">{cfg.appName}</p>
+            <p className="text-xs text-gray-400">{cfg.appStore}</p>
           </div>
-          <Download className="w-4 h-4 text-blue-400" />
+          <Download className="w-4 h-4 text-gray-400" />
         </a>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <a
-            href="https://play.google.com/store/apps/details?id=com.v2ray.ang"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex flex-col gap-0.5 border border-gray-100 rounded-xl px-3 py-2 hover:border-gray-300 transition"
-          >
-            <span className="text-xs font-medium">V2RayNG</span>
-            <span className="text-[10px] text-gray-400">Android — Google Play</span>
-          </a>
-          <a
-            href="https://github.com/hiddify/hiddify-app/releases"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex flex-col gap-0.5 border border-gray-100 rounded-xl px-3 py-2 hover:border-gray-300 transition"
-          >
-            <span className="text-xs font-medium">Hiddify</span>
-            <span className="text-[10px] text-gray-400">Windows / macOS / Linux</span>
-          </a>
-        </div>
-      </div>
-
-      {/* Step 2: Get your link */}
-      <div className="border border-gray-100 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold">2</div>
-          <p className="text-sm font-semibold">Activate Ikamba VPN</p>
-        </div>
-
-        {stats ? (
-          <div className="flex flex-col gap-2">
-            <div className="bg-gray-50 rounded-xl p-3 font-mono text-xs break-all text-gray-700 border border-gray-200">
-              {subscriptionUrl}
-            </div>
-            <Button
-              onClick={copyLink}
-              className="w-full"
-              variant={copied ? 'primary' : 'secondary'}
-            >
-              {copied ? (
-                <><Check className="w-4 h-4 mr-1.5" /> Copied!</>
-              ) : (
-                <><Copy className="w-4 h-4 mr-1.5" /> Copy subscription link</>
-              )}
-            </Button>
-            <div className="text-xs text-gray-400 flex flex-col gap-0.5 px-1">
-              <p>Used: {formatBytes(stats.total)} {stats.limit > 0 ? `/ ${formatBytes(stats.limit)}` : '(unlimited)'}</p>
-              <p>Expires: {formatExpiry(stats.expiryTime)}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <p className="text-xs text-gray-500">
-              Activate to get your connection link.
-            </p>
-            {error && (
-              <div className="bg-red-50 border border-red-100 rounded-lg p-2 text-xs text-red-700">
-                {error}
-              </div>
-            )}
-            <Button onClick={handleGetTrial} disabled={loading} className="w-full">
-              {loading ? (
-                <><RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> Creating trial...</>
-              ) : (
-                <>Activate Ikamba VPN — Free trial</>
-              )}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Step 3: Paste & connect */}
-      <div className="border border-gray-100 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold">3</div>
-          <p className="text-sm font-semibold">Connect</p>
-        </div>
-        <ol className="text-xs text-gray-600 list-decimal ml-8 flex flex-col gap-1.5">
-          <li>Copy the subscription link above</li>
-          <li>Open the app → tap <strong>+</strong> → <strong>Import from URL / clipboard</strong></li>
-          <li>Paste the link and tap <strong>Connect</strong></li>
+        <ol className="flex flex-col gap-1.5 mt-1">
+          {cfg.steps.map((step: string, i: number) => (
+            <li key={i} className="flex items-start gap-2.5 text-sm text-gray-700">
+              <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                {i + 1}
+              </span>
+              {step}
+            </li>
+          ))}
         </ol>
       </div>
 
-      {/* Why it works */}
-      <details className="group">
-        <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 transition px-1">
-          How it works ▸
-        </summary>
-        <div className="mt-2 bg-green-50 border border-green-100 rounded-xl p-3 text-xs text-green-800">
-          <ul className="list-disc ml-4 flex flex-col gap-1">
-            <li>Traffic looks like normal HTTPS — invisible to DPI</li>
-            <li>Real TLS 1.3 handshakes</li>
-            <li>All devices: iPhone, Android, Windows, Mac, Linux</li>
-            <li>Subscription link auto-updates if server changes</li>
-          </ul>
-        </div>
-      </details>
+      {/* Usage stats — subtle */}
+      <div className="flex items-center gap-3 text-xs text-gray-400 border-t border-gray-100 pt-3">
+        <span>Used: {formatBytes(stats.total)}</span>
+        <span>·</span>
+        <span>Expires: {formatExpiry(stats.expiryTime)}</span>
+        <span className={`ml-auto w-2 h-2 rounded-full shrink-0 ${
+          serverOnline === null ? 'bg-gray-300' : serverOnline ? 'bg-green-400' : 'bg-red-400'
+        }`} />
+      </div>
 
-      {/* Troubleshoot */}
+      {/* Troubleshoot — collapsed by default */}
       <details className="group">
-        <summary className="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-700 transition px-1">
-          Having issues? Troubleshoot ▸
+        <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 transition select-none">
+          Having issues? ▸
         </summary>
-        <div className="mt-2 flex flex-col gap-2">
+        <div className="mt-3 flex flex-col gap-3">
 
-          {/* Diagnose: their internet vs our VPN */}
-          <div className="border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
-            <p className="font-semibold text-gray-700 mb-1">Is it your internet or our VPN?</p>
-            <p className="text-gray-500 mb-2">
-              Turn off the VPN and try opening YouTube directly. If it doesn't open — your internet is the problem, not our VPN.
-            </p>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${
-                serverOnline === null ? 'bg-gray-300' :
-                serverOnline ? 'bg-green-400' : 'bg-red-500'
-              }`} />
-              <span className={serverOnline === false ? 'text-red-600 font-medium' : 'text-gray-500'}>
-                {serverOnline === null ? 'Checking VPN server…' :
-                 serverOnline ? 'Our VPN server is online ✓' :
-                 'Our VPN server appears to be down — contact support'}
-              </span>
-              <button
-                onClick={runHealthCheck}
-                disabled={healthChecking}
-                className="text-blue-600 underline ml-1 disabled:opacity-50"
-              >
-                {healthChecking ? 'Checking…' : 'Recheck'}
-              </button>
+          {/* VPN on but sites still blocked */}
+          {cfg.routingTip && (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+              <p className="font-semibold mb-0.5">Connected but sites still blocked?</p>
+              <p>{cfg.routingTip}</p>
             </div>
-          </div>
+          )}
 
-          {/* Run diagnostics */}
-          <div className="border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
-            <p className="font-semibold text-gray-700 mb-2">Run connection test</p>
-            <Button
-              onClick={handleRunDiagnostics}
-              disabled={diagRunning}
-              variant="secondary"
-              size="sm"
-            >
-              {diagRunning ? (
-                <><RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Testing…</>
-              ) : (
-                <><Activity className="w-3 h-3 mr-1" /> Diagnose now</>
-              )}
+          {/* Keeps disconnecting */}
+          {cfg.disconnectTip && (
+            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
+              <p className="font-semibold mb-0.5">VPN keeps disconnecting?</p>
+              <p>{cfg.disconnectTip}</p>
+            </div>
+          )}
+
+          {/* Diagnose */}
+          <div className="flex flex-col gap-2">
+            <Button onClick={handleRunDiagnostics} disabled={diagRunning} variant="secondary" size="sm">
+              {diagRunning
+                ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" /> Testing…</>
+                : <><Activity className="w-3 h-3 mr-1.5" /> Run connection test</>}
             </Button>
             {diagResult && (
-              <div className={`mt-2 rounded-lg p-2 border ${
+              <div className={`rounded-xl p-3 text-xs border ${
                 diagResult.verdict === 'healthy'
                   ? 'bg-green-50 border-green-200 text-green-800'
                   : diagResult.verdict === 'degraded'
                   ? 'bg-amber-50 border-amber-200 text-amber-800'
                   : 'bg-red-50 border-red-200 text-red-800'
               }`}>
-                <div className="flex items-center gap-1.5 font-medium">
-                  {diagResult.verdict === 'healthy'
-                    ? <Wifi className="w-3.5 h-3.5" />
-                    : <WifiOff className="w-3.5 h-3.5" />}
-                  {diagResult.verdict === 'healthy' && 'Everything looks good'}
-                  {diagResult.verdict === 'degraded' && 'VPN server is degraded'}
-                  {diagResult.verdict === 'down' && 'VPN server is down'}
-                  {diagResult.verdict !== 'healthy' && diagResult.verdict !== 'degraded' && diagResult.verdict !== 'down' && 'Could not determine the issue'}
+                <div className="flex items-center gap-1.5 font-semibold mb-0.5">
+                  {diagResult.verdict === 'healthy' ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                  {diagResult.verdict === 'healthy' ? 'All good' : diagResult.verdict === 'degraded' ? 'Server degraded' : 'Server issue'}
                 </div>
-                <p className="mt-1">{diagResult.suggestion}</p>
+                <p>{diagResult.suggestion}</p>
               </div>
             )}
-          </div>
-
-          {/* VPN keeps disconnecting */}
-          <div className="border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
-            <p className="font-semibold text-gray-700 mb-1">VPN keeps disconnecting</p>
-            <ul className="list-disc ml-4 flex flex-col gap-1.5">
-              <li>
-                <strong>iPhone / iPad:</strong> iOS kills VPN tunnels to save battery.
-                In V2RayTun → <strong>Settings → Enable On-Demand</strong> to stay connected in background.
-              </li>
-              <li>
-                <strong>Device limit:</strong> Your account allows 2 devices at the same time.
-                If a 3rd device connects, one gets kicked off. Disconnect unused devices first.
-              </li>
-              <li>
-                <strong>Network switch (WiFi ↔ mobile data):</strong> Wait 5–10 seconds — VLESS reconnects automatically.
-              </li>
-            </ul>
-          </div>
-
-          {/* Connected but YouTube / WhatsApp don't work */}
-          <div className="border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
-            <p className="font-semibold text-gray-700 mb-1">Connected but YouTube / WhatsApp still blocked</p>
-            <p className="text-gray-500 mb-1.5">
-              The VPN is on but not routing all traffic. Change routing to <strong>Global</strong> in your app:
-            </p>
-            <ul className="list-disc ml-4 flex flex-col gap-1.5">
-              <li>
-                <strong>V2RayTun (iOS/Mac):</strong> Tap your config → <strong>Routing</strong> → select <strong>Global</strong>
-              </li>
-              <li>
-                <strong>V2RayNG (Android):</strong> ⋮ menu → <strong>Settings → Routing → Global</strong>
-              </li>
-              <li>
-                <strong>Hiddify:</strong> Settings → Routing → <strong>Block None</strong>
-              </li>
-            </ul>
           </div>
 
         </div>
       </details>
 
-      {/* Russian summary */}
-      <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
-        <p className="font-semibold text-gray-700 mb-1">Инструкция</p>
-        <ol className="list-decimal ml-4 flex flex-col gap-0.5">
-          <li>Скачайте <strong>V2RayTun</strong> (<a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store</a>)</li>
-          <li>Нажмите <strong>«Activate»</strong> выше</li>
-          <li>Скопируйте ссылку → V2RayTun → <strong>+</strong> → <strong>Import from URL</strong></li>
-          <li>Нажмите <strong>«Подключиться»</strong></li>
-        </ol>
-      </div>
     </div>
   );
 }
