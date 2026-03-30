@@ -139,6 +139,33 @@ xuiPublicRouter.get("/diagnose", async (req: Request, res: Response) => {
  * connection. The apps poll this URL every few minutes — if it returns an error,
  * they disconnect the user (the #1 cause of "VPN auto goes off").
  */
+/**
+ * GET /xui-public/stats/:email
+ * Public traffic stats for a user — no auth required.
+ * Returns 404 if the user hasn't been provisioned yet (expected for new users).
+ */
+xuiPublicRouter.get("/stats/:email", async (req: Request, res: Response) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const stat = await getClientStatByEmail(email);
+    if (!stat) return res.status(404).json({ ok: false, error: "Client not found" });
+    return res.json({
+      ok: true,
+      data: {
+        email: stat.email,
+        upload: stat.up,
+        download: stat.down,
+        total: stat.up + stat.down,
+        limit: stat.total,
+        enabled: stat.enable,
+        expiryTime: stat.expiryTime,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 xuiPublicRouter.get("/sub/:email", async (req: Request, res: Response) => {
   try {
     const email = decodeURIComponent(req.params.email);

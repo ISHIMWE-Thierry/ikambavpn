@@ -114,9 +114,14 @@ function VpnCard() {
 
   useEffect(() => {
     if (!firebaseUser?.email) return;
-    getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
-    runHealthCheck();
-    healthInterval.current = setInterval(runHealthCheck, 60_000);
+    getXuiStats(firebaseUser.email).then((s) => {
+      setStats(s);
+      // Only start health polling once we know the user has an account
+      runHealthCheck();
+      healthInterval.current = setInterval(runHealthCheck, 60_000);
+    }).catch(() => {
+      // No account yet — don't poll, just show Activate button
+    });
     return () => { if (healthInterval.current) clearInterval(healthInterval.current); };
   }, [firebaseUser?.email, runHealthCheck]);
 
@@ -172,9 +177,8 @@ function VpnCard() {
             <Button onClick={handleActivate} disabled={loading} className="w-full">
               {loading
                 ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Activating…</>
-                : 'Activate Ikamba VPN — Free'}
+                : 'Activate Ikamba VPN'}
             </Button>
-            <p className="text-xs text-center text-gray-400">No credit card required</p>
           </div>
         </CardContent>
       </Card>

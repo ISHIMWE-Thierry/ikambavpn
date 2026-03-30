@@ -230,9 +230,17 @@ export async function getXuiLinks(subId: string): Promise<XuiClientLinks> {
 
 /**
  * Get traffic stats for the current user's VLESS account.
+ * Uses the public endpoint — no auth token required.
  */
 export async function getXuiStats(email: string): Promise<XuiClientStat> {
-  return xuiRequest<XuiClientStat>(`/stats/${encodeURIComponent(email)}`);
+  const res = await fetch(`${API_BASE}/xui-public/stats/${encodeURIComponent(email)}`);
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error || `API error ${res.status}`);
+  }
+  const json = (await res.json()) as { ok: boolean; data: XuiClientStat };
+  if (!json.ok) throw new Error('Stats unavailable');
+  return json.data;
 }
 
 // ── Admin endpoints ───────────────────────────────────────────────────────────
