@@ -5,6 +5,7 @@
  * for analysis. Returns actionable insights for the admin.
  *
  * Model: moonshotai/kimi-k2.5 via NVIDIA NIM (free tier)
+ * Requests are proxied through the backend to avoid CORS.
  */
 
 import {
@@ -19,11 +20,9 @@ import {
 import { db, COLLECTIONS } from './firebase';
 
 // ── Config ────────────────────────────────────────────────────────────────
-const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
-const NVIDIA_API_KEY =
-  import.meta.env.VITE_NVIDIA_API_KEY ||
-  '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';
-const MODEL = 'moonshotai/kimi-k2.5';
+const API_BASE = import.meta.env.DEV
+  ? 'http://localhost:4000'
+  : (import.meta.env.VITE_API_URL || 'https://194.76.217.4:4443');
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -172,17 +171,20 @@ export async function collectDatabaseSnapshot(): Promise<Record<string, unknown>
   };
 }
 
-// ── NVIDIA API call ───────────────────────────────────────────────────────
+// ── Backend proxy call ────────────────────────────────────────────────────
 
 async function callKimi(messages: AiChatMessage[]): Promise<string> {
-  const res = await fetch(NVIDIA_API_URL, {
+  // Get Firebase ID token for auth
+  const { auth } = await import('./firebase');
+  const token = await auth.currentUser?.getIdToken();
+
+  const res = await fetch(`${API_BASE}/ai/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${NVIDIA_API_KEY}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
-      model: MODEL,
       messages,
       max_tokens: 8192,
       temperature: 0.7,
@@ -192,7 +194,7 @@ async function callKimi(messages: AiChatMessage[]): Promise<string> {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`NVIDIA API error ${res.status}: ${err}`);
+    throw new Error(`AI proxy error ${res.status}: ${err}`);
   }
 
   const data = await res.json();

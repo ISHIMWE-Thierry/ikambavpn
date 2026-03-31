@@ -7,6 +7,53 @@ import { getProviderWGConfig } from "../services/providers";
 
 export const aiRouter = Router();
 
+// ── NVIDIA Kimi K2.5 proxy (avoids CORS) ──────────────────────────────
+
+const NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
+const NVIDIA_API_KEY =
+  process.env.NVIDIA_API_KEY ||
+  "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";
+
+aiRouter.post("/chat", async (req: AuthedRequest, res: Response) => {
+  try {
+    const { messages, max_tokens, temperature, top_p } = req.body;
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: "messages array is required" });
+    }
+
+    const nvidiaRes = await fetch(NVIDIA_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${NVIDIA_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "moonshotai/kimi-k2.5",
+        messages,
+        max_tokens: max_tokens || 8192,
+        temperature: temperature ?? 0.7,
+        top_p: top_p ?? 0.95,
+      }),
+    });
+
+    if (!nvidiaRes.ok) {
+      const errText = await nvidiaRes.text();
+      console.error(`NVIDIA API error ${nvidiaRes.status}:`, errText);
+      return res
+        .status(nvidiaRes.status)
+        .json({ error: `NVIDIA API error: ${nvidiaRes.status}`, details: errText });
+    }
+
+    const data = await nvidiaRes.json();
+    return res.json(data);
+  } catch (err: any) {
+    console.error("AI chat proxy error:", err);
+    return res.status(500).json({ error: err.message || "AI proxy failed" });
+  }
+});
+
+// ── Smart connect (existing) ──────────────────────────────────────────
+
 aiRouter.post("/smart-connect", async (req: AuthedRequest, res: Response) => {
   try {
   const metrics = await getMetrics();
