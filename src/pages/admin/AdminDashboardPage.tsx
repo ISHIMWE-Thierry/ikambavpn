@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, ShoppingBag, CheckCircle, Clock, ChevronRight, Plus, Zap, Shield } from 'lucide-react';
+import { Users, ShoppingBag, CheckCircle, Clock, ChevronRight, Plus, Zap, Shield, ExternalLink } from 'lucide-react';
 import { getAllOrders, getAllUsers, getAllTrials, getPaymentAccounts, savePaymentAccount, updatePaymentAccount } from '../../lib/db-service';
 import { getServices } from '../../lib/api';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
@@ -139,6 +139,17 @@ export function AdminDashboardPage() {
                 </span>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </Link>
+              <a
+                href="https://194.76.217.4:2053/x7kQ9m/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition"
+              >
+                <span className="text-sm font-medium flex items-center gap-2">
+                  <ExternalLink className="w-4 h-4" /> 3X-UI Server Panel
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </a>
               <Link
                 to="/admin/users"
                 className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition"
