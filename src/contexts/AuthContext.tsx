@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   onAuthStateChanged,
   getRedirectResult,
@@ -54,7 +54,8 @@ async function syncProfile(user: FirebaseUser): Promise<UserProfile | null> {
       }
     }
     return prof;
-  } catch {
+  } catch (err) {
+    console.error('[AuthContext] syncProfile error:', err);
     return null;
   }
 }
@@ -63,55 +64,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const redirectChecked = useRef(false);
 
-  // 1) Process any pending Google redirect BEFORE listening to auth state.
-  //    This ensures the redirect user is available to onAuthStateChanged.
   useEffect(() => {
-    let cancelled = false;
-
-    async function init() {
-      // Resolve any pending redirect (e.g. returning from Google sign-in).
-      // This MUST complete before we rely on onAuthStateChanged, because
-      // Firebase may not fire onAuthStateChanged with the redirect user
-      // until getRedirectResult has been called.
-      try {
-        await getRedirectResult(auth);
-      } catch {
-        // No pending redirect or redirect error — both are fine.
-      }
-
-      if (cancelled) return;
-      redirectChecked.current = true;
-
-      // 2) Now listen for auth state changes.
-      const unsub = onAuthStateChanged(auth, async (user) => {
-        if (cancelled) return;
-        setFirebaseUser(user);
-
-        if (user) {
-          const prof = await syncProfile(user);
-          if (!cancelled) setProfile(prof);
-        } else {
-          setProfile(null);
-        }
-
-        if (!cancelled) setLoading(false);
-      });
-
-      // Cleanup listener on unmount
-      return unsub;
-    }
-
-    let unsub: (() => void) | undefined;
-    init().then((u) => {
-      unsub = u;
+    // Process any pending Google redirect result (fire-and-forget).
+    // getRedirectResult only resolves with a user when returning from
+    // signInWithRedirect; it returns null otherwise.
+    // We call it early so Firebase can resolve the credential before
+    // onAuthStateChanged fires.  The actual user handling happens
+    // inside onAuthStateChanged below — not here.
+    getRedirectResult(auth).catch(() => {
+      // Silently ignore — no pending redirect or redirect failed.
     });
 
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
+    // Listen for auth state changes — this is the single source of truth.
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user);
+
+      if (user) {
+        const prof = await syncProfile(user);
+        setProfile(prof);
+      } else {
+        setProfile(null);
+      }
+
+      setLoading(false);
+    });
+
+    return unsub;
   }, []);
 
   const signOut = async () => {

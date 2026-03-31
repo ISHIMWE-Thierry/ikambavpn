@@ -4,7 +4,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   GoogleAuthProvider,
-  signInWithRedirect,
+  signInWithPopup,
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { Shield, Loader2, Eye, EyeOff } from 'lucide-react';
@@ -84,10 +84,9 @@ export function SignUpPage() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      // Use redirect instead of popup — works better on custom domains + mobile
-      await signInWithRedirect(auth, provider);
-      // Page will reload after Google redirects back
-      // AuthContext.onAuthStateChanged will handle Firestore user doc creation
+      await signInWithPopup(auth, provider);
+      toast.success('Account created!');
+      // onAuthStateChanged in AuthContext handles Firestore doc + redirect
     } catch (err: any) {
       setError(friendlyError(err?.code));
       setLoading(false);

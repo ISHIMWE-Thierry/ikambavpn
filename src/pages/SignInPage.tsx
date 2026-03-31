@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
-  signInWithRedirect,
+  signInWithPopup,
 } from 'firebase/auth';
 import { Shield, Loader2, Eye, EyeOff } from 'lucide-react';
 import { auth } from '../lib/firebase';
@@ -76,9 +76,9 @@ export function SignInPage() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      // Use redirect instead of popup — works better on custom domains + mobile
-      await signInWithRedirect(auth, provider);
-      // Page will reload after Google redirects back
+      await signInWithPopup(auth, provider);
+      toast.success('Welcome back!');
+      // onAuthStateChanged in AuthContext handles the rest
     } catch (err: any) {
       setError(friendlyError(err?.code));
       setLoading(false);
