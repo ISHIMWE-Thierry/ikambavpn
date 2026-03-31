@@ -5,7 +5,7 @@ import {
   signOut as firebaseSignOut,
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { getUser, createUser } from '../lib/db-service';
+import { getUser, createUser, updateUserLogin } from '../lib/db-service';
 import type { UserProfile } from '../types';
 
 interface AuthContextType {
@@ -13,6 +13,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -20,6 +21,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   signOut: async () => {},
+  refreshProfile: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -44,8 +46,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               firstname: parts[0] || '',
               lastname: parts.slice(1).join(' ') || '',
               tel: user.phoneNumber || '',
+              avatarUrl: user.photoURL || undefined,
             });
             prof = await getUser(user.uid);
+          } else {
+            // Returning user — update last_login timestamp
+            try {
+              await updateUserLogin(user.uid);
+            } catch {
+              // Non-critical
+            }
           }
 
           setProfile(prof);
@@ -67,8 +77,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
   };
 
+  const refreshProfile = async () => {
+    if (firebaseUser) {
+      const prof = await getUser(firebaseUser.uid);
+      setProfile(prof);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ firebaseUser, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ firebaseUser, profile, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

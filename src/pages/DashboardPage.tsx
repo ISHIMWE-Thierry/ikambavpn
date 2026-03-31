@@ -1,9 +1,15 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, AlertCircle, RefreshCw, ChevronRight, Download, Copy, Check, Activity, Wifi, WifiOff } from 'lucide-react';
+import {
+  Shield, AlertCircle, RefreshCw, ChevronRight, Download, Copy, Check,
+  Activity, Wifi, WifiOff, Settings, ExternalLink, Power,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders } from '../lib/db-service';
-import { provisionXuiAccount, getXuiStats, formatBytes, formatExpiry, checkVpnServerHealth, runDiagnostics } from '../lib/xui-api';
+import {
+  provisionXuiAccount, getXuiStats, formatBytes, formatExpiry,
+  checkVpnServerHealth, runDiagnostics,
+} from '../lib/xui-api';
 import type { XuiClientStat, DiagnosticResult } from '../lib/xui-api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -87,10 +93,10 @@ function getSubUrl(email: string): string {
   return `${base}/xui-public/sub/${encodeURIComponent(email)}`;
 }
 
-// ── VPN card ──────────────────────────────────────────────────────────────────
+// ── VPN Connect Card ──────────────────────────────────────────────────────────
 
 function VpnCard() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,11 +106,13 @@ function VpnCard() {
   const [healthChecking, setHealthChecking] = useState(false);
   const [diagResult, setDiagResult] = useState<DiagnosticResult | null>(null);
   const [diagRunning, setDiagRunning] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const healthInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const device = useMemo(() => detectDevice(), []);
   const cfg = DEVICE_CONFIG[device];
   const subscriptionUrl = firebaseUser?.email ? getSubUrl(firebaseUser.email) : null;
+  const isAdmin = profile?.role === 'admin';
 
   const runHealthCheck = useCallback(async () => {
     setHealthChecking(true);
@@ -168,98 +176,34 @@ function VpnCard() {
   // ── Not yet activated ─────────────────────────────────────────────────────
   if (!activated) {
     return (
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5" />
-            <h2 className="font-semibold">Ikamba VPN</h2>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-gray-500">Get connected in seconds — no configuration needed.</p>
+      <div className="flex flex-col gap-5">
+        {/* Big activation card */}
+        <Card>
+          <CardContent className="py-8">
+            <div className="flex flex-col items-center text-center gap-5">
+              <div className="w-16 h-16 rounded-full bg-black flex items-center justify-center">
+                <Power className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-black">Get connected</h2>
+                <p className="text-sm text-gray-500 mt-1">One tap to activate your VPN account</p>
+              </div>
 
-            {/* Download app first */}
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 1 — Download the app</p>
-              <a
-                href={cfg.appUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3 hover:border-black transition"
-              >
-                <div>
-                  <p className="text-sm font-semibold">{cfg.appName}</p>
-                  <p className="text-xs text-gray-400">{cfg.appStore}</p>
-                </div>
-                <Download className="w-4 h-4 text-gray-400" />
-              </a>
-            </div>
+              {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-4 py-2 w-full">{error}</p>}
 
-            {/* Activate */}
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 2 — Activate your account</p>
-              {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-              <Button onClick={handleActivate} disabled={loading} className="w-full">
+              <Button onClick={handleActivate} disabled={loading} size="lg" className="w-full max-w-xs">
                 {loading
                   ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Activating…</>
-                  : 'Activate Ikamba VPN'}
+                  : 'Activate VPN'}
               </Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+          </CardContent>
+        </Card>
 
-  // ── Activated ─────────────────────────────────────────────────────────────
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5" />
-            <h2 className="font-semibold">Ikamba VPN</h2>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${
-              serverOnline === null ? 'bg-gray-300' : serverOnline ? 'bg-green-400' : 'bg-red-400'
-            }`} />
-            <Badge variant="success">Active</Badge>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-5">
-
-          {/* Server down warning */}
-          {serverOnline === false && (
-            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
-              Server may be down.
-              <button onClick={runHealthCheck} disabled={healthChecking} className="underline ml-1 disabled:opacity-50">
-                {healthChecking ? 'Checking…' : 'Retry'}
-              </button>
-            </div>
-          )}
-
-          {/* Step 1 — Copy link */}
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 1 — Copy your VPN link</p>
-            <button
-              onClick={copyLink}
-              className={`w-full flex items-center justify-between rounded-xl px-4 py-3.5 font-medium text-sm transition ${
-                copied ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-black text-white hover:bg-gray-900'
-              }`}
-            >
-              <span>{copied ? 'Copied to clipboard!' : 'Copy VPN link'}</span>
-              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            </button>
-            {copied && <p className="text-xs text-gray-500 text-center">Now open {cfg.appName} below ↓</p>}
-          </div>
-
-          {/* Step 2 — App + instructions */}
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Step 2 — Open {cfg.appName} and connect</p>
+        {/* Download app */}
+        <Card>
+          <CardContent className="py-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">You'll also need the app</p>
             <a
               href={cfg.appUrl}
               target="_blank"
@@ -272,71 +216,202 @@ function VpnCard() {
               </div>
               <Download className="w-4 h-4 text-gray-400" />
             </a>
-            <ol className="flex flex-col gap-1.5 mt-1">
-              {cfg.steps.map((step: string, i: number) => (
-                <li key={i} className="flex items-start gap-2.5 text-sm text-gray-700">
-                  <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                    {i + 1}
-                  </span>
-                  {step}
-                </li>
-              ))}
-            </ol>
-          </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-          {/* Usage — only when stats are loaded */}
-          {stats && (
-            <div className="flex items-center gap-3 text-xs text-gray-400 border-t border-gray-100 pt-3">
-              <span>Used: {formatBytes(stats.total)}</span>
-              <span>·</span>
-              <span>Expires: {formatExpiry(stats.expiryTime)}</span>
+  // ── Activated — Main view ─────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* ====== BIG CONNECT BUTTON ====== */}
+      <Card>
+        <CardContent className="py-6">
+          <div className="flex flex-col items-center text-center gap-4">
+            {/* Status indicator */}
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${
+                serverOnline === null ? 'bg-gray-300' : serverOnline ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+              }`} />
+              <span className="text-sm font-medium text-gray-600">
+                {serverOnline === null ? 'Checking server…' : serverOnline ? 'Server online' : 'Server may be down'}
+              </span>
             </div>
+
+            {/* Copy VLESS link — the main action */}
+            <button
+              onClick={copyLink}
+              className={`w-full max-w-sm flex items-center justify-center gap-3 rounded-2xl px-6 py-4 font-semibold text-base transition-all ${
+                copied
+                  ? 'bg-green-50 border-2 border-green-300 text-green-700 scale-[0.98]'
+                  : 'bg-black text-white hover:bg-gray-800 active:scale-[0.98] shadow-lg shadow-black/10'
+              }`}
+            >
+              {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+              <span>{copied ? 'Copied!' : 'Copy VPN Link'}</span>
+            </button>
+
+            {copied && (
+              <p className="text-sm text-green-600 font-medium">
+                Now open <strong>{cfg.appName}</strong> and import from clipboard
+              </p>
+            )}
+
+            {/* Server down warning */}
+            {serverOnline === false && (
+              <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 w-full max-w-sm">
+                Server may be down.
+                <button onClick={runHealthCheck} disabled={healthChecking} className="underline ml-1 disabled:opacity-50">
+                  {healthChecking ? 'Checking…' : 'Retry'}
+                </button>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ====== INSTRUCTIONS ====== */}
+      <Card>
+        <CardHeader>
+          <h3 className="font-semibold text-sm">How to connect</h3>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-4">
+            {/* Step 1 — Copy */}
+            <div className="flex items-start gap-3">
+              <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+              <div>
+                <p className="text-sm font-medium text-black">Copy your VPN link</p>
+                <p className="text-xs text-gray-500">Tap the button above to copy your personal VLESS link</p>
+              </div>
+            </div>
+
+            {/* Step 2 — Open app */}
+            <div className="flex items-start gap-3">
+              <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-black">Open {cfg.appName}</p>
+                <a
+                  href={cfg.appUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 mt-1 text-xs text-blue-600 hover:underline"
+                >
+                  <Download className="w-3 h-3" />
+                  {cfg.appStore === 'Download' ? 'Download here' : `Get on ${cfg.appStore}`}
+                </a>
+              </div>
+            </div>
+
+            {/* Step 3 — Import & connect */}
+            <div className="flex items-start gap-3">
+              <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
+              <div>
+                <p className="text-sm font-medium text-black">Import and connect</p>
+                <ol className="mt-1 flex flex-col gap-0.5">
+                  {cfg.steps.map((step: string, i: number) => (
+                    <li key={i} className="text-xs text-gray-500">{step}</li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+
+            {/* Routing tip — important for Russia users */}
+            {cfg.routingTip && (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800 ml-9">
+                <p className="font-semibold mb-0.5">💡 Important: Set routing to Global</p>
+                <p>{cfg.routingTip}</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ====== SETTINGS (collapsible) ====== */}
+      <button
+        onClick={() => setShowSettings(!showSettings)}
+        className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-gray-300 transition bg-white"
+      >
+        <span className="flex items-center gap-2 font-medium text-sm text-gray-700">
+          <Settings className="w-4 h-4 text-gray-400" />
+          Settings & diagnostics
+        </span>
+        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${showSettings ? 'rotate-90' : ''}`} />
+      </button>
+
+      {showSettings && (
+        <div className="flex flex-col gap-3">
+          {/* Usage stats */}
+          {stats && (
+            <Card>
+              <CardContent className="py-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Usage</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-lg font-bold text-black">{formatBytes(stats.total)}</p>
+                    <p className="text-xs text-gray-500">Data used</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-black">{formatExpiry(stats.expiryTime)}</p>
+                    <p className="text-xs text-gray-500">Expires</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Troubleshoot */}
-          <details className="group">
-            <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 transition select-none">
-              Having issues? ▸
-            </summary>
-            <div className="mt-3 flex flex-col gap-3">
-              {cfg.routingTip && (
-                <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
-                  <p className="font-semibold mb-0.5">Connected but sites still blocked?</p>
-                  <p>{cfg.routingTip}</p>
-                </div>
-              )}
-              {cfg.disconnectTip && (
-                <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
-                  <p className="font-semibold mb-0.5">VPN keeps disconnecting?</p>
-                  <p>{cfg.disconnectTip}</p>
-                </div>
-              )}
-              <div className="flex flex-col gap-2">
-                <Button onClick={handleRunDiagnostics} disabled={diagRunning} variant="secondary" size="sm">
+          <Card>
+            <CardContent className="py-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Troubleshoot</p>
+              <div className="flex flex-col gap-3">
+                {cfg.disconnectTip && (
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
+                    <p className="font-semibold mb-0.5">VPN keeps disconnecting?</p>
+                    <p>{cfg.disconnectTip}</p>
+                  </div>
+                )}
+                <Button onClick={handleRunDiagnostics} disabled={diagRunning} variant="secondary" size="sm" className="w-full">
                   {diagRunning
                     ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" /> Testing…</>
                     : <><Activity className="w-3 h-3 mr-1.5" /> Run connection test</>}
                 </Button>
                 {diagResult && (
                   <div className={`rounded-xl p-3 text-xs border ${
-                    diagResult.verdict === 'healthy' ? 'bg-green-50 border-green-200 text-green-800'
-                    : diagResult.verdict === 'degraded' ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    diagResult.xrayRunning ? 'bg-green-50 border-green-200 text-green-800'
                     : 'bg-red-50 border-red-200 text-red-800'
                   }`}>
                     <div className="flex items-center gap-1.5 font-semibold mb-0.5">
-                      {diagResult.verdict === 'healthy' ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-                      {diagResult.verdict === 'healthy' ? 'All good' : diagResult.verdict === 'degraded' ? 'Server degraded' : 'Server issue'}
+                      {diagResult.xrayRunning ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                      {diagResult.verdict}
                     </div>
-                    <p>{diagResult.suggestion}</p>
+                    {diagResult.suggestion && <p className="mt-1">{diagResult.suggestion}</p>}
                   </div>
                 )}
               </div>
-            </div>
-          </details>
+            </CardContent>
+          </Card>
 
+          {/* Admin — control panel link */}
+          {isAdmin && (
+            <a
+              href="https://194.76.217.4:2053/x7kQ9m/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-black transition bg-white"
+            >
+              <span className="flex items-center gap-2 font-medium text-sm">
+                <Shield className="w-4 h-4 text-gray-500" />
+                3X-UI Control Panel
+              </span>
+              <ExternalLink className="w-4 h-4 text-gray-400" />
+            </a>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }
 
@@ -360,6 +435,7 @@ export function DashboardPage() {
   const { firebaseUser, profile } = useAuth();
   const [orders, setOrders] = useState<VpnOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const isAdmin = profile?.role === 'admin';
 
   useEffect(() => {
     if (!firebaseUser) return;
@@ -378,10 +454,10 @@ export function DashboardPage() {
   const expired = isExpired(activeOrder?.expiresAt);
 
   return (
-    <main className="flex-1 max-w-2xl mx-auto px-4 sm:px-6 py-10">
+    <main className="flex-1 max-w-lg mx-auto px-4 sm:px-6 py-8">
 
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-black">
           {profile?.firstname ? `Hi, ${profile.firstname}` : 'Dashboard'}
         </h1>
@@ -472,15 +548,26 @@ export function DashboardPage() {
 
         {/* Quick links */}
         {!loading && (
-          <div className="grid sm:grid-cols-2 gap-3 pt-2">
-            <Link to="/plans" className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-black transition">
-              <span className="font-medium text-sm">Browse plans</span>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            </Link>
-            <Link to="/account" className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-black transition">
-              <span className="font-medium text-sm">Account settings</span>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            </Link>
+          <div className="flex flex-col gap-3 pt-1">
+            <div className="grid grid-cols-2 gap-3">
+              <Link to="/plans" className="flex items-center justify-between border border-gray-100 rounded-2xl px-4 py-3.5 hover:border-black transition">
+                <span className="font-medium text-sm">Plans</span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </Link>
+              <Link to="/account" className="flex items-center justify-between border border-gray-100 rounded-2xl px-4 py-3.5 hover:border-black transition">
+                <span className="font-medium text-sm">Account</span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </Link>
+            </div>
+            {isAdmin && (
+              <Link to="/admin" className="flex items-center justify-between border border-gray-100 rounded-2xl px-4 py-3.5 hover:border-black transition">
+                <span className="flex items-center gap-2 font-medium text-sm">
+                  <Shield className="w-4 h-4 text-gray-500" />
+                  Admin Dashboard
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </Link>
+            )}
           </div>
         )}
 

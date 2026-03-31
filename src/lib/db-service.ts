@@ -67,7 +67,7 @@ export async function getUser(uid: string): Promise<UserProfile | null> {
  */
 export async function createUser(
   uid: string,
-  data: { email: string; firstname: string; lastname: string; tel: string }
+  data: { email: string; firstname: string; lastname: string; tel: string; avatarUrl?: string }
 ): Promise<void> {
   const ts = now();
   await setDoc(doc(db, COLLECTIONS.USERS, uid), {
@@ -84,8 +84,18 @@ export async function createUser(
     last_login: ts,
     createdAt: ts,
     updatedAt: ts,
-    avatarUrl: null,
+    avatarUrl: data.avatarUrl || null,
     loginCount: 1,
+  });
+}
+
+/**
+ * Update last_login timestamp for returning users.
+ */
+export async function updateUserLogin(uid: string): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.USERS, uid), {
+    last_login: now(),
+    updatedAt: now(),
   });
 }
 

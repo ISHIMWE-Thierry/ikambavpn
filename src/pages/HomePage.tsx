@@ -1,6 +1,7 @@
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Shield, Lock, Zap, Globe, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { useAuth } from '../contexts/AuthContext';
 
 const features = [
   {
@@ -35,6 +36,13 @@ const highlights = [
 ];
 
 export function HomePage() {
+  const { firebaseUser, loading } = useAuth();
+
+  // Auto-redirect logged-in users to dashboard
+  if (!loading && firebaseUser) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return (
     <main className="flex-1">
       {/* Hero */}
