@@ -4,7 +4,6 @@ import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithRedirect,
-  getRedirectResult,
 } from 'firebase/auth';
 import { Shield, Loader2, Eye, EyeOff } from 'lucide-react';
 import { auth } from '../lib/firebase';
@@ -59,19 +58,6 @@ export function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  // Handle Google redirect result (fallback when popup is blocked)
-  useEffect(() => {
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result?.user) {
-          toast.success('Welcome back!');
-        }
-      })
-      .catch(() => {
-        /* no pending redirect */
-      });
-  }, []);
 
   // Redirect when signed in — single handler for all auth methods
   useEffect(() => {
@@ -188,6 +174,7 @@ export function SignInPage() {
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600 transition-colors"
               tabIndex={-1}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>

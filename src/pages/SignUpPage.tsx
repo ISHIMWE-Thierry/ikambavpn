@@ -5,7 +5,6 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithRedirect,
-  getRedirectResult,
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { Shield, Loader2, Eye, EyeOff } from 'lucide-react';
@@ -71,17 +70,6 @@ export function SignUpPage() {
 
   // Progressive disclosure: show more fields as user fills
   const step1Done = firstname.length > 1 && validateEmail(email);
-
-  // Handle Google redirect result
-  useEffect(() => {
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result?.user) {
-          toast.success('Account created!');
-        }
-      })
-      .catch(() => { /* no pending redirect */ });
-  }, []);
 
   // Redirect when signed in
   useEffect(() => {

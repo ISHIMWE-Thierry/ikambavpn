@@ -13,6 +13,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <App />
         <Toaster
           position="top-right"
+          containerStyle={{ zIndex: 99999 }}
           toastOptions={{
             style: {
               borderRadius: '12px',
@@ -20,6 +21,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               color: '#000',
               border: '1px solid #f3f4f6',
               fontSize: '14px',
+            },
+            ariaProps: {
+              role: 'status',
+              'aria-live': 'polite',
             },
           }}
         />
