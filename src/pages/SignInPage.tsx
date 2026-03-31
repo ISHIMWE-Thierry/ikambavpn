@@ -3,7 +3,6 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
-  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
 } from 'firebase/auth';
@@ -91,22 +90,11 @@ export function SignInPage() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      toast.success('Welcome back!');
-      // Keep loading — redirect useEffect navigates once AuthContext updates.
+      // Use redirect instead of popup — works better on custom domains + mobile
+      await signInWithRedirect(auth, provider);
+      // Page will reload after Google redirects back
     } catch (err: any) {
-      const code = err?.code;
-      // If popup was blocked, fall back to redirect
-      if (code === 'auth/popup-blocked' || code === 'auth/cancelled-popup-request') {
-        try {
-          const provider = new GoogleAuthProvider();
-          await signInWithRedirect(auth, provider);
-          return;
-        } catch {
-          /* redirect also failed */
-        }
-      }
-      setError(friendlyError(code));
+      setError(friendlyError(err?.code));
       setLoading(false);
     }
   };

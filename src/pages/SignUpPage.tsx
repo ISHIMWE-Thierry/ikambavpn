@@ -4,10 +4,11 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { Shield, Loader2, Eye, EyeOff, Check } from 'lucide-react';
+import { doc, setDoc } from 'firebase/firestore';
+import { Shield, Loader2, Eye, EyeOff } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { COLLECTIONS } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -71,6 +72,17 @@ export function SignUpPage() {
   // Progressive disclosure: show more fields as user fills
   const step1Done = firstname.length > 1 && validateEmail(email);
 
+  // Handle Google redirect result
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          toast.success('Account created!');
+        }
+      })
+      .catch(() => { /* no pending redirect */ });
+  }, []);
+
   // Redirect when signed in
   useEffect(() => {
     if (!authLoading && firebaseUser && !hasRedirectedRef.current) {
@@ -84,39 +96,10 @@ export function SignUpPage() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const fbUser = result.user;
-
-      if (!fbUser?.uid) throw new Error('Failed to sign in with Google.');
-
-      // Check if user doc already exists
-      const userDocRef = doc(db, COLLECTIONS.USERS, fbUser.uid);
-      const existing = await getDoc(userDocRef);
-
-      if (!existing.exists()) {
-        const fullName = fbUser.displayName || 'User';
-        const ts = new Date().toISOString();
-        await setDoc(userDocRef, {
-          email: fbUser.email || '',
-          firstname: fullName.split(' ')[0] || fullName,
-          lastname: fullName.split(' ').slice(1).join(' ') || '',
-          tel: fbUser.phoneNumber || '',
-          displayName: fullName,
-          role: 'user',
-          emailVerified: fbUser.emailVerified ? 1 : 0,
-          needsOtpVerification: false,
-          paymentstatus: 'False',
-          accountStatus: 'active',
-          last_login: ts,
-          createdAt: ts,
-          updatedAt: ts,
-          avatarUrl: fbUser.photoURL || null,
-          loginCount: 1,
-        });
-      }
-
-      toast.success('Account created!');
-      // Keep loading — redirect useEffect navigates.
+      // Use redirect instead of popup — works better on custom domains + mobile
+      await signInWithRedirect(auth, provider);
+      // Page will reload after Google redirects back
+      // AuthContext.onAuthStateChanged will handle Firestore user doc creation
     } catch (err: any) {
       setError(friendlyError(err?.code));
       setLoading(false);
