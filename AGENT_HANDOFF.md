@@ -82,12 +82,10 @@ ikambavpn-1/
 ## Deploy Pipeline
 
 ### Frontend
-```bash
-cd /Users/ishimwethierry/Downloads/ikambavpn-1
-npm run build
-firebase deploy --only hosting
-```
-Firebase project: `ikamba-1c669`
+Deployed via **Railway** (NOT Firebase Hosting).
+- **Domain:** `https://ikambavpn.com`
+- Railway auto-deploys from GitHub `main` branch, or push manually via Railway CLI.
+- Firebase Auth authorized domains must include `ikambavpn.com`.
 
 ### Backend
 ```bash
@@ -250,5 +248,7 @@ Last commit: `fix: return 200 (not 404) when stats client not found`
 ## Firebase Project
 - **Project ID:** `ikamba-1c669`
 - **Auth domain:** `ikamba-1c669.firebaseapp.com`
-- **Hosting URL:** `https://ikamba-1c669.web.app`
-- Shared with Blink-1 (Ikamba Remit) — same Firebase project, separate hosting sites
+- **Frontend URL:** `https://ikambavpn.com` (Railway)
+- **Legacy Hosting URL:** `https://ikamba-1c669.web.app` (Firebase Hosting — no longer primary)
+- Shared with Blink-1 (Ikamba Remit) — same Firebase project, separate apps
+- **Authorized domains for Google sign-in:** `ikambavpn.com`, `ikamba-1c669.web.app`, `ikamba-1c669.firebaseapp.com`, `localhost`
