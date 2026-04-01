@@ -22,6 +22,7 @@ import {
   getSubscriptionUrl,
   getV2RayTunDeepLink,
   buildVlessLink,
+  buildXhttpLink,
   GB,
   daysFromNow,
   resetClientTraffic,
@@ -163,6 +164,27 @@ xuiPublicRouter.get("/stats/:email", async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * GET /xui-public/xhttp-link/:email
+ * Returns the raw VLESS+XHTTP+REALITY link for a user.
+ * Used by the dashboard "Copy backup link" button.
+ */
+xuiPublicRouter.get("/xhttp-link/:email", async (req: Request, res: Response) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const entry = await getCachedSubscription(email);
+    if (!entry) return res.status(404).json({ ok: false });
+
+    // The cached vlessLink is "tcpLink\nxhttpLink" — extract the XHTTP part
+    const xhttpLink = entry.vlessLink.split("\n")[1];
+    if (!xhttpLink) return res.status(404).json({ ok: false, error: "XHTTP link not available" });
+
+    return res.json({ ok: true, link: xhttpLink });
+  } catch (err: any) {
+    return res.status(503).json({ ok: false, error: err.message });
   }
 });
 

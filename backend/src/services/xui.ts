@@ -32,6 +32,11 @@ const REALITY_SNI = "www.microsoft.com";
 const REALITY_FINGERPRINT = "chrome";
 const VLESS_PORT = 443;
 
+// XHTTP+REALITY (anti-DPI fallback) inbound
+const XHTTP_PORT = 8443;
+const XHTTP_PATH = "/ikamba";
+const XHTTP_INBOUND_ID = 2;
+
 // HTTPS agent that tolerates IP-based or short-lived certs
 const tlsAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -94,6 +99,8 @@ export interface XuiCreateClientOptions {
   limitIp?: number;
   /** Telegram user ID for notifications. Default empty. */
   tgId?: string;
+  /** Force a specific UUID (used when mirroring a client to a second inbound). */
+  id?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -153,7 +160,9 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
     if (!clientId) return null;
 
     const remark = `IkambaVPN-${email.split("@")[0]}`;
-    const vlessLink = buildVlessLink(clientId, remark);
+    const tcpLink = buildVlessLink(clientId, remark);
+    const xhttpLink = buildXhttpLink(clientId, remark);
+    const vlessLink = `${tcpLink}\n${xhttpLink}`;
 
     // Build user info
     let userInfo = "upload=0; download=0; total=0; expire=0";
@@ -266,7 +275,7 @@ export async function addClient(
   opts: XuiCreateClientOptions,
   inboundId: number = DEFAULT_INBOUND_ID
 ): Promise<{ id: string; subId: string; email: string }> {
-  const clientId = randomUUID();
+  const clientId = opts.id ?? randomUUID();
   const subId = genSubId();
 
   const client: XuiClient = {
@@ -453,6 +462,25 @@ export function buildVlessLink(clientId: string, remark: string): string {
 }
 
 /**
+ * Build a VLESS+XHTTP+REALITY link for the anti-DPI fallback inbound (port 8443).
+ * Same REALITY keys as the TCP inbound — just a different transport.
+ */
+export function buildXhttpLink(clientId: string, remark: string): string {
+  const query = [
+    `type=xhttp`,
+    `security=reality`,
+    `pbk=${REALITY_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=${REALITY_SNI}`,
+    `sid=${REALITY_SHORT_ID}`,
+    `path=${XHTTP_PATH}`,
+    `mode=auto`,
+  ].join("&");
+
+  return `vless://${clientId}@${VPS_IP}:${XHTTP_PORT}?${query}#${encodeURIComponent(remark + "-XHTTP")}`;
+}
+
+/**
  * Build the subscription URL for a client (kept as fallback).
  */
 export function getSubscriptionUrl(subId: string): string {
@@ -551,8 +579,17 @@ export async function provisionUser(
       email,
       totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
       expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
-      limitIp: options?.maxConnections ?? 0, // 0 = unlimited — prevents disconnects under heavy bandwidth
+      limitIp: options?.maxConnections ?? 0,
     });
+
+    // Mirror to XHTTP inbound (same UUID, .x@ email suffix to avoid 3X-UI duplicate rejection)
+    await addClient({
+      id: clientId,
+      email: email.replace("@", ".x@"),
+      totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
+      expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
+      limitIp: options?.maxConnections ?? 0,
+    }, XHTTP_INBOUND_ID).catch(() => { /* non-fatal: XHTTP inbound may not exist yet */ });
 
     const links = getAllClientLinks(clientId, subId, email);
 
