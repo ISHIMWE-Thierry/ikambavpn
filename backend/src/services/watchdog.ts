@@ -193,21 +193,14 @@ async function enforceAntiDisconnectPolicy(): Promise<boolean> {
       return true; // Already correct — no changes needed
     }
 
-    // Write the fixed config back
+    // Write the fixed config back (Xray reads this on next restart — no need to force restart)
     await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
     console.log("[watchdog] ✅ Anti-disconnect policy enforced in config file");
 
-    // Trigger Xray restart so it picks up the changes
-    try {
-      const cookie = await getSession();
-      await fetch(`${PANEL_URL}/panel/api/server/restartXrayService`, {
-        method: "POST",
-        headers: { Cookie: cookie, Accept: "application/json" },
-      });
-      console.log("[watchdog] ✅ Xray restart triggered after policy fix");
-    } catch {
-      // Non-fatal — config will be picked up on next natural restart
-    }
+    // NOTE: We do NOT restart Xray here. Restarting causes 3X-UI to regenerate
+    // the config from its DB template, which creates an infinite restart loop.
+    // The policy in the DB template is already correct. The config file fix
+    // is a safety net for when 3X-UI regenerates with wrong values.
 
     return true;
   } catch (err: any) {
