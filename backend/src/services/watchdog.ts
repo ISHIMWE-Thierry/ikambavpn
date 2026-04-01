@@ -5,9 +5,18 @@
  * 1. Re-enable any clients that got auto-disabled by 3X-UI (traffic limit, IP limit, etc.)
  * 2. Fix any clients that still have limitIp > 0 (set to 0 = unlimited)
  * 3. Restart Xray if it's not running
+ * 4. Enforce anti-disconnect Xray policy (connIdle=0, uplinkOnly=0, downlinkOnly=0)
  *
  * This ensures VPN connections NEVER get permanently dropped due to 3X-UI's
  * aggressive enforcement. The VPN should persist even under heavy bandwidth usage.
+ *
+ * Anti-disconnect settings explained:
+ * - connIdle=0: Never kill idle connections (YouTube pauses, background apps)
+ * - uplinkOnly=0: Never kill download-only streams (video streaming, large downloads)
+ * - downlinkOnly=0: Never kill upload-only streams (file uploads, VoIP)
+ * - bufferSize=0: Unlimited per-connection buffer (smoother streaming)
+ * - TCP keepalive 30s: Prevent NAT/middlebox killing idle TCP connections
+ * - BBR congestion: Better throughput on lossy networks
  */
 
 import {
@@ -22,6 +31,37 @@ const PANEL_URL = process.env.XPANEL_URL || "https://194.76.217.4:2053";
 const PANEL_USER = process.env.XPANEL_USER || "ikamba";
 const PANEL_PASS = process.env.XPANEL_PASS || "";
 const DEFAULT_INBOUND_ID = Number(process.env.XPANEL_INBOUND_ID || "1");
+
+/** Anti-disconnect policy that must be enforced on every watchdog run */
+const REQUIRED_POLICY = {
+  levels: {
+    "0": {
+      handshake: 10,
+      connIdle: 0,
+      uplinkOnly: 0,
+      downlinkOnly: 0,
+      bufferSize: 0,
+      statsUserUplink: true,
+      statsUserDownlink: true,
+    },
+  },
+  system: {
+    statsInboundUplink: true,
+    statsInboundDownlink: true,
+    statsOutboundUplink: true,
+    statsOutboundDownlink: true,
+  },
+};
+
+/** Sockopt settings for anti-disconnect on all inbounds/outbounds */
+const REQUIRED_SOCKOPT = {
+  tcpKeepAliveIdle: 30,
+  tcpKeepAliveInterval: 10,
+  tcpKeepAliveProbes: 9,
+  tcpUserTimeout: 30000,
+  tcpcongestion: "bbr",
+  tcpFastOpen: true,
+};
 
 // Suppress TLS errors for IP-based panel cert
 if (PANEL_URL.startsWith("https://")) {
@@ -59,7 +99,121 @@ interface WatchdogResult {
   clientsLimitFixed: number;
   xrayState: string;
   xrayRestarted: boolean;
+  policyEnforced: boolean;
   errors: string[];
+}
+
+/**
+ * Enforce anti-disconnect policy by reading/writing the Xray config file directly.
+ * This is more reliable than the panel API (which may return empty responses).
+ * The config file at /usr/local/x-ui/bin/config.json is read by Xray on every restart.
+ */
+async function enforceAntiDisconnectPolicy(): Promise<boolean> {
+  try {
+    const fs = await import("fs/promises");
+    const CONFIG_PATH = "/usr/local/x-ui/bin/config.json";
+
+    let configStr: string;
+    try {
+      configStr = await fs.readFile(CONFIG_PATH, "utf-8");
+    } catch {
+      // Not running on VPS or file not accessible — skip silently
+      return true;
+    }
+
+    const config = JSON.parse(configStr);
+    let changed = false;
+
+    // ── Enforce policy.levels.0 ──
+    if (!config.policy) config.policy = {};
+    if (!config.policy.levels) config.policy.levels = {};
+    if (!config.policy.levels["0"]) config.policy.levels["0"] = {};
+
+    const level0 = config.policy.levels["0"];
+    for (const [key, val] of Object.entries(REQUIRED_POLICY.levels["0"])) {
+      if (level0[key] !== val) {
+        console.log(`[watchdog] Fixing policy.levels.0.${key}: ${level0[key]} → ${val}`);
+        level0[key] = val;
+        changed = true;
+      }
+    }
+
+    // ── Enforce policy.system ──
+    if (!config.policy.system) config.policy.system = {};
+    for (const [key, val] of Object.entries(REQUIRED_POLICY.system)) {
+      if (config.policy.system[key] !== val) {
+        config.policy.system[key] = val;
+        changed = true;
+      }
+    }
+
+    // ── Enforce sockopt on outbounds ──
+    for (const outbound of config.outbounds || []) {
+      if (outbound.tag === "direct") {
+        if (!outbound.streamSettings) outbound.streamSettings = {};
+        if (!outbound.streamSettings.sockopt) outbound.streamSettings.sockopt = {};
+        const sockopt = outbound.streamSettings.sockopt;
+        for (const [key, val] of Object.entries(REQUIRED_SOCKOPT)) {
+          if (sockopt[key] !== val) {
+            sockopt[key] = val;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    // ── Enforce sockopt + sniffing on inbounds (skip API) ──
+    for (const inbound of config.inbounds || []) {
+      if (inbound.tag === "api" || inbound.protocol === "dokodemo-door") continue;
+      if (!inbound.streamSettings) inbound.streamSettings = {};
+      if (!inbound.streamSettings.sockopt) inbound.streamSettings.sockopt = {};
+      const sockopt = inbound.streamSettings.sockopt;
+      for (const [key, val] of Object.entries(REQUIRED_SOCKOPT)) {
+        if (sockopt[key] !== val) {
+          sockopt[key] = val;
+          changed = true;
+        }
+      }
+
+      // Ensure sniffing includes quic + fakedns
+      if (!inbound.sniffing) inbound.sniffing = {};
+      inbound.sniffing.enabled = true;
+      inbound.sniffing.routeOnly = true;
+      const dest: string[] = inbound.sniffing.destOverride || [];
+      for (const proto of ["http", "tls", "quic", "fakedns"]) {
+        if (!dest.includes(proto)) {
+          dest.push(proto);
+          changed = true;
+        }
+      }
+      inbound.sniffing.destOverride = dest;
+    }
+
+    if (!changed) {
+      return true; // Already correct — no changes needed
+    }
+
+    // Write the fixed config back
+    await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+    console.log("[watchdog] ✅ Anti-disconnect policy enforced in config file");
+
+    // Trigger Xray restart so it picks up the changes
+    try {
+      const cookie = await getSession();
+      await fetch(`${PANEL_URL}/panel/api/server/restartXrayService`, {
+        method: "POST",
+        headers: { Cookie: cookie, Accept: "application/json" },
+      });
+      console.log("[watchdog] ✅ Xray restart triggered after policy fix");
+    } catch {
+      // Non-fatal — config will be picked up on next natural restart
+    }
+
+    return true;
+  } catch (err: any) {
+    console.error("[watchdog] Policy enforcement error:", err.message);
+    return false;
+  }
 }
 
 /**
@@ -74,10 +228,18 @@ export async function runWatchdog(): Promise<WatchdogResult> {
     clientsLimitFixed: 0,
     xrayState: "unknown",
     xrayRestarted: false,
+    policyEnforced: false,
     errors: [],
   };
 
   try {
+    // ── Step 0: Enforce anti-disconnect policy ──
+    try {
+      result.policyEnforced = await enforceAntiDisconnectPolicy();
+    } catch (err: any) {
+      result.errors.push(`Policy enforcement failed: ${err.message}`);
+    }
+
     // ── Step 1: Check Xray status ──
     try {
       const status = await getSystemStatus();
@@ -211,7 +373,7 @@ export async function runWatchdog(): Promise<WatchdogResult> {
     result.errors.push(`Watchdog failed: ${err.message}`);
   }
 
-  if (result.clientsReEnabled > 0 || result.clientsLimitFixed > 0 || result.xrayRestarted) {
+  if (result.clientsReEnabled > 0 || result.clientsLimitFixed > 0 || result.xrayRestarted || !result.policyEnforced) {
     console.log(`[watchdog] Summary:`, JSON.stringify(result));
   }
 
