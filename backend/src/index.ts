@@ -12,6 +12,7 @@ import { adminRouter } from "./routes/admin";
 import { xuiRouter, xuiPublicRouter } from "./routes/xui";
 import { initFirebase } from "./services/firebase";
 import { authMiddleware } from "./middleware/auth";
+import { startWatchdog } from "./services/watchdog";
 
 dotenv.config();
 
@@ -36,6 +37,9 @@ app.use("/xui-public", xuiPublicRouter);  // No auth — V2RayTun calls this dir
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
   console.log(`API running on :${port}`);
+
+  // Start VPN watchdog — re-enables disabled clients, fixes limitIp, restarts Xray
+  startWatchdog();
 
   // Startup health check — verify 3X-UI panel is reachable
   const panelUrl = process.env.XPANEL_URL || "";

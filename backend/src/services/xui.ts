@@ -90,7 +90,7 @@ export interface XuiCreateClientOptions {
   totalGB?: number;
   /** Expiry as epoch ms. 0 = never. Use daysFromNow() helper. */
   expiryTime?: number;
-  /** Max concurrent connections. Default 3. */
+  /** Max concurrent IPs. 0 = unlimited (recommended to prevent VPN disconnects). */
   limitIp?: number;
   /** Telegram user ID for notifications. Default empty. */
   tgId?: string;
@@ -277,7 +277,7 @@ export async function addClient(
     totalGB: opts.totalGB ?? 0,
     expiryTime: opts.expiryTime ?? 0,
     subId,
-    limitIp: opts.limitIp ?? 3,
+    limitIp: opts.limitIp ?? 0, // 0 = unlimited IPs — prevents VPN disconnects under heavy use
     tgId: opts.tgId ?? "",
     reset: 0,
   };
@@ -551,7 +551,7 @@ export async function provisionUser(
       email,
       totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
       expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
-      limitIp: options?.maxConnections ?? 3,
+      limitIp: options?.maxConnections ?? 0, // 0 = unlimited — prevents disconnects under heavy bandwidth
     });
 
     const links = getAllClientLinks(clientId, subId, email);
