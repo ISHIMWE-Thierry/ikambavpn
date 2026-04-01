@@ -101,6 +101,8 @@ export interface XuiCreateClientOptions {
   tgId?: string;
   /** Force a specific UUID (used when mirroring a client to a second inbound). */
   id?: string;
+  /** VLESS flow. Default "xtls-rprx-vision" for TCP, must be "" for XHTTP. */
+  flow?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -282,7 +284,7 @@ export async function addClient(
     id: clientId,
     email: opts.email,
     enable: true,
-    flow: "xtls-rprx-vision",
+    flow: opts.flow !== undefined ? opts.flow : "xtls-rprx-vision",
     totalGB: opts.totalGB ?? 0,
     expiryTime: opts.expiryTime ?? 0,
     subId,
@@ -582,10 +584,11 @@ export async function provisionUser(
       limitIp: options?.maxConnections ?? 0,
     });
 
-    // Mirror to XHTTP inbound (same UUID, .x@ email suffix to avoid 3X-UI duplicate rejection)
+    // Mirror to XHTTP inbound — same UUID, flow must be "" (not xtls-rprx-vision)
     await addClient({
       id: clientId,
       email: email.replace("@", ".x@"),
+      flow: "",
       totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
       expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
       limitIp: options?.maxConnections ?? 0,
