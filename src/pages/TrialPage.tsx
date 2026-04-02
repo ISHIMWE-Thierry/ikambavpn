@@ -81,11 +81,11 @@ export function TrialPage() {
         });
       }
 
-      // 2. Provision VLESS+REALITY account in the same 3X-UI panel as the dashboard
+      // 2. Provision VLESS+REALITY account — 1 hour expiry (1/24 of a day)
       await provisionXuiAccount({
         email,
         trafficLimitGB: 0,
-        expiryDays: 0,
+        expiryDays: 1 / 24,
         maxConnections: 2,
       });
 

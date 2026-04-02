@@ -249,43 +249,124 @@ export function DashboardPage() {
             </div>
           </div>
 
-          {/* Power orb */}
-          <div className="flex flex-col items-center mb-8">
-            <motion.button
-              whileHover={!activated && canActivate ? { scale: 1.04 } : {}}
-              whileTap={!activated && canActivate ? { scale: 0.96 } : {}}
-              onClick={!activated && !activating && canActivate ? handleActivate : undefined}
-              className={`relative w-32 h-32 rounded-full flex items-center justify-center
-                shadow-2xl transition-all duration-500 ${
-                activated && !activating
-                  ? isConnected
-                    ? 'bg-black shadow-black/30 cursor-default'
-                    : 'bg-gray-800 shadow-gray-800/20 cursor-default'
-                  : activating
-                  ? 'bg-gray-200 cursor-default'
-                  : canActivate
-                  ? 'bg-gray-900 cursor-pointer hover:bg-black shadow-gray-900/40'
-                  : 'bg-gray-200 cursor-default shadow-none'
-              }`}
-            >
-              {activating ? (
-                <RefreshCw className="w-10 h-10 text-white animate-spin" />
-              ) : (
-                <Power className={`w-10 h-10 transition-colors duration-500 ${
-                  activated ? 'text-white' : canActivate ? 'text-white/70' : 'text-gray-400'
-                }`} />
-              )}
-            </motion.button>
+          {/* Power orb → app download buttons after activation */}
+          <AnimatePresence mode="wait">
+            {activated ? (
+              <motion.div
+                key="app-buttons"
+                initial={{ opacity: 0, scale: 0.92, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92 }}
+                transition={{ duration: 0.4, ease: 'easeOut' }}
+                className="w-full mb-8"
+              >
+                <p className="text-center text-xs text-gray-400 mb-3 font-medium uppercase tracking-wide">
+                  Download the app to connect
+                </p>
+                <div className="flex flex-col gap-2">
+                  {/* Primary app for detected device */}
+                  <a
+                    href={cfg.appUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 bg-black text-white rounded-2xl px-5 py-3.5
+                      hover:bg-gray-800 active:scale-[0.97] transition-all duration-150"
+                  >
+                    {cfg.appStore === 'App Store' ? (
+                      <svg className="w-6 h-6 shrink-0" viewBox="0 0 814 1000" fill="currentColor">
+                        <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-43.3-150.3-113c-52.4-77.7-96.2-196.9-96.2-311.2 0-205.5 132.4-314.1 261.8-314.1 65.2 0 119.2 43.3 159.8 43.3 38.7 0 99.7-46.5 169.2-46.5 24.2-.2 80.3 4.4 126.7 51.5zM451.3 126.5c-25.2 29.9-67.7 52.1-108.2 52.1-1.3 0-2.6 0-3.9-.2 0-38.7 19.2-76.7 43.3-101.6 29.2-31.5 76.5-55.9 115-57.2 1 41.5-17.5 82.9-46.2 106.9z"/>
+                      </svg>
+                    ) : cfg.appStore === 'Google Play' ? (
+                      <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3.18 23.76A2 2 0 0 1 2 22V2a2 2 0 0 1 1.18-1.76l11.51 11.76zM16.9 8.12l-2.6 2.66L5.06.34l11.84 7.78zM21.14 10.4a2 2 0 0 1 0 3.2l-2.72 1.79-2.93-3L18.42 9.6zM5.06 23.66l9.24-10.1 2.6 2.66L5.06 23.66z"/>
+                      </svg>
+                    ) : (
+                      <Download className="w-6 h-6 shrink-0" />
+                    )}
+                    <div className="flex flex-col leading-none">
+                      <span className="text-[10px] opacity-60 mb-0.5">
+                        {cfg.appStore === 'App Store' ? 'Download on the' : cfg.appStore === 'Google Play' ? 'Get it on' : 'Download free on'}
+                      </span>
+                      <span className="text-sm font-semibold">{cfg.appStore === 'Download' ? 'GitHub (Hiddify)' : cfg.appStore}</span>
+                    </div>
+                    <ExternalLink className="w-4 h-4 ml-auto opacity-40" />
+                  </a>
 
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-              className="mt-3 text-sm text-gray-500 font-medium"
-            >
-              {activating ? 'Activating…' : activated ? (isConnected ? 'Connected' : 'Ready') : canActivate ? 'Tap to activate' : 'No active plan'}
-            </motion.p>
-          </div>
+                  {/* Secondary app if on iOS/Mac — also offer Android option as info */}
+                  {(device === 'ios' || device === 'mac') && (
+                    <motion.a
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.12 }}
+                      href="https://play.google.com/store/apps/details?id=com.v2ray.ang"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 border border-gray-100 bg-gray-50 text-gray-700
+                        rounded-2xl px-5 py-3 hover:bg-gray-100 active:scale-[0.97] transition-all duration-150"
+                    >
+                      <svg className="w-5 h-5 shrink-0 text-gray-500" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3.18 23.76A2 2 0 0 1 2 22V2a2 2 0 0 1 1.18-1.76l11.51 11.76zM16.9 8.12l-2.6 2.66L5.06.34l11.84 7.78zM21.14 10.4a2 2 0 0 1 0 3.2l-2.72 1.79-2.93-3L18.42 9.6zM5.06 23.66l9.24-10.1 2.6 2.66L5.06 23.66z"/>
+                      </svg>
+                      <span className="text-xs text-gray-500">Also on Android — V2RayNG on Google Play</span>
+                      <ExternalLink className="w-3.5 h-3.5 ml-auto opacity-30" />
+                    </motion.a>
+                  )}
+                  {device === 'android' && (
+                    <motion.a
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.12 }}
+                      href="https://apps.apple.com/app/id6476628951"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 border border-gray-100 bg-gray-50 text-gray-700
+                        rounded-2xl px-5 py-3 hover:bg-gray-100 active:scale-[0.97] transition-all duration-150"
+                    >
+                      <svg className="w-5 h-5 shrink-0 text-gray-500" viewBox="0 0 814 1000" fill="currentColor">
+                        <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-43.3-150.3-113c-52.4-77.7-96.2-196.9-96.2-311.2 0-205.5 132.4-314.1 261.8-314.1 65.2 0 119.2 43.3 159.8 43.3 38.7 0 99.7-46.5 169.2-46.5 24.2-.2 80.3 4.4 126.7 51.5zM451.3 126.5c-25.2 29.9-67.7 52.1-108.2 52.1-1.3 0-2.6 0-3.9-.2 0-38.7 19.2-76.7 43.3-101.6 29.2-31.5 76.5-55.9 115-57.2 1 41.5-17.5 82.9-46.2 106.9z"/>
+                      </svg>
+                      <span className="text-xs text-gray-500">Also on iPhone/Mac — V2RayTun on App Store</span>
+                      <ExternalLink className="w-3.5 h-3.5 ml-auto opacity-30" />
+                    </motion.a>
+                  )}
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="orb"
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.92 }}
+                transition={{ duration: 0.3 }}
+                className="flex flex-col items-center mb-8"
+              >
+                <motion.button
+                  whileHover={!activating && canActivate ? { scale: 1.04 } : {}}
+                  whileTap={!activating && canActivate ? { scale: 0.96 } : {}}
+                  onClick={!activating && canActivate ? handleActivate : undefined}
+                  className={`relative w-32 h-32 rounded-full flex items-center justify-center
+                    shadow-2xl transition-all duration-500 ${
+                    activating
+                      ? 'bg-gray-200 cursor-default'
+                      : canActivate
+                      ? 'bg-gray-900 cursor-pointer hover:bg-black shadow-gray-900/40'
+                      : 'bg-gray-200 cursor-default shadow-none'
+                  }`}
+                >
+                  {activating ? (
+                    <RefreshCw className="w-10 h-10 text-white animate-spin" />
+                  ) : (
+                    <Power className={`w-10 h-10 transition-colors duration-500 ${
+                      canActivate ? 'text-white/70' : 'text-gray-400'
+                    }`} />
+                  )}
+                </motion.button>
+                <p className="mt-3 text-sm text-gray-500 font-medium">
+                  {activating ? 'Activating…' : canActivate ? 'Tap to activate' : 'No active plan'}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Activation error */}
           {activateError && (
