@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, RefreshCw } from 'lucide-react';
 import { getAllOrders, updateOrderStatus } from '../../lib/db-service';
 import { notifyUserServiceActivated, notifyUserOrderCancelled } from '../../lib/email-service';
-import { findOrCreateAccount, setExpiry } from '../../lib/vpnresellers-api';
+import { provisionXuiAccount } from '../../lib/xui-api';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
@@ -48,38 +48,28 @@ function ActivateForm({ order, onDone }: ActivateFormProps) {
     if (!order.userEmail) { toast.error('Order has no user email.'); return; }
     setLoading(true);
     try {
-      // Find or create VPNresellers account for this user
-      const { account, password, isNew } = await findOrCreateAccount(order.userEmail);
-
-      // Set expiry based on plan duration
-      await setExpiry(account.id, addDays(expiryDays));
-
-      const creds = {
-        username: account.username,
-        password: isNew ? password : undefined,
-        wgIp: account.wg_ip,
-        wgPrivateKey: account.wg_private_key,
-        wgPublicKey: account.wg_public_key,
-        vpnrAccountId: account.id,
-        ...(isNew && password ? { notes: `Password: ${password}` } : {}),
-      };
+      // Provision VLESS+REALITY account in the same 3X-UI panel as the dashboard
+      await provisionXuiAccount({
+        email: order.userEmail,
+        trafficLimitGB: 0,
+        expiryDays,
+        maxConnections: 2,
+      });
 
       await updateOrderStatus(order.id, 'active', {
-        credentials: creds,
         activatedAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + expiryDays * 86_400_000).toISOString(),
       });
 
+      // Email tells user to go to dashboard to copy their VPN link
       notifyUserServiceActivated({
         userEmail: order.userEmail,
         userName: order.userName,
         planName: order.planName,
         planDuration: order.planDuration,
-        username: account.username,
-        password: isNew ? password : undefined,
       }).catch(() => {});
 
-      toast.success('Order activated — credentials sent to user.');
+      toast.success('Order activated — user notified to check their dashboard.');
       onDone();
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Failed to activate order.');
@@ -102,7 +92,7 @@ function ActivateForm({ order, onDone }: ActivateFormProps) {
 
   return (
     <div className="mt-4 border-t border-gray-100 pt-4 flex flex-col gap-3">
-      <p className="text-sm font-medium">Activate via VPNresellers</p>
+      <p className="text-sm font-medium">Activate VPN access</p>
 
       <div className="grid grid-cols-2 gap-2">
         {EXPIRY_OPTIONS.map((o) => (
