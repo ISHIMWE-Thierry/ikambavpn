@@ -13,6 +13,7 @@ interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   profile: UserProfile | null;
   loading: boolean;
+  avatarDataUrl: string | null;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -21,9 +22,33 @@ const AuthContext = createContext<AuthContextType>({
   firebaseUser: null,
   profile: null,
   loading: true,
+  avatarDataUrl: null,
   signOut: async () => {},
   refreshProfile: async () => {},
 });
+
+function avatarCacheKey(uid: string) { return `ikamba_avatar_${uid}`; }
+
+async function fetchAndCacheAvatar(uid: string, url: string): Promise<string | null> {
+  try {
+    const cached = localStorage.getItem(avatarCacheKey(uid));
+    if (cached) return cached;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    }).then((dataUrl) => {
+      if (dataUrl) localStorage.setItem(avatarCacheKey(uid), dataUrl as string);
+      return dataUrl as string | null;
+    });
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Sync a Firebase user to a Firestore profile document.
@@ -64,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
     // Process any pending Google redirect result (fire-and-forget).
@@ -83,8 +109,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         const prof = await syncProfile(user);
         setProfile(prof);
+        // Load avatar from cache or fetch + cache it
+        const avatarUrl = prof?.avatarUrl || user.photoURL;
+        if (avatarUrl) {
+          // Serve from cache immediately if available
+          const cached = localStorage.getItem(avatarCacheKey(user.uid));
+          if (cached) {
+            setAvatarDataUrl(cached);
+          } else {
+            fetchAndCacheAvatar(user.uid, avatarUrl).then((dataUrl) => {
+              if (dataUrl) setAvatarDataUrl(dataUrl);
+            });
+          }
+        }
       } else {
         setProfile(null);
+        setAvatarDataUrl(null);
       }
 
       setLoading(false);
@@ -96,17 +136,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     await firebaseSignOut(auth);
     setProfile(null);
+    setAvatarDataUrl(null);
   };
 
   const refreshProfile = async () => {
     if (firebaseUser) {
       const prof = await getUser(firebaseUser.uid);
       setProfile(prof);
+      const avatarUrl = prof?.avatarUrl || firebaseUser.photoURL;
+      if (avatarUrl) {
+        // Clear old cache and re-fetch in case avatar changed
+        localStorage.removeItem(avatarCacheKey(firebaseUser.uid));
+        fetchAndCacheAvatar(firebaseUser.uid, avatarUrl).then((dataUrl) => {
+          if (dataUrl) setAvatarDataUrl(dataUrl);
+        });
+      }
     }
   };
 
   return (
-    <AuthContext.Provider value={{ firebaseUser, profile, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ firebaseUser, profile, loading, avatarDataUrl, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -79,7 +79,7 @@ const card: Variants = {
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export function DashboardPage() {
-  const { firebaseUser, profile } = useAuth();
+  const { firebaseUser, profile, avatarDataUrl } = useAuth();
 
   // VPN state
   const [activating, setActivating]   = useState(false);
@@ -211,9 +211,11 @@ export function DashboardPage() {
             <p className="text-gray-900 text-sm font-semibold mt-0.5 truncate max-w-[220px]">{firebaseUser?.email}</p>
           </div>
           <Link to="/account">
-            <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center
-              text-gray-700 text-sm font-bold hover:bg-gray-300 transition-colors">
-              {initials}
+            <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center
+              text-gray-700 text-sm font-bold hover:opacity-80 transition-opacity ring-2 ring-white">
+              {avatarDataUrl
+                ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
+                : initials}
             </div>
           </Link>
         </motion.div>

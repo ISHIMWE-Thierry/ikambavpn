@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from '../components/ui/card';
 import toast from 'react-hot-toast';
 
 export function AccountPage() {
-  const { firebaseUser, profile } = useAuth();
+  const { firebaseUser, profile, avatarDataUrl } = useAuth();
 
   const [firstname, setFirstname] = useState(profile?.firstname || '');
   const [lastname, setLastname] = useState(profile?.lastname || '');
@@ -67,9 +67,27 @@ export function AccountPage() {
     }
   };
 
+  const initials = (profile?.firstname?.[0] ?? firebaseUser?.email?.[0] ?? '?').toUpperCase();
+  const displayName = profile?.firstname
+    ? `${profile.firstname} ${profile.lastname || ''}`.trim()
+    : firebaseUser?.email || '';
+
   return (
     <main className="flex-1 max-w-2xl mx-auto px-4 sm:px-6 py-10">
-      <h1 className="text-2xl font-bold mb-8">Account settings</h1>
+      {/* Avatar header */}
+      <div className="flex items-center gap-4 mb-8">
+        <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-200 flex items-center
+          justify-center text-gray-600 text-xl font-bold shrink-0 ring-4 ring-white shadow-sm">
+          {avatarDataUrl
+            ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
+            : initials}
+        </div>
+        <div>
+          <p className="text-lg font-bold text-gray-900">{displayName}</p>
+          <p className="text-sm text-gray-400">{firebaseUser?.email}</p>
+          {profile?.tel && <p className="text-sm text-gray-500 mt-0.5">{profile.tel}</p>}
+        </div>
+      </div>
 
       <div className="flex flex-col gap-6">
         {/* Profile */}
