@@ -130,12 +130,24 @@ export function PlansPage() {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="sm:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory
-          px-[calc(50vw-144px)] pb-6 no-scrollbar"
-        style={{ WebkitOverflowScrolling: 'touch' }}
+        className="sm:hidden no-scrollbar"
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          flexWrap: 'nowrap',
+          gap: '16px',
+          overflowX: 'scroll',
+          overflowY: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          scrollSnapType: 'x mandatory',
+          paddingLeft: 'calc(50vw - 144px)',
+          paddingRight: 'calc(50vw - 144px)',
+          paddingBottom: '24px',
+          paddingTop: '20px',
+        }}
       >
         {plans.map((plan, i) => (
-          <div key={plan.id} className="snap-center shrink-0 w-72 pt-5">
+          <div key={plan.id} style={{ scrollSnapAlign: 'center', flexShrink: 0, width: '288px' }}>
             <div className={`relative flex flex-col rounded-2xl border h-full ${
               plan.popular ? 'border-black shadow-lg bg-black text-white' : 'border-gray-100 shadow-sm bg-white'
             } p-6 transition-all duration-300 ${activeIdx === i && plan.popular ? 'scale-[1.02]' : ''}`}>
