@@ -129,6 +129,8 @@ copyBackup()  (Advanced settings)
 **File:** `src/pages/TrialPage.tsx`  
 **Duration:** 1 hour (display only — server has no hard expiry; manual admin action required to expire)
 
+> **IMPORTANT — do NOT reconnect VPNresellers here.** The trial was previously wired to VPNresellers.net (WireGuard credentials). That was wrong — the dashboard runs on 3X-UI VLESS+REALITY, which is a completely different system. Reconnecting VPNresellers would break the dashboard flow again and waste everyone's time. Trial MUST use `provisionXuiAccount`.
+
 ```
 /trial
   → Check Firestore vpn_trials for active/expired record
@@ -138,13 +140,14 @@ copyBackup()  (Advanced settings)
 
 Confirm
   → createTrial(uid, { status: 'provisioning' })
-  → usernameFromEmail(email)
-  → getAccountByUsername(username)   ← VPNresellers API
-    → if exists: reuse account
-    → if not:   createAccount(username, password)
-  → updateTrial(trialId, { credentials, status: 'active' })
-  → Show success + credentials
+  → provisionXuiAccount({ email, trafficLimitGB: 0, expiryDays: 0, maxConnections: 2 })
+      ← SAME 3X-UI backend as the dashboard "Activate VPN" button
+  → updateTrial(trialId, { status: 'active' })
+  → auto-redirect /dashboard after 2s
+  → User taps "Copy VPN Link" on dashboard to get their VLESS subscription URL
 ```
+
+**Do not show WireGuard/OpenVPN credentials on the trial success screen.** There are no credentials to show — the user's link is their subscription URL, available on the dashboard.
 
 ---
 
