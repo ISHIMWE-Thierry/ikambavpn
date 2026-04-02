@@ -144,6 +144,15 @@ export function DashboardPage() {
   const canCopyLink  = activated && canActivate;
   const isConnected  = activated && serverOnline === true;
 
+  // Auto-activate in background once entitlement is confirmed
+  const autoActivatedRef = useRef(false);
+  useEffect(() => {
+    if (!dataLoading && canActivate && !activated && !activating && !autoActivatedRef.current) {
+      autoActivatedRef.current = true;
+      handleActivate();
+    }
+  }, [dataLoading, canActivate, activated, activating]);
+
   async function handleActivate() {
     if (!firebaseUser?.email) return;
     setActivating(true); setActivateError(null);
@@ -240,7 +249,7 @@ export function DashboardPage() {
                 }`}
               />
               <span className="text-sm font-medium text-gray-700">
-                {isConnected ? 'Server online' : serverOnline === false ? 'Server unavailable' : activated ? 'Checking…' : 'Not activated'}
+                {isConnected ? 'Server online' : serverOnline === false ? 'Server unavailable' : activating ? 'Setting up…' : activated ? 'Checking…' : canActivate ? 'Ready' : 'Not activated'}
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-gray-400 font-medium">
@@ -249,9 +258,9 @@ export function DashboardPage() {
             </div>
           </div>
 
-          {/* Power orb → app download buttons after activation */}
+          {/* App download buttons (always shown when user has entitlement) or orb */}
           <AnimatePresence mode="wait">
-            {activated ? (
+            {canActivate ? (
               <motion.div
                 key="app-buttons"
                 initial={{ opacity: 0, scale: 0.92, y: 10 }}
@@ -340,30 +349,10 @@ export function DashboardPage() {
                 transition={{ duration: 0.3 }}
                 className="flex flex-col items-center mb-8"
               >
-                <motion.button
-                  whileHover={!activating && canActivate ? { scale: 1.04 } : {}}
-                  whileTap={!activating && canActivate ? { scale: 0.96 } : {}}
-                  onClick={!activating && canActivate ? handleActivate : undefined}
-                  className={`relative w-32 h-32 rounded-full flex items-center justify-center
-                    shadow-2xl transition-all duration-500 ${
-                    activating
-                      ? 'bg-gray-200 cursor-default'
-                      : canActivate
-                      ? 'bg-gray-900 cursor-pointer hover:bg-black shadow-gray-900/40'
-                      : 'bg-gray-200 cursor-default shadow-none'
-                  }`}
-                >
-                  {activating ? (
-                    <RefreshCw className="w-10 h-10 text-white animate-spin" />
-                  ) : (
-                    <Power className={`w-10 h-10 transition-colors duration-500 ${
-                      canActivate ? 'text-white/70' : 'text-gray-400'
-                    }`} />
-                  )}
-                </motion.button>
-                <p className="mt-3 text-sm text-gray-500 font-medium">
-                  {activating ? 'Activating…' : canActivate ? 'Tap to activate' : 'No active plan'}
-                </p>
+                <div className="w-32 h-32 rounded-full bg-gray-100 flex items-center justify-center shadow-none">
+                  <Power className="w-10 h-10 text-gray-300" />
+                </div>
+                <p className="mt-3 text-sm text-gray-400 font-medium">No active plan</p>
               </motion.div>
             )}
           </AnimatePresence>
