@@ -18,6 +18,7 @@ import { AdminVpnPanelPage } from './pages/admin/AdminVpnPanelPage'
 import { AdminAIMonitorPage } from './pages/admin/AdminAIMonitorPage'
 import { TrialPage } from './pages/TrialPage'
 import { RussiaGuidePage } from './pages/RussiaGuidePage'
+import { EmailVerificationPage } from './pages/EmailVerificationPage'
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/plans" element={<PlansPage />} />
         <Route path="/russia-guide" element={<RussiaGuidePage />} />
+        <Route path="/verify-email" element={<EmailVerificationPage />} />
 
         {/* Protected — users */}
         <Route

@@ -13,36 +13,34 @@ const DEFAULT_PLANS: VpnPlan[] = [
   {
     id: 'basic-1m',
     name: 'Basic',
-    description: 'Great for personal use',
+    description: 'Essential protection',
     duration: '1 Month',
-    price: 5,
-    currency: 'USD',
-    features: ['1 device', 'Standard speed', 'Global servers', 'No-logs policy'],
+    price: 49,
+    currency: 'RUB',
+    features: ['1 device', 'All servers', 'No-logs policy', 'Standard support'],
   },
   {
-    id: 'standard-1m',
-    name: 'Standard',
-    description: 'For everyday protection',
+    id: 'popular-1m',
+    name: 'Popular',
+    description: 'Most chosen plan',
     duration: '1 Month',
-    price: 9,
-    currency: 'USD',
-    features: ['3 devices', 'High speed', 'Global servers', 'No-logs policy', 'Priority support'],
+    price: 79,
+    currency: 'RUB',
+    features: ['3 devices', 'All servers', 'No-logs policy', 'Standard support'],
     popular: true,
   },
   {
-    id: 'premium-3m',
+    id: 'premium-1m',
     name: 'Premium',
-    description: 'Best value — 3 months',
-    duration: '3 Months',
-    price: 22,
-    currency: 'USD',
+    description: 'Full access + priority support',
+    duration: '1 Month',
+    price: 99,
+    currency: 'RUB',
     features: [
       '5 devices',
-      'Highest speed',
-      'Global servers',
+      'All servers',
       'No-logs policy',
-      'Priority support',
-      'Dedicated IP option',
+      'Premium support',
     ],
   },
 ];
@@ -100,8 +98,8 @@ export function PlansPage() {
             <Shield className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="font-semibold text-black">Try Ikamba VPN free for 1 day</p>
-            <p className="text-sm text-gray-500 mt-0.5">No credit card required. One trial per account.</p>
+            <p className="font-semibold text-black">Try free for 1 hour</p>
+            <p className="text-sm text-gray-500 mt-0.5">No payment required. One trial per account.</p>
           </div>
         </div>
         <Button variant="secondary" className="shrink-0" onClick={handleTrial}>
@@ -132,7 +130,7 @@ export function PlansPage() {
 
             <div className="mb-6">
               <span className="text-4xl font-bold text-black">
-                {formatCurrency(plan.price, plan.currency)}
+                {plan.currency === 'RUB' ? `${plan.price} ₽` : formatCurrency(plan.price, plan.currency)}
               </span>
               <span className="text-gray-400 text-sm ml-1">/ {plan.duration}</span>
             </div>

@@ -23,6 +23,11 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     return <Navigate to="/signin" state={{ from: location }} replace />;
   }
 
+  // Unverified users must complete email verification first
+  if (profile?.needsOtpVerification && profile?.emailVerified !== 1) {
+    return <Navigate to="/verify-email" replace />;
+  }
+
   if (adminOnly && profile?.role !== 'admin') {
     return <Navigate to="/dashboard" replace />;
   }

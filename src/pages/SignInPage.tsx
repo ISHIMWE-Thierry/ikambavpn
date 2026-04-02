@@ -63,7 +63,9 @@ export function SignInPage() {
   useEffect(() => {
     if (!authLoading && firebaseUser && !hasRedirectedRef.current) {
       hasRedirectedRef.current = true;
-      if (profile?.role === 'admin' || profile?.role === 'agent') {
+      if (profile?.needsOtpVerification && profile?.emailVerified !== 1) {
+        navigate('/verify-email', { replace: true });
+      } else if (profile?.role === 'admin' || profile?.role === 'agent') {
         navigate('/dashboard', { replace: true });
       } else {
         navigate(from, { replace: true });

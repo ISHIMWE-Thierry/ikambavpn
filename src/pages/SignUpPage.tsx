@@ -13,6 +13,7 @@ import { COLLECTIONS } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { generateAndSendOtp } from '../lib/otp-service';
 import toast from 'react-hot-toast';
 
 // Google Icon Component
@@ -134,7 +135,7 @@ export function SignUpPage() {
         displayName,
         role: 'user',
         emailVerified: 0,
-        needsOtpVerification: false,
+        needsOtpVerification: true,
         paymentstatus: 'False',
         accountStatus: 'active',
         last_login: ts,
@@ -144,8 +145,12 @@ export function SignUpPage() {
         loginCount: 1,
       });
 
-      toast.success('Account created!');
-      // Keep loading — redirect useEffect navigates.
+      // Send verification OTP
+      await generateAndSendOtp(cred.user.uid, trimmedEmail, displayName).catch(() => {});
+      toast.success('Account created! Check your email for a verification code.');
+      // Prevent the useEffect from also navigating
+      hasRedirectedRef.current = true;
+      navigate('/verify-email', { replace: true });
     } catch (err: any) {
       setError(friendlyError(err?.code));
       setLoading(false);

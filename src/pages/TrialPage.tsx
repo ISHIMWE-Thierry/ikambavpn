@@ -30,10 +30,10 @@ import toast from 'react-hot-toast';
 type Stage = 'loading' | 'available' | 'used' | 'provisioning' | 'success' | 'error';
 
 const TRIAL_PERKS = [
-  'Full VPN access — unlimited',
+  'Full VPN access for 1 hour',
   'Unlimited bandwidth & speed',
   'Global server access',
-  'No credit card required',
+  'No payment required',
 ];
 
 
@@ -161,7 +161,7 @@ export function TrialPage() {
             <div className="inline-flex items-center justify-center w-14 h-14 bg-black rounded-2xl mb-4">
               <Shield className="w-7 h-7 text-white" />
             </div>
-            <h1 className="text-3xl font-bold">Try Ikamba VPN free</h1>
+            <h1 className="text-3xl font-bold">1 hour free trial</h1>
             <p className="text-gray-500 mt-2">No payment needed. One trial per account.</p>
           </div>
 
@@ -179,7 +179,7 @@ export function TrialPage() {
           </div>
 
           <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-500 leading-relaxed">
-            Enjoy full VPN access with unlimited bandwidth. One trial per account.
+            1 hour of full VPN access. One trial per account.
           </div>
 
           <Button onClick={handleStart} size="lg" className="w-full">
@@ -235,7 +235,7 @@ export function TrialPage() {
               <Check className="w-7 h-7 text-white" />
             </div>
             <h1 className="text-2xl font-bold">Trial is active!</h1>
-            <p className="text-gray-500 mt-1 text-sm">You have 24 hours of full VPN access.</p>
+            <p className="text-gray-500 mt-1 text-sm">You have 1 hour of full VPN access.</p>
           </div>
 
           <div className="border border-gray-100 rounded-2xl overflow-hidden">
