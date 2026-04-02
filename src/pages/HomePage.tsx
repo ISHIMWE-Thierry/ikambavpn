@@ -146,26 +146,17 @@ function PricingCarousel() {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="sm:hidden no-scrollbar"
+        className="flex sm:hidden no-scrollbar flex-row flex-nowrap gap-4 overflow-x-scroll overflow-y-hidden snap-x snap-mandatory pt-5 pb-6"
         style={{
-          display: 'flex',
-          flexDirection: 'row',
-          flexWrap: 'nowrap',
-          gap: '16px',
-          overflowX: 'scroll',
-          overflowY: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          scrollSnapType: 'x mandatory',
           paddingLeft: 'calc(50vw - 140px)',
           paddingRight: 'calc(50vw - 140px)',
-          paddingBottom: '24px',
-          paddingTop: '20px',
         }}
       >
         {plans.map((plan, i) => (
           <div
             key={plan.name}
-            style={{ scrollSnapAlign: 'center', flexShrink: 0, width: '280px' }}
+            className="snap-center shrink-0 w-[280px]"
           >
             <PricingCard {...plan} active={activeIdx === i} />
           </div>
