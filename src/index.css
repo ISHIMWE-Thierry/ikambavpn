@@ -52,24 +52,40 @@
   to   { opacity: 1; transform: scale(1); }
 }
 
-@keyframes pulseRing {
-  0%   { transform: scale(1);    opacity: 0.6; }
-  70%  { transform: scale(1.55); opacity: 0; }
-  100% { transform: scale(1.55); opacity: 0; }
+@keyframes ripple {
+  0%   { transform: scale(1);   opacity: 0.18; }
+  100% { transform: scale(2.1); opacity: 0; }
 }
 
-.anim-fade   { animation: fadeIn   0.4s ease forwards; opacity: 0; }
-.anim-scale  { animation: scaleIn  0.4s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; }
-.anim-up     { animation: fadeInUp 0.45s ease forwards; opacity: 0; }
+@keyframes ripple2 {
+  0%   { transform: scale(1);   opacity: 0.12; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
 
-.pulse-ring::before {
-  content: '';
+@keyframes ripple3 {
+  0%   { transform: scale(1);   opacity: 0.07; }
+  100% { transform: scale(3.2); opacity: 0; }
+}
+
+@keyframes orbGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.08); }
+  50%       { box-shadow: 0 0 40px 8px rgba(255,255,255,0.14); }
+}
+
+.anim-fade  { animation: fadeIn  0.4s ease forwards; opacity: 0; }
+.anim-scale { animation: scaleIn 0.4s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; }
+.anim-up    { animation: fadeInUp 0.45s ease forwards; opacity: 0; }
+
+.orb-ring {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: currentColor;
-  animation: pulseRing 2s ease-out infinite;
+  border: 1px solid rgba(255,255,255,0.15);
 }
+.orb-ring-1 { animation: ripple  3s ease-out infinite; }
+.orb-ring-2 { animation: ripple2 3s ease-out infinite 0.8s; }
+.orb-ring-3 { animation: ripple3 3s ease-out infinite 1.6s; }
+.orb-glow   { animation: orbGlow 3s ease-in-out infinite; }
 
 @layer base {
   *, *::before, *::after {
