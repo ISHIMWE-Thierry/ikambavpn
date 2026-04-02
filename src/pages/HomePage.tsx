@@ -1,4 +1,5 @@
 import { Link, Navigate } from 'react-router-dom';
+import { useRef, useState } from 'react';
 import { Lock, Zap, Globe, Shield, Check, ArrowRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../contexts/AuthContext';
@@ -70,6 +71,116 @@ const plans = [
     popular: false,
   },
 ];
+
+function PricingCard({
+  name, price, period, devices, premiumSupport, popular, active,
+}: typeof plans[0] & { active: boolean }) {
+  return (
+    <div className={`relative rounded-2xl border p-6 flex flex-col transition-all duration-300 h-full ${
+      popular
+        ? 'border-black shadow-xl bg-black text-white'
+        : 'border-gray-100 bg-white shadow-sm'
+    } ${active && popular ? 'scale-[1.03]' : ''}`}>
+      {popular && (
+        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2
+          bg-white text-black text-[11px] font-semibold px-3 py-0.5
+          rounded-full border border-gray-200 whitespace-nowrap">
+          Most popular
+        </span>
+      )}
+      <p className="text-xs font-semibold uppercase tracking-wider mb-4 text-gray-400">{name}</p>
+      <div className="mb-5 flex items-baseline gap-1">
+        <span className="text-3xl font-bold">{price} ₽</span>
+        <span className={`text-sm ${popular ? 'text-gray-500' : 'text-gray-400'}`}>/ {period}</span>
+      </div>
+      <ul className="flex flex-col gap-2 mb-7 flex-1">
+        {[
+          `${devices} device${devices > 1 ? 's' : ''}`,
+          'All servers',
+          'Zero logs',
+          ...(premiumSupport ? ['Premium support'] : []),
+        ].map((f) => (
+          <li key={f} className={`flex items-center gap-2 text-xs ${popular ? 'text-gray-300' : 'text-gray-600'}`}>
+            <Check className={`w-3.5 h-3.5 shrink-0 ${popular ? 'text-white' : 'text-black'}`} />
+            {f}
+          </li>
+        ))}
+      </ul>
+      <Link
+        to="/signup"
+        className={`block w-full text-center rounded-xl py-2.5 text-sm font-semibold
+          transition-colors duration-150 ${
+          popular ? 'bg-white text-black hover:bg-gray-100' : 'bg-black text-white hover:bg-gray-800'
+        }`}
+      >
+        Get {name}
+      </Link>
+    </div>
+  );
+}
+
+function PricingCarousel() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [activeIdx, setActiveIdx] = useState(1); // Popular in centre by default
+
+  function vibrate() {
+    if ('vibrate' in navigator) navigator.vibrate(8);
+  }
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const cardWidth = el.scrollWidth / plans.length;
+    const idx = Math.round(el.scrollLeft / cardWidth);
+    if (idx !== activeIdx) {
+      setActiveIdx(idx);
+      vibrate();
+    }
+  }
+
+  return (
+    <>
+      {/* Mobile: horizontal snap scroll */}
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="sm:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory
+          px-[calc(50vw-140px)] pb-6 scroll-smooth no-scrollbar"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
+        {plans.map((plan, i) => (
+          <div
+            key={plan.name}
+            className="snap-center shrink-0 w-[280px] pt-5"
+          >
+            <PricingCard {...plan} active={activeIdx === i} />
+          </div>
+        ))}
+      </div>
+
+      {/* Dot indicators — mobile only */}
+      <div className="sm:hidden flex justify-center gap-1.5 mb-2">
+        {plans.map((_, i) => (
+          <div
+            key={i}
+            className={`rounded-full transition-all duration-300 ${
+              activeIdx === i ? 'w-4 h-1.5 bg-black' : 'w-1.5 h-1.5 bg-gray-300'
+            }`}
+          />
+        ))}
+      </div>
+
+      {/* Desktop: 3-column grid */}
+      <div className="hidden sm:grid sm:grid-cols-3 gap-5 max-w-4xl mx-auto px-6">
+        {plans.map((plan, i) => (
+          <div key={plan.name} className={`pt-5 ${plan.popular ? 'scale-[1.03]' : ''}`}>
+            <PricingCard {...plan} active={i === 1} />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
 
 export function HomePage() {
   const { firebaseUser, loading } = useAuth();
@@ -185,8 +296,8 @@ export function HomePage() {
       </section>
 
       {/* ── Pricing preview ───────────────────────────────────────────────── */}
-      <section className="py-20 px-4 sm:px-6">
-        <div className="max-w-4xl mx-auto">
+      <section className="py-20">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6">
           <p className="text-[11px] text-gray-400 uppercase tracking-[0.15em] text-center mb-3">
             Pricing
           </p>
@@ -196,76 +307,14 @@ export function HomePage() {
           <p className="text-center text-sm text-gray-400 mb-12">
             Transparent pricing. No hidden fees.
           </p>
-
-          <div className="grid sm:grid-cols-3 gap-5">
-            {plans.map(({ name, price, period, devices, premiumSupport, popular }) => (
-              <div
-                key={name}
-                className={`relative rounded-2xl border p-6 flex flex-col transition-all duration-200 ${
-                  popular
-                    ? 'border-black shadow-xl bg-black text-white scale-[1.03]'
-                    : 'border-gray-100 bg-white hover:border-gray-300 shadow-sm'
-                }`}
-              >
-                {popular && (
-                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2
-                    bg-white text-black text-[11px] font-semibold px-3 py-0.5
-                    rounded-full border border-gray-200 whitespace-nowrap">
-                    Most popular
-                  </span>
-                )}
-
-                <p className={`text-xs font-semibold uppercase tracking-wider mb-4 ${
-                  popular ? 'text-gray-400' : 'text-gray-400'
-                }`}>
-                  {name}
-                </p>
-
-                <div className="mb-5 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold">{price} ₽</span>
-                  <span className={`text-sm ${popular ? 'text-gray-500' : 'text-gray-400'}`}>
-                    / {period}
-                  </span>
-                </div>
-
-                <ul className="flex flex-col gap-2 mb-7 flex-1">
-                  {[
-                    `${devices} device${devices > 1 ? 's' : ''}`,
-                    'All servers',
-                    'Zero logs',
-                    ...(premiumSupport ? ['Premium support'] : []),
-                  ].map((f) => (
-                    <li
-                      key={f}
-                      className={`flex items-center gap-2 text-xs ${
-                        popular ? 'text-gray-300' : 'text-gray-600'
-                      }`}
-                    >
-                      <Check className={`w-3.5 h-3.5 shrink-0 ${popular ? 'text-white' : 'text-black'}`} />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-
-                <Link
-                  to="/signup"
-                  className={`block w-full text-center rounded-xl py-2.5 text-sm font-semibold
-                    transition-colors duration-150 ${
-                      popular
-                        ? 'bg-white text-black hover:bg-gray-100'
-                        : 'bg-black text-white hover:bg-gray-800'
-                    }`}
-                >
-                  Get {name}
-                </Link>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-center text-xs text-gray-400 mt-8">
-            First-time users get 1 hour free — no card required.
-          </p>
         </div>
+
+        {/* Desktop: 3-column grid — Mobile: horizontal snap carousel */}
+        <PricingCarousel />
+
+        <p className="text-center text-xs text-gray-400 mt-8 px-4">
+          First-time users get 1 hour free — no card required.
+        </p>
       </section>
 
       {/* ── CTA ───────────────────────────────────────────────────────────── */}

@@ -87,6 +87,11 @@
 .orb-ring-3 { animation: ripple3 3s ease-out infinite 1.6s; }
 .orb-glow   { animation: orbGlow 3s ease-in-out infinite; }
 
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
 @layer base {
   *, *::before, *::after {
     box-sizing: border-box;
