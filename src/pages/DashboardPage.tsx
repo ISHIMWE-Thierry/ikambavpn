@@ -58,7 +58,7 @@ function statusBadge(status: OrderStatus) {
   const map: Record<OrderStatus, { label: string; variant: 'success'|'warning'|'danger'|'muted'|'default' }> = {
     active:            { label: 'Active',       variant: 'success' },
     pending_payment:   { label: 'Pending',      variant: 'warning' },
-    payment_submitted: { label: 'Under review', variant: 'muted'   },
+    payment_submitted: { label: 'Under review', variant: 'success' },
     expired:           { label: 'Expired',      variant: 'danger'  },
     cancelled:         { label: 'Cancelled',    variant: 'danger'  },
   };
@@ -503,7 +503,7 @@ export function DashboardPage() {
         {/* ── Pending orders ───────────────────────────────────────────── */}
         {pendingOrders.length > 0 && (
           <motion.div variants={card}>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2.5 px-1">Pending</p>
+            <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2.5 px-1">Pending</p>
             <div className="flex flex-col gap-2">
               {pendingOrders.map((o) => (
                 <div key={o.id} className="bg-white rounded-2xl px-5 py-4 flex items-center justify-between">
@@ -514,7 +514,7 @@ export function DashboardPage() {
                   {statusBadge(o.status)}
                 </div>
               ))}
-              <p className="text-xs text-gray-400 flex items-start gap-1.5 px-1 leading-relaxed">
+              <p className="text-xs text-green-600 flex items-start gap-1.5 px-1 leading-relaxed">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 Activated within a few hours after payment review.
               </p>
