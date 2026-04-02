@@ -121,18 +121,20 @@ function PricingCard({
 
 function PricingCarousel() {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [activeIdx, setActiveIdx] = useState(1); // Popular in centre by default
+  const [activeIdx, setActiveIdx] = useState(1);
+  const lastIdxRef = useRef(1);
 
   function vibrate() {
-    if ('vibrate' in navigator) navigator.vibrate(8);
+    try { if ('vibrate' in navigator) navigator.vibrate(10); } catch { /* noop */ }
   }
 
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
     const cardWidth = el.scrollWidth / plans.length;
-    const idx = Math.round(el.scrollLeft / cardWidth);
-    if (idx !== activeIdx) {
+    const idx = Math.min(plans.length - 1, Math.max(0, Math.round(el.scrollLeft / cardWidth)));
+    if (idx !== lastIdxRef.current) {
+      lastIdxRef.current = idx;
       setActiveIdx(idx);
       vibrate();
     }

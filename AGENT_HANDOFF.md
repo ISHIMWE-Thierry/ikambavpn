@@ -320,6 +320,105 @@ Added TCP keepalive and BBR settings to both inbound and outbound streamSettings
 
 ---
 
+## Session 4 — Policy & Sockopt Fix via API (2026-04-02)
+
+### What Was Done
+
+The core disconnect fixes from Session 3 (never applied) were successfully applied programmatically via the 3X-UI web API — no VNC terminal paste required.
+
+#### How the API works (discovered this session)
+- **Login:** `POST /x7kQ9m/login` with JSON `{"username":"ikamba","password":"..."}`
+- **Get xray config:** `POST /x7kQ9m/panel/xray/` → returns `obj` (JSON string) containing `xraySetting` dict
+- **Save xray config:** `POST /x7kQ9m/panel/xray/update` — **must be form-encoded** (`Content-Type: application/x-www-form-urlencoded`), NOT JSON. Fields: `xraySetting` (JSON string), `outboundTestUrl`
+- **Get inbounds:** `GET /x7kQ9m/panel/api/inbounds/list`
+- **Update inbound:** `POST /x7kQ9m/panel/api/inbounds/update/{id}` with JSON body of full inbound object
+
+#### 1. Policy fixed ✅
+Updated via `POST /panel/xray/update` (form-encoded):
+
+| Field | Was | Now |
+|---|---|---|
+| `connIdle` | 600 | 300 |
+| `uplinkOnly` | 30 | 2 |
+| `downlinkOnly` | 30 | 5 |
+| `bufferSize` | 10240 | 0 |
+
+#### 2. Inbound sockopt — BBR added ✅
+TCP keepalive was already present in the inbound (survived the Session 3 restore). Added `tcpcongestion: "bbr"`:
+```json
+{
+  "tcpKeepAliveIdle": 60,
+  "tcpKeepAliveInterval": 15,
+  "tcpKeepAliveProbes": 5,
+  "tcpcongestion": "bbr"
+}
+```
+
+### Completed in Session 4
+- ✅ Xray restarted via API (`POST /panel/api/server/restartXrayService`)
+- ✅ Kernel tuning applied via VNC terminal (user ran echo commands line by line)
+- ✅ XHTTP inbound added (see Session 5 below)
+
+---
+
+## Session 5 — VLESS+XHTTP+REALITY Anti-Blocking Inbound (2026-04-02)
+
+### Why
+Russia's DPI (as of Feb 2026) actively freezes VLESS+TCP+REALITY connections after detecting one-directional traffic or specific fingerprints. XHTTP transport makes the VPN traffic look like regular chunked HTTP web requests — much harder to fingerprint.
+
+### What Was Done
+
+#### 1. XHTTP inbound added via API ✅
+**Inbound ID: 2**, port **8443**, network **xhttp**, security **reality**
+- Same REALITY keys as inbound 1 (same private key, same shortIds, same SNI)
+- Same user UUIDs (clients copied from inbound 1, emails suffixed with `.x@` to avoid 3X-UI duplicate restriction)
+- Path: `/ikamba`, mode: `auto`
+- sockopt: TCP keepalive + BBR (same as inbound 1)
+
+#### 2. Xray restarted via API ✅
+`POST /panel/api/server/restartXrayService` — both inbounds confirmed running.
+
+#### 3. Port 8443 firewall rule ⚠️ USER MUST DO
+From VNC terminal:
+```bash
+ufw allow 8443/tcp
+```
+
+### API Knowledge Gained (important for future sessions)
+All 3X-UI config changes can be done via the panel API — no VNC needed:
+- Login: `POST /x7kQ9m/login` (JSON)
+- Get inbounds: `GET /panel/api/inbounds/list`
+- Add inbound: `POST /panel/api/inbounds/add` (JSON)
+- Update inbound: `POST /panel/api/inbounds/update/{id}` (JSON)
+- Get xray template: `POST /panel/xray/` 
+- Save xray template: `POST /panel/xray/update` (**form-encoded**, NOT JSON)
+- Restart Xray: `POST /panel/api/server/restartXrayService`
+
+### XHTTP VLESS Links Per User
+Users should add these **in addition to** their existing TCP links. When TCP gets blocked, they switch to XHTTP.
+
+```
+vless://{uuid}@194.76.217.4:8443?type=xhttp&security=reality&pbk=yMO3nD0R94-dZW8-Cxc9LkepHyzjQIPXyXHKB56Ge1A&sni=www.microsoft.com&fp=chrome&sid=90045cc2da31f646&path=/ikamba&mode=auto#IKAMBAVPN-XHTTP
+```
+
+Replace `{uuid}` with the user's UUID (same UUID as their TCP connection).
+
+| User | UUID |
+|---|---|
+| admin@ikambaremit.com | 9ee97fdf-aff6-4696-8417-456e296f1cb5 |
+| japhetonziza@gmail.com | 4f686508-f245-486e-9a63-0c6fc0011f80 |
+| gatetelewis@gmail.com | 0c7c068e-ba1e-43f6-8bed-e2500c2a3901 |
+| joselynemuhoza11@gmail.com | d9cdb50f-516e-40bf-90a2-c15172eb81d8 |
+| k.l.paisible@gmail.com | f298ad4d-d6e4-4fc2-9ae3-3e263caad92b |
+
+### Next Steps
+1. **Frontend:** Add "Copy XHTTP Backup Link" button to DashboardPage.tsx — generates same URL format above using user's UUID
+2. **Backend:** Update `/xui-public/sub/{email}` to return BOTH links (TCP + XHTTP) in the subscription
+3. **Auto-provisioning:** When a new user activates, add them to BOTH inbounds (ID=1 and ID=2)
+4. **Test:** Have a real Russian-ISP user test the XHTTP link specifically
+
+---
+
 ## Known Issues / Outstanding Items
 
 ### 1. `ALLOW_INSECURE_FIREBASE=true` in backend .env — **SECURITY RISK**

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { Navbar } from './components/Navbar'
 import { Footer } from './components/Footer'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { VersionGate } from './components/VersionGate'
 
 import { HomePage } from './pages/HomePage'
 import { SignInPage } from './pages/SignInPage'
@@ -16,12 +17,14 @@ import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminUsersPage } from './pages/admin/AdminUsersPage'
 import { AdminVpnPanelPage } from './pages/admin/AdminVpnPanelPage'
 import { AdminAIMonitorPage } from './pages/admin/AdminAIMonitorPage'
+import { AdminSettingsPage } from './pages/admin/AdminSettingsPage'
 import { TrialPage } from './pages/TrialPage'
 import { RussiaGuidePage } from './pages/RussiaGuidePage'
 import { EmailVerificationPage } from './pages/EmailVerificationPage'
 
 export default function App() {
   return (
+    <VersionGate>
     <div className="flex flex-col min-h-screen">
       <Navbar />
 
@@ -110,6 +113,14 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute adminOnly>
+              <AdminSettingsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -117,5 +128,6 @@ export default function App() {
 
       <Footer />
     </div>
+    </VersionGate>
   )
 }

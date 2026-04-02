@@ -178,7 +178,7 @@ async function enforceAntiDisconnectPolicy(): Promise<boolean> {
       // Ensure sniffing includes quic + fakedns
       if (!inbound.sniffing) inbound.sniffing = {};
       inbound.sniffing.enabled = true;
-      inbound.sniffing.routeOnly = true;
+      inbound.sniffing.routeOnly = false; // MUST be false — true causes traffic to bypass proxy
       const dest: string[] = inbound.sniffing.destOverride || [];
       for (const proto of ["http", "tls", "quic", "fakedns"]) {
         if (!dest.includes(proto)) {

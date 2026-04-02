@@ -369,5 +369,32 @@ export async function getAllTrials(): Promise<VpnTrial[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as VpnTrial));
 }
 
+// ── App config (version gating) ───────────────────────────────────────────────
+
+export interface AppConfig {
+  minBuildNumber: number;       // Users below this build are force-refreshed
+  maintenanceMode: boolean;     // Show maintenance screen to all users
+  maintenanceMessage: string;   // Custom message shown during maintenance
+}
+
+const APP_CONFIG_DOC = doc(db, 'app_config', 'vpn');
+
+export async function getAppConfig(): Promise<AppConfig> {
+  const snap = await getDoc(APP_CONFIG_DOC);
+  if (!snap.exists()) {
+    return { minBuildNumber: 1, maintenanceMode: false, maintenanceMessage: '' };
+  }
+  const d = snap.data();
+  return {
+    minBuildNumber: d.minBuildNumber ?? 1,
+    maintenanceMode: d.maintenanceMode ?? false,
+    maintenanceMessage: d.maintenanceMessage ?? '',
+  };
+}
+
+export async function setAppConfig(data: Partial<AppConfig>): Promise<void> {
+  await setDoc(APP_CONFIG_DOC, { ...data, updatedAt: now() }, { merge: true });
+}
+
 // Re-export serverTimestamp for convenience
 export { serverTimestamp };

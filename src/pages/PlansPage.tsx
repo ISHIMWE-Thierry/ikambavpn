@@ -41,7 +41,7 @@ const DEFAULT_PLANS: VpnPlan[] = [
 ];
 
 function vibrate() {
-  if ('vibrate' in navigator) navigator.vibrate(8);
+  try { if ('vibrate' in navigator) navigator.vibrate(10); } catch { /* noop */ }
 }
 
 export function PlansPage() {
