@@ -85,6 +85,7 @@ export function DashboardPage() {
   const [activating, setActivating]   = useState(false);
   const [activated, setActivated]     = useState(false);
   const [copied, setCopied]           = useState(false);
+  const [hasEverCopied, setHasEverCopied] = useState(false);
   const [copiedBackup, setCopiedBackup] = useState(false);
   const [activateError, setActivateError] = useState<string | null>(null);
   const [stats, setStats]             = useState<XuiClientStat | null>(null);
@@ -162,7 +163,8 @@ export function DashboardPage() {
   function copyLink() {
     if (!subUrl || !canCopyLink) return;
     navigator.clipboard.writeText(subUrl);
-    setCopied(true); setTimeout(() => setCopied(false), 3000);
+    setHasEverCopied(true);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
 
   async function copyBackup() {
@@ -354,17 +356,19 @@ export function DashboardPage() {
             </div>
           ) : null /* No entitlement — plan card below has CTAs */}
 
-          {/* Paste hint */}
+          {/* Paste hint — stays visible once copied */}
           <AnimatePresence>
-            {copied && (
-              <motion.p
-                initial={{ opacity: 0, y: 6 }}
+            {hasEverCopied && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="text-center text-xs text-gray-500 mt-3"
+                className="mt-3 bg-gray-50 rounded-2xl px-4 py-3 text-center"
               >
-                Open <strong>{cfg.appName}</strong> → tap + → Import from clipboard
-              </motion.p>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Link copied — open <strong className="text-black">{cfg.appName}</strong>, tap{' '}
+                  <strong className="text-black">+</strong> → Import from clipboard → Connect
+                </p>
+              </motion.div>
             )}
           </AnimatePresence>
         </motion.div>
@@ -565,10 +569,26 @@ export function DashboardPage() {
                           <p className="text-sm font-semibold">{title}</p>
                           {n === '2' ? (
                             <a href={cfg.appUrl} target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 mt-1 text-xs text-gray-500
-                                hover:text-black underline underline-offset-2 transition-colors">
-                              <Download className="w-3 h-3" />
-                              {cfg.appStore === 'Download' ? 'Download free' : `Get on ${cfg.appStore}`}
+                              className="inline-flex items-center gap-2 mt-2 bg-black text-white
+                                rounded-xl px-3 py-2 hover:bg-gray-800 active:scale-95
+                                transition-all duration-150 select-none">
+                              {cfg.appStore === 'App Store' ? (
+                                <svg className="w-4 h-4 shrink-0" viewBox="0 0 814 1000" fill="currentColor">
+                                  <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-43.3-150.3-113c-52.4-77.7-96.2-196.9-96.2-311.2 0-205.5 132.4-314.1 261.8-314.1 65.2 0 119.2 43.3 159.8 43.3 38.7 0 99.7-46.5 169.2-46.5 24.2-.2 80.3 4.4 126.7 51.5z M451.3 126.5c-25.2 29.9-67.7 52.1-108.2 52.1-1.3 0-2.6 0-3.9-.2 0-38.7 19.2-76.7 43.3-101.6 29.2-31.5 76.5-55.9 115-57.2 1 41.5-17.5 82.9-46.2 106.9z"/>
+                                </svg>
+                              ) : cfg.appStore === 'Google Play' ? (
+                                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M3.18 23.76A2 2 0 0 1 2 22V2a2 2 0 0 1 1.18-1.76l11.51 11.76zM16.9 8.12l-2.6 2.66L5.06.34l11.84 7.78zM21.14 10.4a2 2 0 0 1 0 3.2l-2.72 1.79-2.93-3L18.42 9.6zM5.06 23.66l9.24-10.1 2.6 2.66L5.06 23.66z"/>
+                                </svg>
+                              ) : (
+                                <Download className="w-4 h-4 shrink-0" />
+                              )}
+                              <div className="flex flex-col leading-none">
+                                <span className="text-[9px] opacity-70 mb-0.5">
+                                  {cfg.appStore === 'App Store' ? 'Download on the' : cfg.appStore === 'Google Play' ? 'Get it on' : 'Download free on'}
+                                </span>
+                                <span className="text-xs font-semibold">{cfg.appStore}</span>
+                              </div>
                             </a>
                           ) : n === '4' && sub ? (
                             <p className="text-xs text-blue-600 mt-1 leading-relaxed">{sub}</p>
