@@ -29,25 +29,16 @@ const AuthContext = createContext<AuthContextType>({
 
 function avatarCacheKey(uid: string) { return `ikamba_avatar_${uid}`; }
 
-async function fetchAndCacheAvatar(uid: string, url: string): Promise<string | null> {
-  try {
-    const cached = localStorage.getItem(avatarCacheKey(uid));
-    if (cached) return cached;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    }).then((dataUrl) => {
-      if (dataUrl) localStorage.setItem(avatarCacheKey(uid), dataUrl as string);
-      return dataUrl as string | null;
-    });
-  } catch {
-    return null;
-  }
+// Cache just the URL — <img> tags load cross-origin fine, fetch() does not.
+function cacheAndReturnAvatar(uid: string, url: string): string {
+  try { localStorage.setItem(avatarCacheKey(uid), url); } catch { /* storage full */ }
+  return url;
+}
+
+function fetchAndCacheAvatar(uid: string, url: string): string {
+  const cached = localStorage.getItem(avatarCacheKey(uid));
+  if (cached) return cached;
+  return cacheAndReturnAvatar(uid, url);
 }
 
 /**
@@ -112,15 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Load avatar from cache or fetch + cache it
         const avatarUrl = prof?.avatarUrl || user.photoURL;
         if (avatarUrl) {
-          // Serve from cache immediately if available
-          const cached = localStorage.getItem(avatarCacheKey(user.uid));
-          if (cached) {
-            setAvatarDataUrl(cached);
-          } else {
-            fetchAndCacheAvatar(user.uid, avatarUrl).then((dataUrl) => {
-              if (dataUrl) setAvatarDataUrl(dataUrl);
-            });
-          }
+          setAvatarDataUrl(fetchAndCacheAvatar(user.uid, avatarUrl));
         }
       } else {
         setProfile(null);
@@ -145,11 +128,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(prof);
       const avatarUrl = prof?.avatarUrl || firebaseUser.photoURL;
       if (avatarUrl) {
-        // Clear old cache and re-fetch in case avatar changed
         localStorage.removeItem(avatarCacheKey(firebaseUser.uid));
-        fetchAndCacheAvatar(firebaseUser.uid, avatarUrl).then((dataUrl) => {
-          if (dataUrl) setAvatarDataUrl(dataUrl);
-        });
+        setAvatarDataUrl(cacheAndReturnAvatar(firebaseUser.uid, avatarUrl));
       }
     }
   };
