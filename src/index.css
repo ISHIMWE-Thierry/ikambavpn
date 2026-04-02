@@ -42,6 +42,35 @@
   animation: floatOrb 10s ease-in-out infinite reverse;
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulseRing {
+  0%   { transform: scale(1);    opacity: 0.6; }
+  70%  { transform: scale(1.55); opacity: 0; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+
+.anim-fade   { animation: fadeIn   0.4s ease forwards; opacity: 0; }
+.anim-scale  { animation: scaleIn  0.4s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; }
+.anim-up     { animation: fadeInUp 0.45s ease forwards; opacity: 0; }
+
+.pulse-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulseRing 2s ease-out infinite;
+}
+
 @layer base {
   *, *::before, *::after {
     box-sizing: border-box;

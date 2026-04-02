@@ -2,7 +2,8 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Shield, AlertCircle, RefreshCw, ChevronRight, Download, Copy, Check,
-  Activity, Wifi, WifiOff, Settings, ExternalLink, Power,
+  Activity, Wifi, WifiOff, Settings, ExternalLink, Power, Clock,
+  Zap, ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders } from '../lib/db-service';
@@ -13,7 +14,6 @@ import {
 import type { XuiClientStat, DiagnosticResult } from '../lib/xui-api';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { formatDate, formatCurrency, daysUntilExpiry, isExpired } from '../lib/utils';
 import type { VpnOrder, OrderStatus } from '../types';
 
@@ -44,15 +44,15 @@ const DEVICE_CONFIG: Record<DeviceType, {
     appUrl: 'https://apps.apple.com/app/id6476628951',
     appStore: 'App Store',
     steps: ['Open V2RayTun', 'Tap + → Import from clipboard', 'Tap Connect'],
-    disconnectTip: 'V2RayTun → Settings → enable On-Demand to stay connected in background.',
+    disconnectTip: 'Enable On-Demand in V2RayTun → Settings to stay connected in background.',
     routingTip: 'Tap your config → Routing → select Global.',
   },
   android: {
     appName: 'V2RayNG',
     appUrl: 'https://play.google.com/store/apps/details?id=com.v2ray.ang',
     appStore: 'Google Play',
-    steps: ['Open V2RayNG', 'Tap + → Import config from clipboard', 'Tap the play button to connect'],
-    disconnectTip: 'Turn off battery optimisation for V2RayNG in Android Settings.',
+    steps: ['Open V2RayNG', 'Tap + → Import config from clipboard', 'Tap play to connect'],
+    disconnectTip: 'Disable battery optimisation for V2RayNG in Android Settings.',
     routingTip: '⋮ menu → Settings → Routing → select Global.',
   },
   mac: {
@@ -84,7 +84,7 @@ const DEVICE_CONFIG: Record<DeviceType, {
   },
 };
 
-// ── Subscription URL ──────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getSubUrl(email: string): string {
   const base = import.meta.env.DEV
@@ -93,9 +93,73 @@ function getSubUrl(email: string): string {
   return `${base}/xui-public/sub/${encodeURIComponent(email)}`;
 }
 
+function greet(name?: string): string {
+  const h = new Date().getHours();
+  const time = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  return name ? `${time}, ${name}` : time;
+}
+
+function statusBadge(status: OrderStatus) {
+  const map: Record<OrderStatus, { label: string; variant: 'success' | 'warning' | 'danger' | 'muted' | 'default' }> = {
+    active:            { label: 'Active',         variant: 'success' },
+    pending_payment:   { label: 'Pending payment', variant: 'warning' },
+    payment_submitted: { label: 'Under review',   variant: 'muted'   },
+    expired:           { label: 'Expired',        variant: 'danger'  },
+    cancelled:         { label: 'Cancelled',      variant: 'danger'  },
+  };
+  const s = map[status] ?? { label: status, variant: 'muted' as const };
+  return <Badge variant={s.variant}>{s.label}</Badge>;
+}
+
+// ── No-plan urge banner ───────────────────────────────────────────────────────
+
+function NoPlanBanner() {
+  return (
+    <div
+      className="rounded-2xl border border-black/8 bg-gradient-to-br from-gray-900 to-black
+        p-6 text-white anim-up"
+      style={{ animationDelay: '200ms' }}
+    >
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0 mt-0.5">
+          <Zap className="w-5 h-5 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-white">No active plan</p>
+          <p className="text-sm text-white/60 mt-0.5 leading-relaxed">
+            Your VPN is set up. Add a plan to unlock full access.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 mt-4">
+            <Link to="/trial" className="flex-1">
+              <button className="w-full flex items-center justify-center gap-2 bg-white text-black
+                rounded-xl px-4 py-2.5 text-sm font-semibold hover:bg-gray-100
+                transition-colors duration-150">
+                <Clock className="w-4 h-4" />
+                1-hour free trial
+              </button>
+            </Link>
+            <Link to="/plans" className="flex-1">
+              <button className="w-full flex items-center justify-center gap-2 bg-white/10 text-white
+                rounded-xl px-4 py-2.5 text-sm font-semibold hover:bg-white/20
+                transition-colors duration-150 border border-white/10">
+                View plans
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── VPN Connect Card ──────────────────────────────────────────────────────────
 
-function VpnCard() {
+interface VpnCardProps {
+  hasActivePlan: boolean;
+}
+
+function VpnCard({ hasActivePlan }: VpnCardProps) {
   const { firebaseUser, profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -129,9 +193,7 @@ function VpnCard() {
       setActivated(true);
       runHealthCheck();
       healthInterval.current = setInterval(runHealthCheck, 60_000);
-    }).catch(() => {
-      // No account yet — show pre-activation UI
-    });
+    }).catch(() => {});
     return () => { if (healthInterval.current) clearInterval(healthInterval.current); };
   }, [firebaseUser?.email, runHealthCheck]);
 
@@ -141,7 +203,6 @@ function VpnCard() {
     setError(null);
     try {
       await provisionXuiAccount({ email: firebaseUser.email, trafficLimitGB: 0, expiryDays: 0, maxConnections: 2 });
-      // Show connected UI immediately — don't wait for stats to propagate
       setActivated(true);
       runHealthCheck();
       healthInterval.current = setInterval(runHealthCheck, 60_000);
@@ -190,257 +251,309 @@ function VpnCard() {
     } catch { /* silently fail */ }
   }
 
-  // ── Not yet activated ─────────────────────────────────────────────────────
+  // ── Pre-activation ────────────────────────────────────────────────────────
   if (!activated) {
     return (
-      <div className="flex flex-col gap-5">
-        {/* Big activation card */}
-        <Card>
-          <CardContent className="py-8">
-            <div className="flex flex-col items-center text-center gap-5">
-              <div className="w-16 h-16 rounded-full bg-black flex items-center justify-center">
-                <Power className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-black">Get connected</h2>
-                <p className="text-sm text-gray-500 mt-1">One tap to activate your VPN account</p>
-              </div>
+      <div
+        className="rounded-2xl border border-gray-100 bg-white p-7 flex flex-col items-center
+          text-center gap-6 shadow-sm anim-scale"
+        style={{ animationDelay: '120ms' }}
+      >
+        {/* Animated shield */}
+        <div className="relative flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-black/5 animate-ping" style={{ animationDuration: '2.4s' }} />
+          <div className="w-20 h-20 rounded-full bg-black flex items-center justify-center relative z-10">
+            <Power className="w-8 h-8 text-white" />
+          </div>
+        </div>
 
-              {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-4 py-2 w-full">{error}</p>}
+        <div>
+          <h2 className="text-xl font-bold text-black">Activate your VPN</h2>
+          <p className="text-sm text-gray-400 mt-1.5 leading-relaxed max-w-xs">
+            One tap to generate your personal VPN link. Works with any V2Ray app.
+          </p>
+        </div>
 
-              <Button onClick={handleActivate} disabled={loading} size="lg" className="w-full max-w-xs">
-                {loading
-                  ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Activating…</>
-                  : 'Activate VPN'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {error && (
+          <div className="w-full bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-sm text-red-600">
+            {error}
+          </div>
+        )}
 
-        {/* Download app */}
-        <Card>
-          <CardContent className="py-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">You'll also need the app</p>
-            <a
-              href={cfg.appUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3 hover:border-black transition"
-            >
-              <div>
-                <p className="text-sm font-semibold">{cfg.appName}</p>
-                <p className="text-xs text-gray-400">{cfg.appStore}</p>
-              </div>
-              <Download className="w-4 h-4 text-gray-400" />
-            </a>
-          </CardContent>
-        </Card>
+        <Button onClick={handleActivate} disabled={loading} size="lg" className="w-full max-w-xs">
+          {loading
+            ? <><RefreshCw className="w-4 h-4 animate-spin" /> Activating…</>
+            : 'Activate VPN'}
+        </Button>
+
+        {/* App download */}
+        <a
+          href={cfg.appUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 border border-gray-100 rounded-xl px-4 py-3
+            hover:border-gray-300 hover:bg-gray-50 transition-all duration-150 w-full max-w-xs"
+        >
+          <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+            <Download className="w-4 h-4 text-gray-600" />
+          </div>
+          <div className="text-left flex-1">
+            <p className="text-sm font-semibold text-black">{cfg.appName}</p>
+            <p className="text-xs text-gray-400">{cfg.appStore}</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-gray-300" />
+        </a>
       </div>
     );
   }
 
-  // ── Activated — Main view ─────────────────────────────────────────────────
+  // ── Activated ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
 
-      {/* ====== BIG CONNECT BUTTON ====== */}
-      <Card>
-        <CardContent className="py-6">
-          <div className="flex flex-col items-center text-center gap-4">
-            {/* Status indicator */}
-            <div className="flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${
-                serverOnline === null ? 'bg-gray-300' : serverOnline ? 'bg-green-400 animate-pulse' : 'bg-red-400'
-              }`} />
-              <span className="text-sm font-medium text-gray-600">
-                {serverOnline === null ? 'Checking server…' : serverOnline ? 'Server online' : 'Server may be down'}
-              </span>
-            </div>
-
-            {/* Copy VLESS link — the main action */}
-            <button
-              onClick={copyLink}
-              className={`w-full max-w-sm flex items-center justify-center gap-3 rounded-2xl px-6 py-4 font-semibold text-base transition-all ${
-                copied
-                  ? 'bg-green-50 border-2 border-green-300 text-green-700 scale-[0.98]'
-                  : 'bg-black text-white hover:bg-gray-800 active:scale-[0.98] shadow-lg shadow-black/10'
-              }`}
-            >
-              {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
-              <span>{copied ? 'Copied!' : 'Copy VPN Link'}</span>
-            </button>
-
-            {copied && (
-              <p className="text-sm text-green-600 font-medium">
-                Now open <strong>{cfg.appName}</strong> and import from clipboard
-              </p>
-            )}
-
-            {/* Server down warning */}
-            {serverOnline === false && (
-              <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 w-full max-w-sm">
-                Server may be down.
-                <button onClick={runHealthCheck} disabled={healthChecking} className="underline ml-1 disabled:opacity-50">
-                  {healthChecking ? 'Checking…' : 'Retry'}
-                </button>
-              </div>
-            )}
+      {/* Main VPN hero card */}
+      <div
+        className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm anim-scale"
+        style={{ animationDelay: '120ms' }}
+      >
+        {/* Status bar */}
+        <div className={`px-5 py-2.5 flex items-center justify-between text-xs font-medium transition-colors ${
+          serverOnline === true
+            ? 'bg-green-50 text-green-700 border-b border-green-100'
+            : serverOnline === false
+            ? 'bg-red-50 text-red-600 border-b border-red-100'
+            : 'bg-gray-50 text-gray-400 border-b border-gray-100'
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className={`relative w-2 h-2 rounded-full shrink-0 ${
+              serverOnline === true ? 'bg-green-500' : serverOnline === false ? 'bg-red-500' : 'bg-gray-300'
+            }`}>
+              {serverOnline === true && (
+                <span className="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-75" />
+              )}
+            </span>
+            {serverOnline === null ? 'Checking server…' : serverOnline ? 'Server online' : 'Server may be unavailable'}
           </div>
-        </CardContent>
-      </Card>
+          {serverOnline === false && (
+            <button
+              onClick={runHealthCheck}
+              disabled={healthChecking}
+              className="underline disabled:opacity-50"
+            >
+              {healthChecking ? 'Checking…' : 'Retry'}
+            </button>
+          )}
+        </div>
 
-      {/* ====== INSTRUCTIONS ====== */}
-      <Card>
-        <CardHeader>
-          <h3 className="font-semibold text-sm">How to connect</h3>
-        </CardHeader>
-        <CardContent>
+        <div className="p-6 flex flex-col items-center gap-5">
+          {/* Copy link — primary action */}
+          <button
+            onClick={copyLink}
+            className={`relative w-full rounded-2xl px-6 py-5 flex items-center justify-center gap-3
+              font-semibold text-base transition-all duration-200 active:scale-[0.97] ${
+              copied
+                ? 'bg-green-50 border-2 border-green-300 text-green-700'
+                : 'bg-black text-white hover:bg-gray-800 shadow-lg shadow-black/10'
+            }`}
+          >
+            {copied
+              ? <><Check className="w-5 h-5" /> Copied to clipboard</>
+              : <><Copy className="w-5 h-5" /> Copy VPN Link</>
+            }
+          </button>
+
+          {/* Paste instruction */}
+          <p className={`text-xs text-center transition-all duration-300 ${
+            copied ? 'text-green-600 font-medium' : 'text-gray-400'
+          }`}>
+            {copied
+              ? `Open ${cfg.appName} and import from clipboard`
+              : 'Paste the link into your VPN app to connect'
+            }
+          </p>
+
+          {/* Usage stats — if available */}
+          {stats && (
+            <div className="w-full grid grid-cols-2 gap-3">
+              <div className="bg-gray-50 rounded-xl px-4 py-3 text-center">
+                <p className="text-base font-bold text-black">{formatBytes(stats.total)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Used</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3 text-center">
+                <p className="text-base font-bold text-black">{formatExpiry(stats.expiryTime)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Expires</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* How to connect */}
+      <div
+        className="rounded-2xl border border-gray-100 bg-white overflow-hidden anim-up"
+        style={{ animationDelay: '200ms' }}
+      >
+        <div className="px-5 pt-5 pb-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
+            How to connect
+          </p>
           <div className="flex flex-col gap-4">
-            {/* Step 1 — Copy */}
+            {/* Step 1 */}
             <div className="flex items-start gap-3">
-              <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+              <span className="w-6 h-6 rounded-full bg-black text-white text-[11px] font-bold
+                flex items-center justify-center shrink-0 mt-0.5">1</span>
               <div>
-                <p className="text-sm font-medium text-black">Copy your VPN link</p>
-                <p className="text-xs text-gray-500">Tap the button above to copy your personal VLESS link</p>
+                <p className="text-sm font-medium text-black">Copy your VPN link above</p>
+                <p className="text-xs text-gray-400 mt-0.5">Your personal VLESS link is unique to your account</p>
               </div>
             </div>
 
-            {/* Step 2 — Open app */}
+            {/* Step 2 */}
             <div className="flex items-start gap-3">
-              <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+              <span className="w-6 h-6 rounded-full bg-black text-white text-[11px] font-bold
+                flex items-center justify-center shrink-0 mt-0.5">2</span>
               <div className="flex-1">
-                <p className="text-sm font-medium text-black">Open {cfg.appName}</p>
+                <p className="text-sm font-medium text-black">Download {cfg.appName}</p>
                 <a
                   href={cfg.appUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 mt-1 text-xs text-blue-600 hover:underline"
+                  className="inline-flex items-center gap-1 mt-1 text-xs text-gray-500
+                    hover:text-black transition-colors underline underline-offset-2"
                 >
                   <Download className="w-3 h-3" />
-                  {cfg.appStore === 'Download' ? 'Download here' : `Get on ${cfg.appStore}`}
+                  {cfg.appStore === 'Download' ? 'Download for free' : `Get on ${cfg.appStore}`}
                 </a>
               </div>
             </div>
 
-            {/* Step 3 — Import & connect */}
+            {/* Step 3 */}
             <div className="flex items-start gap-3">
-              <span className="w-6 h-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
+              <span className="w-6 h-6 rounded-full bg-black text-white text-[11px] font-bold
+                flex items-center justify-center shrink-0 mt-0.5">3</span>
               <div>
                 <p className="text-sm font-medium text-black">Import and connect</p>
-                <ol className="mt-1 flex flex-col gap-0.5">
-                  {cfg.steps.map((step: string, i: number) => (
-                    <li key={i} className="text-xs text-gray-500">{step}</li>
+                <ol className="mt-1.5 flex flex-col gap-0.5">
+                  {cfg.steps.map((step, i) => (
+                    <li key={i} className="text-xs text-gray-400">{step}</li>
                   ))}
                 </ol>
               </div>
             </div>
 
-            {/* Routing tip — important for Russia users */}
+            {/* Routing tip */}
             {cfg.routingTip && (
-              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800 ml-9">
-                <p className="font-semibold mb-0.5">💡 Important: Set routing to Global</p>
-                <p>{cfg.routingTip}</p>
+              <div className="ml-9 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                <p className="text-xs font-semibold text-amber-800 mb-0.5">Set routing to Global</p>
+                <p className="text-xs text-amber-700">{cfg.routingTip}</p>
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* ====== SETTINGS (collapsible) ====== */}
+      {/* Settings & diagnostics (collapsible) */}
       <button
         onClick={() => setShowSettings(!showSettings)}
-        className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-gray-300 transition bg-white"
+        className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white
+          px-5 py-4 hover:border-gray-300 hover:bg-gray-50/50 transition-all duration-150"
       >
-        <span className="flex items-center gap-2 font-medium text-sm text-gray-700">
+        <span className="flex items-center gap-2.5 font-medium text-sm text-gray-600">
           <Settings className="w-4 h-4 text-gray-400" />
           Settings & diagnostics
         </span>
-        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${showSettings ? 'rotate-90' : ''}`} />
+        <ChevronRight className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${showSettings ? 'rotate-90' : ''}`} />
       </button>
 
       {showSettings && (
-        <div className="flex flex-col gap-3">
-          {/* Usage stats */}
-          {stats && (
-            <Card>
-              <CardContent className="py-4">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Usage</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-lg font-bold text-black">{formatBytes(stats.total)}</p>
-                    <p className="text-xs text-gray-500">Data used</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-black">{formatExpiry(stats.expiryTime)}</p>
-                    <p className="text-xs text-gray-500">Expires</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        <div className="flex flex-col gap-3 anim-up" style={{ animationDelay: '0ms' }}>
+
+          {/* Backup link */}
+          <div className="rounded-2xl border border-gray-100 bg-white p-5">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              Blocked by your ISP?
+            </p>
+            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+              Copy your backup link — it uses a different transport that bypasses most ISP blocks.
+            </p>
+            <button
+              onClick={copyBackupLink}
+              className={`w-full flex items-center justify-center gap-2 rounded-xl px-4 py-2.5
+                text-sm font-semibold transition-all duration-150 ${
+                copiedBackup
+                  ? 'bg-green-50 border border-green-200 text-green-700'
+                  : 'bg-black text-white hover:bg-gray-800'
+              }`}
+            >
+              {copiedBackup
+                ? <><Check className="w-4 h-4" /> Copied</>
+                : <><Copy className="w-4 h-4" /> Copy backup link</>
+              }
+            </button>
+            {copiedBackup && (
+              <p className="text-xs text-center text-green-600 mt-2">
+                Open {cfg.appName} → + → Import from clipboard
+              </p>
+            )}
+          </div>
+
+          {/* Disconnect tip */}
+          {cfg.disconnectTip && (
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4">
+              <p className="text-xs font-semibold text-gray-600 mb-1">VPN keeps disconnecting?</p>
+              <p className="text-xs text-gray-400 leading-relaxed">{cfg.disconnectTip}</p>
+            </div>
           )}
 
-          {/* Troubleshoot */}
-          <Card>
-            <CardContent className="py-4">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Troubleshoot</p>
-              <div className="flex flex-col gap-3">
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-800">
-                  <p className="font-semibold mb-1">Blocked by your ISP?</p>
-                  <p className="mb-2">Copy your backup link — it uses a different transport that bypasses most blocks.</p>
-                  <button
-                    onClick={copyBackupLink}
-                    className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-                      copiedBackup
-                        ? 'bg-green-100 text-green-700 border border-green-200'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }`}
-                  >
-                    {copiedBackup ? <><Check className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy backup link</>}
-                  </button>
-                  {copiedBackup && (
-                    <p className="mt-1.5 text-green-700 font-medium">Open {cfg.appName} → + → Import from clipboard</p>
-                  )}
+          {/* Connection test */}
+          <div className="rounded-2xl border border-gray-100 bg-white p-5">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              Connection test
+            </p>
+            <Button
+              onClick={handleRunDiagnostics}
+              disabled={diagRunning}
+              variant="secondary"
+              size="sm"
+              className="w-full"
+            >
+              {diagRunning
+                ? <><RefreshCw className="w-3 h-3 animate-spin" /> Running test…</>
+                : <><Activity className="w-3 h-3" /> Run test</>
+              }
+            </Button>
+            {diagResult && (
+              <div className={`mt-3 rounded-xl p-3 text-xs border flex items-start gap-2 ${
+                diagResult.xrayRunning
+                  ? 'bg-green-50 border-green-200 text-green-800'
+                  : 'bg-red-50 border-red-200 text-red-700'
+              }`}>
+                {diagResult.xrayRunning
+                  ? <Wifi className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  : <WifiOff className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                }
+                <div>
+                  <p className="font-semibold">{diagResult.verdict}</p>
+                  {diagResult.suggestion && <p className="mt-0.5 opacity-80">{diagResult.suggestion}</p>}
                 </div>
-                {cfg.disconnectTip && (
-                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 text-xs text-gray-600">
-                    <p className="font-semibold mb-0.5">VPN keeps disconnecting?</p>
-                    <p>{cfg.disconnectTip}</p>
-                  </div>
-                )}
-                <Button onClick={handleRunDiagnostics} disabled={diagRunning} variant="secondary" size="sm" className="w-full">
-                  {diagRunning
-                    ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" /> Testing…</>
-                    : <><Activity className="w-3 h-3 mr-1.5" /> Run connection test</>}
-                </Button>
-                {diagResult && (
-                  <div className={`rounded-xl p-3 text-xs border ${
-                    diagResult.xrayRunning ? 'bg-green-50 border-green-200 text-green-800'
-                    : 'bg-red-50 border-red-200 text-red-800'
-                  }`}>
-                    <div className="flex items-center gap-1.5 font-semibold mb-0.5">
-                      {diagResult.xrayRunning ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-                      {diagResult.verdict}
-                    </div>
-                    {diagResult.suggestion && <p className="mt-1">{diagResult.suggestion}</p>}
-                  </div>
-                )}
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
 
-          {/* Admin — control panel link */}
+          {/* Admin link */}
           {isAdmin && (
             <a
               href="https://194.76.217.4:2053/x7kQ9m/"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-between border border-gray-100 rounded-2xl px-5 py-4 hover:border-black transition bg-white"
+              className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white
+                px-5 py-4 hover:border-black transition-colors duration-150"
             >
-              <span className="flex items-center gap-2 font-medium text-sm">
-                <Shield className="w-4 h-4 text-gray-500" />
+              <span className="flex items-center gap-2.5 font-medium text-sm">
+                <Shield className="w-4 h-4 text-gray-400" />
                 3X-UI Control Panel
               </span>
-              <ExternalLink className="w-4 h-4 text-gray-400" />
+              <ExternalLink className="w-4 h-4 text-gray-300" />
             </a>
           )}
         </div>
@@ -449,159 +562,213 @@ function VpnCard() {
   );
 }
 
-// ── Status badge ──────────────────────────────────────────────────────────────
-
-function statusBadge(status: OrderStatus) {
-  const map: Record<OrderStatus, { label: string; variant: 'success' | 'warning' | 'danger' | 'muted' | 'default' }> = {
-    active:            { label: 'Active',          variant: 'success' },
-    pending_payment:   { label: 'Pending payment', variant: 'warning' },
-    payment_submitted: { label: 'Under review',    variant: 'muted'   },
-    expired:           { label: 'Expired',         variant: 'danger'  },
-    cancelled:         { label: 'Cancelled',       variant: 'danger'  },
-  };
-  const s = map[status] ?? { label: status, variant: 'muted' as const };
-  return <Badge variant={s.variant}>{s.label}</Badge>;
-}
-
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
   const { firebaseUser, profile } = useAuth();
   const [orders, setOrders] = useState<VpnOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const isAdmin = profile?.role === 'admin';
 
   useEffect(() => {
     if (!firebaseUser) return;
-    setLoading(true);
+    setOrdersLoading(true);
     getUserOrders(firebaseUser.uid)
       .then(setOrders)
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => setOrdersLoading(false));
   }, [firebaseUser]);
 
   const activeOrder = orders.find((o) => o.status === 'active');
-  const pendingOrders = orders.filter((o) =>
-    o.status === 'pending_payment' || o.status === 'payment_submitted'
+  const pendingOrders = orders.filter(
+    (o) => o.status === 'pending_payment' || o.status === 'payment_submitted',
+  );
+  const historyOrders = orders.filter(
+    (o) => o.status !== 'pending_payment' && o.status !== 'payment_submitted',
   );
   const days = daysUntilExpiry(activeOrder?.expiresAt);
   const expired = isExpired(activeOrder?.expiresAt);
+  const hasActivePlan = !!activeOrder && !expired;
 
   return (
     <main className="flex-1 max-w-lg mx-auto px-4 sm:px-6 py-8">
 
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-black">
-          {profile?.firstname ? `Hi, ${profile.firstname}` : 'Dashboard'}
-        </h1>
-        <p className="text-sm text-gray-400 mt-0.5">{firebaseUser?.email}</p>
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="mb-7 anim-up" style={{ animationDelay: '0ms' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-black flex items-center justify-center shrink-0">
+            <span className="text-white text-sm font-bold">
+              {profile?.firstname?.[0]?.toUpperCase() ?? firebaseUser?.email?.[0]?.toUpperCase() ?? '?'}
+            </span>
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-black leading-tight">
+              {greet(profile?.firstname)}
+            </h1>
+            <p className="text-xs text-gray-400 mt-0.5">{firebaseUser?.email}</p>
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
 
-        {/* VPN card — always shown */}
-        <VpnCard />
+        {/* ── VPN control card ────────────────────────────────────────── */}
+        <VpnCard hasActivePlan={hasActivePlan} />
 
-        {/* Active paid plan info */}
-        {activeOrder && (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-sm">Plan</h2>
-                {statusBadge(activeOrder.status)}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col gap-1 text-sm text-gray-600">
-                <p>{activeOrder.planName} — {activeOrder.planDuration}</p>
-                <p>{formatCurrency(activeOrder.amount, activeOrder.currency)}</p>
-                {activeOrder.expiresAt && (
-                  <p className={expired || (days !== null && days <= 5) ? 'text-red-500 font-medium' : ''}>
-                    {expired ? 'Expired' : `Expires in ${days} days`}
-                  </p>
-                )}
-              </div>
-              {(expired || (days !== null && days <= 7)) && (
-                <div className="mt-4">
-                  <Link to="/plans"><Button variant="secondary" size="sm">Renew</Button></Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* ── No plan — urge to get one ────────────────────────────── */}
+        {!ordersLoading && !activeOrder && pendingOrders.length === 0 && (
+          <NoPlanBanner />
         )}
 
-        {/* Pending orders */}
+        {/* ── Active plan card ─────────────────────────────────────── */}
+        {activeOrder && (
+          <div
+            className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm anim-up"
+            style={{ animationDelay: '280ms' }}
+          >
+            <div className="px-5 pt-5 pb-4">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  Current plan
+                </p>
+                {statusBadge(activeOrder.status)}
+              </div>
+
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-black text-lg leading-tight">{activeOrder.planName}</p>
+                  <p className="text-sm text-gray-400 mt-0.5">{activeOrder.planDuration}</p>
+                </div>
+                <p className="text-lg font-bold text-black shrink-0">
+                  {activeOrder.currency === 'RUB'
+                    ? `${activeOrder.amount} ₽`
+                    : formatCurrency(activeOrder.amount, activeOrder.currency)
+                  }
+                </p>
+              </div>
+
+              {activeOrder.expiresAt && (
+                <div className={`mt-4 flex items-center gap-2 text-xs font-medium ${
+                  expired || (days !== null && days <= 5) ? 'text-red-500' : 'text-gray-400'
+                }`}>
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  {expired ? 'Plan expired' : `Expires in ${days} day${days !== 1 ? 's' : ''}`}
+                </div>
+              )}
+
+              {(expired || (days !== null && days <= 7)) && (
+                <div className="mt-4">
+                  <Link to="/plans">
+                    <Button size="sm" className="w-full">
+                      Renew plan
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Pending orders ───────────────────────────────────────── */}
         {pendingOrders.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Pending orders</p>
+          <div className="anim-up" style={{ animationDelay: '300ms' }}>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-1">
+              Pending orders
+            </p>
             <div className="flex flex-col gap-2">
               {pendingOrders.map((order) => (
-                <Card key={order.id}>
-                  <CardContent className="py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">{order.planName}</p>
-                      <p className="text-xs text-gray-400">{formatDate(order.createdAt)}</p>
-                    </div>
-                    {statusBadge(order.status)}
-                  </CardContent>
-                </Card>
+                <div
+                  key={order.id}
+                  className="rounded-2xl border border-gray-100 bg-white px-5 py-4
+                    flex items-center justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-black">{order.planName}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatDate(order.createdAt)}</p>
+                  </div>
+                  {statusBadge(order.status)}
+                </div>
               ))}
-              <p className="text-xs text-gray-400 flex items-center gap-1.5 px-1">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <p className="text-xs text-gray-400 flex items-start gap-1.5 px-1 pt-1 leading-relaxed">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 Orders are typically activated within a few hours after payment review.
               </p>
             </div>
           </div>
         )}
 
-        {/* Order history */}
-        {orders.filter(o => o.status !== 'pending_payment' && o.status !== 'payment_submitted').length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Order history</p>
-            <Card>
-              <div className="divide-y divide-gray-50">
-                {orders
-                  .filter(o => o.status !== 'pending_payment' && o.status !== 'payment_submitted')
-                  .map((order) => (
-                    <div key={order.id} className="px-5 py-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">{order.planName}</p>
-                        <p className="text-xs text-gray-400">{formatDate(order.createdAt)}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-gray-500">{formatCurrency(order.amount, order.currency)}</span>
-                        {statusBadge(order.status)}
-                      </div>
-                    </div>
-                  ))}
+        {/* ── Quick nav ────────────────────────────────────────────── */}
+        {!ordersLoading && (
+          <div className="grid grid-cols-2 gap-3 anim-up" style={{ animationDelay: '340ms' }}>
+            <Link
+              to="/plans"
+              className="flex items-center justify-between rounded-2xl border border-gray-100
+                bg-white px-4 py-4 hover:border-gray-300 hover:bg-gray-50/60
+                transition-all duration-150"
+            >
+              <div>
+                <p className="text-sm font-semibold text-black">Plans</p>
+                <p className="text-xs text-gray-400 mt-0.5">49–99 ₽/mo</p>
               </div>
-            </Card>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+            </Link>
+            <Link
+              to="/account"
+              className="flex items-center justify-between rounded-2xl border border-gray-100
+                bg-white px-4 py-4 hover:border-gray-300 hover:bg-gray-50/60
+                transition-all duration-150"
+            >
+              <div>
+                <p className="text-sm font-semibold text-black">Account</p>
+                <p className="text-xs text-gray-400 mt-0.5">Settings</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+            </Link>
           </div>
         )}
 
-        {/* Quick links */}
-        {!loading && (
-          <div className="flex flex-col gap-3 pt-1">
-            <div className="grid grid-cols-2 gap-3">
-              <Link to="/plans" className="flex items-center justify-between border border-gray-100 rounded-2xl px-4 py-3.5 hover:border-black transition">
-                <span className="font-medium text-sm">Plans</span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </Link>
-              <Link to="/account" className="flex items-center justify-between border border-gray-100 rounded-2xl px-4 py-3.5 hover:border-black transition">
-                <span className="font-medium text-sm">Account</span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </Link>
+        {/* ── Admin link ───────────────────────────────────────────── */}
+        {isAdmin && !ordersLoading && (
+          <Link
+            to="/admin"
+            className="flex items-center justify-between rounded-2xl border border-gray-100
+              bg-white px-5 py-4 hover:border-black transition-colors duration-150
+              anim-up"
+            style={{ animationDelay: '380ms' }}
+          >
+            <span className="flex items-center gap-2.5 font-semibold text-sm">
+              <Shield className="w-4 h-4 text-gray-400" />
+              Admin Dashboard
+            </span>
+            <ChevronRight className="w-4 h-4 text-gray-300" />
+          </Link>
+        )}
+
+        {/* ── Order history ────────────────────────────────────────── */}
+        {historyOrders.length > 0 && (
+          <div className="anim-up" style={{ animationDelay: '400ms' }}>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-1">
+              Order history
+            </p>
+            <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden divide-y divide-gray-50">
+              {historyOrders.map((order) => (
+                <div key={order.id} className="px-5 py-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-black">{order.planName}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatDate(order.createdAt)}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-500">
+                      {order.currency === 'RUB'
+                        ? `${order.amount} ₽`
+                        : formatCurrency(order.amount, order.currency)
+                      }
+                    </span>
+                    {statusBadge(order.status)}
+                  </div>
+                </div>
+              ))}
             </div>
-            {isAdmin && (
-              <Link to="/admin" className="flex items-center justify-between border border-gray-100 rounded-2xl px-4 py-3.5 hover:border-black transition">
-                <span className="flex items-center gap-2 font-medium text-sm">
-                  <Shield className="w-4 h-4 text-gray-500" />
-                  Admin Dashboard
-                </span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </Link>
-            )}
           </div>
         )}
 
