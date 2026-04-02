@@ -138,8 +138,9 @@ export function DashboardPage() {
   const expired      = isExpired(activeOrder?.expiresAt);
   const activeTrial  = trial?.status === 'active';
 
-  // User can copy link only if they have active paid plan OR active trial
-  const canCopyLink  = activated && ((!expired && !!activeOrder) || activeTrial);
+  // User can activate/copy link only if they have active paid plan OR active trial
+  const canActivate  = (!expired && !!activeOrder) || activeTrial;
+  const canCopyLink  = activated && canActivate;
   const isConnected  = activated && serverOnline === true;
 
   async function handleActivate() {
@@ -184,7 +185,7 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
+    <div className="min-h-screen bg-gray-50">
       <motion.div
         variants={container}
         initial="hidden"
@@ -195,12 +196,12 @@ export function DashboardPage() {
         {/* ── Header ──────────────────────────────────────────────────── */}
         <motion.div variants={card} className="flex items-center justify-between px-1">
           <div>
-            <p className="text-white/40 text-xs font-medium tracking-wide">{greet(profile?.firstname)}</p>
-            <p className="text-white text-sm font-semibold mt-0.5 truncate max-w-[220px]">{firebaseUser?.email}</p>
+            <p className="text-gray-400 text-xs font-medium tracking-wide">{greet(profile?.firstname)}</p>
+            <p className="text-gray-900 text-sm font-semibold mt-0.5 truncate max-w-[220px]">{firebaseUser?.email}</p>
           </div>
           <Link to="/account">
-            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center
-              text-white text-sm font-bold hover:bg-white/15 transition-colors">
+            <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center
+              text-gray-700 text-sm font-bold hover:bg-gray-300 transition-colors">
               {initials}
             </div>
           </Link>
@@ -249,9 +250,9 @@ export function DashboardPage() {
           {/* Power orb */}
           <div className="flex flex-col items-center mb-8">
             <motion.button
-              whileHover={!activated ? { scale: 1.04 } : {}}
-              whileTap={!activated ? { scale: 0.96 } : {}}
-              onClick={!activated && !activating ? handleActivate : undefined}
+              whileHover={!activated && canActivate ? { scale: 1.04 } : {}}
+              whileTap={!activated && canActivate ? { scale: 0.96 } : {}}
+              onClick={!activated && !activating && canActivate ? handleActivate : undefined}
               className={`relative w-32 h-32 rounded-full flex items-center justify-center
                 shadow-2xl transition-all duration-500 ${
                 activated && !activating
@@ -260,14 +261,16 @@ export function DashboardPage() {
                     : 'bg-gray-800 shadow-gray-800/20 cursor-default'
                   : activating
                   ? 'bg-gray-200 cursor-default'
-                  : 'bg-gray-900 cursor-pointer hover:bg-black shadow-gray-900/40'
+                  : canActivate
+                  ? 'bg-gray-900 cursor-pointer hover:bg-black shadow-gray-900/40'
+                  : 'bg-gray-200 cursor-default shadow-none'
               }`}
             >
               {activating ? (
                 <RefreshCw className="w-10 h-10 text-white animate-spin" />
               ) : (
                 <Power className={`w-10 h-10 transition-colors duration-500 ${
-                  activated ? 'text-white' : 'text-white/70'
+                  activated ? 'text-white' : canActivate ? 'text-white/70' : 'text-gray-400'
                 }`} />
               )}
             </motion.button>
@@ -278,7 +281,7 @@ export function DashboardPage() {
               transition={{ delay: 0.4 }}
               className="mt-3 text-sm text-gray-500 font-medium"
             >
-              {activating ? 'Activating…' : activated ? (isConnected ? 'Connected' : 'Ready') : 'Tap to activate'}
+              {activating ? 'Activating…' : activated ? (isConnected ? 'Connected' : 'Ready') : canActivate ? 'Tap to activate' : 'No active plan'}
             </motion.p>
           </div>
 
@@ -310,7 +313,7 @@ export function DashboardPage() {
             )}
           </AnimatePresence>
 
-          {/* Copy link — only enabled with active plan or trial */}
+          {/* Bottom action — only relevant actions shown */}
           {activated ? (
             <motion.button
               whileTap={canCopyLink ? { scale: 0.97 } : {}}
@@ -333,8 +336,8 @@ export function DashboardPage() {
                 <><Shield className="w-4 h-4" /> Plan required to connect</>
               )}
             </motion.button>
-          ) : (
-            /* Pre-activation: activate button in the card */
+          ) : canActivate ? (
+            /* Has plan or trial — show activate button */
             <button
               onClick={handleActivate}
               disabled={activating}
@@ -344,7 +347,12 @@ export function DashboardPage() {
             >
               {activating ? <><RefreshCw className="w-4 h-4 animate-spin" /> Activating…</> : 'Activate VPN'}
             </button>
-          )}
+          ) : dataLoading ? (
+            /* Loading entitlement state */
+            <div className="h-12 flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
+            </div>
+          ) : null /* No entitlement — plan card below has CTAs */}
 
           {/* Paste hint */}
           <AnimatePresence>
@@ -495,7 +503,7 @@ export function DashboardPage() {
         {/* ── Pending orders ───────────────────────────────────────────── */}
         {pendingOrders.length > 0 && (
           <motion.div variants={card}>
-            <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2.5 px-1">Pending</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2.5 px-1">Pending</p>
             <div className="flex flex-col gap-2">
               {pendingOrders.map((o) => (
                 <div key={o.id} className="bg-white rounded-2xl px-5 py-4 flex items-center justify-between">
@@ -506,7 +514,7 @@ export function DashboardPage() {
                   {statusBadge(o.status)}
                 </div>
               ))}
-              <p className="text-xs text-white/30 flex items-start gap-1.5 px-1 leading-relaxed">
+              <p className="text-xs text-gray-400 flex items-start gap-1.5 px-1 leading-relaxed">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 Activated within a few hours after payment review.
               </p>
