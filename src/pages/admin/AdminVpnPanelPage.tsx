@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Plus, RefreshCw, ChevronDown, ChevronUp, X, Copy, Check,
   ToggleLeft, ToggleRight, Trash2, RotateCcw, Server, Wifi,
-  HardDrive, Cpu, Users, Shield, Link2, Globe,
+  HardDrive, Cpu, Users, Shield, Link2, Globe, Pencil, Calendar,
 } from 'lucide-react';
 import {
   getAdminClients,
@@ -12,6 +12,7 @@ import {
   disableAdminClient,
   deleteAdminClient,
   resetAdminClientTraffic,
+  updateAdminClient,
   formatBytes,
   formatExpiry,
 } from '../../lib/xui-api';
@@ -163,6 +164,205 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
   );
 }
 
+// ── Edit Client Modal ─────────────────────────────────────────────────────────
+
+const EDIT_EXPIRY_OPTIONS = [
+  { label: '+1 day',   days: 1 },
+  { label: '+7 days',  days: 7 },
+  { label: '+30 days', days: 30 },
+  { label: '+90 days', days: 90 },
+  { label: '+1 year',  days: 365 },
+  { label: 'Never',    days: 0 },
+];
+
+const EDIT_TRAFFIC_OPTIONS = [
+  { label: '5 GB',      gb: 5 },
+  { label: '10 GB',     gb: 10 },
+  { label: '50 GB',     gb: 50 },
+  { label: '100 GB',    gb: 100 },
+  { label: '500 GB',    gb: 500 },
+  { label: 'Unlimited', gb: 0 },
+];
+
+function EditClientModal({ client, onClose, onSaved }: {
+  client: XuiAdminClient;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  // Expiry: either a custom date string or a preset
+  const currentExpiry = client.expiryTime > 0
+    ? new Date(client.expiryTime).toISOString().split('T')[0]
+    : '';
+  const [expiryDate, setExpiryDate] = useState(currentExpiry);
+  const [expiryMode, setExpiryMode] = useState<'custom' | 'preset'>('custom');
+  const [presetDays, setPresetDays] = useState(30);
+
+  // Traffic
+  const currentTrafficGB = client.total > 0 ? Math.round(client.total / (1024 * 1024 * 1024)) : 0;
+  const [trafficGB, setTrafficGB] = useState(currentTrafficGB);
+
+  // Connections
+  const [maxConn, setMaxConn] = useState(client.limitIp || 0);
+
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      let expiryTime: number;
+      if (expiryMode === 'preset') {
+        expiryTime = presetDays === 0 ? 0 : Date.now() + presetDays * 24 * 60 * 60 * 1000;
+      } else {
+        expiryTime = expiryDate ? new Date(expiryDate + 'T23:59:59').getTime() : 0;
+      }
+
+      await updateAdminClient(client.uuid, {
+        expiryTime,
+        totalGB: trafficGB * 1024 * 1024 * 1024,
+        limitIp: maxConn,
+        email: client.email,
+      });
+      toast.success(`${client.email} updated — changes reflect in V2RayTun within 5 minutes`);
+      onSaved();
+      onClose();
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Failed to update client');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="font-semibold text-lg">Edit Client</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{client.email}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-black">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-5">
+          {/* Expiry */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">
+              <Calendar className="w-3 h-3 inline mr-1" />
+              Expiry date
+              {client.expiryTime > 0 && (
+                <span className="text-gray-300 ml-2">
+                  Current: {formatExpiry(client.expiryTime)}
+                </span>
+              )}
+            </label>
+
+            {/* Mode toggle */}
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => setExpiryMode('custom')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  expiryMode === 'custom' ? 'bg-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Pick date
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpiryMode('preset')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  expiryMode === 'preset' ? 'bg-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Add days
+              </button>
+            </div>
+
+            {expiryMode === 'custom' ? (
+              <input
+                type="date"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-black"
+              />
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {EDIT_EXPIRY_OPTIONS.map((o) => (
+                  <button
+                    key={o.days} type="button" onClick={() => setPresetDays(o.days)}
+                    className={`rounded-xl border px-3 py-2 text-sm transition ${
+                      presetDays === o.days ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Traffic */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">
+              Traffic limit
+              {client.total > 0 && (
+                <span className="text-gray-300 ml-2">
+                  Current: {formatBytes(client.total)}
+                </span>
+              )}
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {EDIT_TRAFFIC_OPTIONS.map((o) => (
+                <button
+                  key={o.gb} type="button" onClick={() => setTrafficGB(o.gb)}
+                  className={`rounded-xl border px-3 py-2 text-sm transition ${
+                    trafficGB === o.gb ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Connections */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">
+              Max connections
+              <span className="text-gray-300 ml-2">
+                Current: {client.limitIp || 'Unlimited'}
+              </span>
+            </label>
+            <input
+              type="number"
+              value={maxConn}
+              onChange={(e) => setMaxConn(Number(e.target.value))}
+              min={0} max={20}
+              placeholder="0 = unlimited"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-black"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">0 = unlimited connections</p>
+          </div>
+
+          {/* Save */}
+          <div className="flex gap-2 pt-1">
+            <Button onClick={handleSave} className="flex-1" loading={saving}>
+              {saving ? 'Saving...' : 'Save changes'}
+            </Button>
+            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          </div>
+
+          <p className="text-[10px] text-gray-400 text-center">
+            Changes apply to 3X-UI instantly. V2RayTun/V2RayNG clients will pick them up within ~5 minutes when they poll the subscription URL.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Client Row ────────────────────────────────────────────────────────────────
 
 function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: () => void }) {
@@ -171,6 +371,7 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
   const [deleting, setDeleting] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   const traffic = client.up + client.down;
   const isExpired = client.expiryTime > 0 && client.expiryTime < Date.now();
@@ -179,10 +380,10 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
     setToggling(true);
     try {
       if (client.enable) {
-        await disableAdminClient(client.uuid);
+        await disableAdminClient(client.uuid, client.email);
         toast.success(`${client.email} disabled`);
       } else {
-        await enableAdminClient(client.uuid);
+        await enableAdminClient(client.uuid, client.email);
         toast.success(`${client.email} enabled`);
       }
       onRefresh();
@@ -283,6 +484,14 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
             {/* Actions */}
             <div className="flex flex-wrap gap-2 pt-1">
               <button
+                onClick={() => setShowEdit(true)}
+                className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-black px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 hover:border-blue-400 transition"
+              >
+                <Pencil className="w-4 h-4 text-blue-500" />
+                Edit
+              </button>
+
+              <button
                 onClick={toggleEnabled} disabled={toggling}
                 className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-black px-3 py-1.5 rounded-lg border border-gray-200 hover:border-gray-400 transition"
               >
@@ -310,6 +519,14 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
             </div>
           </div>
         </div>
+      )}
+
+      {showEdit && (
+        <EditClientModal
+          client={client}
+          onClose={() => setShowEdit(false)}
+          onSaved={onRefresh}
+        />
       )}
     </div>
   );

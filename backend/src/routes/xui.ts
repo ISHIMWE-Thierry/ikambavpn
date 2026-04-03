@@ -12,6 +12,7 @@ import { AuthedRequest } from "../middleware/auth";
 import {
   provisionUser,
   addClient,
+  updateClient,
   deleteClient,
   setClientEnabled,
   getClientStatByEmail,
@@ -27,6 +28,7 @@ import {
   daysFromNow,
   resetClientTraffic,
   getCachedSubscription,
+  clearSubCache,
 } from "../services/xui";
 
 export const xuiRouter = Router();
@@ -421,6 +423,8 @@ xuiRouter.post(
       }
 
       await setClientEnabled(req.params.clientId, false);
+      // Flush sub cache so VPN clients see the change
+      if (req.body?.email) clearSubCache(req.body.email);
       return res.json({ ok: true });
     } catch (err: any) {
       return res.status(500).json({ ok: false, error: err.message });
@@ -444,6 +448,8 @@ xuiRouter.post(
       }
 
       await setClientEnabled(req.params.clientId, true);
+      // Flush sub cache so VPN clients see the change
+      if (req.body?.email) clearSubCache(req.body.email);
       return res.json({ ok: true });
     } catch (err: any) {
       return res.status(500).json({ ok: false, error: err.message });
@@ -490,6 +496,67 @@ xuiRouter.post(
       }
 
       await resetClientTraffic(req.params.email);
+      return res.json({ ok: true });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err.message });
+    }
+  }
+);
+
+/**
+ * POST /xui/admin/update/:clientId
+ * Update a client's expiry, traffic limit, or connection limit (admin only).
+ *
+ * Body: {
+ *   expiryTime?: number,     // epoch ms (0 = never)
+ *   totalGB?: number,        // bytes (0 = unlimited)
+ *   limitIp?: number,        // max concurrent connections (0 = unlimited)
+ *   enable?: boolean         // enable/disable
+ *   email?: string           // client email (used to flush sub cache)
+ * }
+ *
+ * This also clears the subscription cache so that V2RayTun/V2RayNG
+ * pick up the updated settings on their next poll (within ~5 minutes).
+ */
+xuiRouter.post(
+  "/admin/update/:clientId",
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const isAdmin =
+        (req.user as any)?.admin === true ||
+        (req.user as any)?.claims?.admin === true;
+      if (!isAdmin) {
+        return res.status(403).json({ ok: false, error: "Admin only" });
+      }
+
+      const { clientId } = req.params;
+      const { expiryTime, totalGB, limitIp, enable, email } = req.body;
+
+      const updates: Record<string, any> = {};
+      if (expiryTime !== undefined) updates.expiryTime = expiryTime;
+      if (totalGB !== undefined) updates.totalGB = totalGB;
+      if (limitIp !== undefined) updates.limitIp = limitIp;
+      if (enable !== undefined) updates.enable = enable;
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ ok: false, error: "No updates provided" });
+      }
+
+      // Update on the primary (TCP) inbound
+      await updateClient(clientId, updates);
+
+      // Also update on the XHTTP inbound (inbound 2) — non-fatal
+      try {
+        await updateClient(clientId, updates, 2);
+      } catch { /* XHTTP inbound may not exist */ }
+
+      // Flush subscription cache so V2RayTun/V2RayNG see updated expiry immediately
+      if (email) {
+        clearSubCache(email);
+        // Also clear the XHTTP mirror email variant
+        clearSubCache(email.replace("@", ".x@"));
+      }
+
       return res.json({ ok: true });
     } catch (err: any) {
       return res.status(500).json({ ok: false, error: err.message });

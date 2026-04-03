@@ -294,13 +294,19 @@ export async function addAdminClient(options: {
 }
 
 /** Enable a VPN client (admin) */
-export async function enableAdminClient(clientId: string): Promise<void> {
-  await xuiRequest<void>(`/admin/enable/${clientId}`, { method: 'POST' });
+export async function enableAdminClient(clientId: string, email?: string): Promise<void> {
+  await xuiRequest<void>(`/admin/enable/${clientId}`, {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
 }
 
 /** Disable a VPN client (admin) */
-export async function disableAdminClient(clientId: string): Promise<void> {
-  await xuiRequest<void>(`/admin/disable/${clientId}`, { method: 'POST' });
+export async function disableAdminClient(clientId: string, email?: string): Promise<void> {
+  await xuiRequest<void>(`/admin/disable/${clientId}`, {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
 }
 
 /** Delete a VPN client (admin) */
@@ -311,6 +317,26 @@ export async function deleteAdminClient(clientId: string): Promise<void> {
 /** Reset traffic for a VPN client (admin) */
 export async function resetAdminClientTraffic(email: string): Promise<void> {
   await xuiRequest<void>(`/admin/reset-traffic/${encodeURIComponent(email)}`, { method: 'POST' });
+}
+
+/**
+ * Update a VPN client's expiry, traffic limit, or connection limit (admin).
+ * Also flushes the subscription cache so V2RayTun picks up changes immediately.
+ */
+export async function updateAdminClient(
+  clientId: string,
+  updates: {
+    expiryTime?: number;
+    totalGB?: number;
+    limitIp?: number;
+    enable?: boolean;
+    email?: string;
+  }
+): Promise<void> {
+  await xuiRequest<void>(`/admin/update/${clientId}`, {
+    method: 'POST',
+    body: JSON.stringify(updates),
+  });
 }
 
 /** Get all connection links for a client by email (admin) */

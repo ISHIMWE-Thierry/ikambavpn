@@ -190,6 +190,15 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
   }
 }
 
+/**
+ * Clear subscription cache for a specific email.
+ * Must be called after updating a client's expiry/traffic/enable status
+ * so that V2RayTun/V2RayNG pick up the new settings on next poll.
+ */
+export function clearSubCache(email: string): void {
+  subCache.delete(email);
+}
+
 // ── Session Management ────────────────────────────────────────────────────────
 
 let session: XuiSession | null = null;
