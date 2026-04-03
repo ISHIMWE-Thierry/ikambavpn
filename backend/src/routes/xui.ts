@@ -178,8 +178,8 @@ xuiPublicRouter.get("/xhttp-link/:email", async (req: Request, res: Response) =>
     const entry = await getCachedSubscription(email);
     if (!entry) return res.status(404).json({ ok: false });
 
-    // The cached vlessLink is "xhttpLink\ntcpLink" — XHTTP is first (index 0)
-    const xhttpLink = entry.vlessLink.split("\n")[0];
+    // The cached vlessLink is "tcpLink\nxhttpLink" — XHTTP is second (index 1)
+    const xhttpLink = entry.vlessLink.split("\n")[1];
     if (!xhttpLink) return res.status(404).json({ ok: false, error: "XHTTP link not available" });
 
     return res.json({ ok: true, link: xhttpLink });

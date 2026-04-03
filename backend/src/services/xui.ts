@@ -164,8 +164,8 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
     const remark = `IkambaVPN-${email.split("@")[0]}`;
     const tcpLink = buildVlessLink(clientId, remark);
     const xhttpLink = buildXhttpLink(clientId, remark);
-    // XHTTP first — DPI-resistant, apps prefer it. TCP as fallback.
-    const vlessLink = `${xhttpLink}\n${tcpLink}`;
+    // TCP first — more stable. XHTTP as fallback for DPI bypass.
+    const vlessLink = `${tcpLink}\n${xhttpLink}`;
 
     // Build user info
     let userInfo = "upload=0; download=0; total=0; expire=0";
