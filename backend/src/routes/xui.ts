@@ -30,6 +30,7 @@ import {
   getCachedSubscription,
   clearSubCache,
 } from "../services/xui";
+import { getFirestore } from "../services/firebase";
 
 export const xuiRouter = Router();
 
@@ -38,6 +39,27 @@ export const xuiRouter = Router();
  * V2RayTun / V2RayNG / Hiddify call these directly.
  */
 export const xuiPublicRouter = Router();
+
+/**
+ * Check if a user is admin.
+ * 1. Firebase custom claims: decoded.admin === true
+ * 2. Firestore user doc: users/{uid}.role === 'admin'
+ */
+async function checkIsAdmin(user: any): Promise<boolean> {
+  if (!user?.uid) return false;
+  // Check Firebase custom claims first (fast)
+  if (user.admin === true) return true;
+  if (user.claims?.admin === true) return true;
+  // Fallback: check Firestore user document role
+  try {
+    const db = getFirestore();
+    const doc = await db.collection("users").doc(user.uid).get();
+    if (doc.exists && doc.data()?.role === "admin") return true;
+  } catch {
+    // Firestore unavailable — rely on claims only
+  }
+  return false;
+}
 
 // ── Public subscription endpoint ──────────────────────────────────────────────
 
@@ -333,9 +355,7 @@ xuiRouter.get("/stats/:email", async (req: AuthedRequest, res: Response) => {
  */
 xuiRouter.get("/admin/clients", async (req: AuthedRequest, res: Response) => {
   try {
-    const isAdmin =
-      (req.user as any)?.admin === true ||
-      (req.user as any)?.claims?.admin === true;
+    const isAdmin = await checkIsAdmin(req.user);
     if (!isAdmin) {
       return res.status(403).json({ ok: false, error: "Admin only" });
     }
@@ -423,9 +443,7 @@ xuiRouter.get("/admin/clients", async (req: AuthedRequest, res: Response) => {
  */
 xuiRouter.post("/admin/add", async (req: AuthedRequest, res: Response) => {
   try {
-    const isAdmin =
-      (req.user as any)?.admin === true ||
-      (req.user as any)?.claims?.admin === true;
+    const isAdmin = await checkIsAdmin(req.user);
     if (!isAdmin) {
       return res.status(403).json({ ok: false, error: "Admin only" });
     }
@@ -455,12 +473,10 @@ xuiRouter.post(
   "/admin/disable/:clientId",
   async (req: AuthedRequest, res: Response) => {
     try {
-      const isAdmin =
-        (req.user as any)?.admin === true ||
-        (req.user as any)?.claims?.admin === true;
-      if (!isAdmin) {
-        return res.status(403).json({ ok: false, error: "Admin only" });
-      }
+      const isAdmin = await checkIsAdmin(req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ ok: false, error: "Admin only" });
+    }
 
       await setClientEnabled(req.params.clientId, false);
       // Flush sub cache so VPN clients see the change
@@ -480,12 +496,10 @@ xuiRouter.post(
   "/admin/enable/:clientId",
   async (req: AuthedRequest, res: Response) => {
     try {
-      const isAdmin =
-        (req.user as any)?.admin === true ||
-        (req.user as any)?.claims?.admin === true;
-      if (!isAdmin) {
-        return res.status(403).json({ ok: false, error: "Admin only" });
-      }
+      const isAdmin = await checkIsAdmin(req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ ok: false, error: "Admin only" });
+    }
 
       await setClientEnabled(req.params.clientId, true);
       // Flush sub cache so VPN clients see the change
@@ -505,12 +519,10 @@ xuiRouter.delete(
   "/admin/delete/:clientId",
   async (req: AuthedRequest, res: Response) => {
     try {
-      const isAdmin =
-        (req.user as any)?.admin === true ||
-        (req.user as any)?.claims?.admin === true;
-      if (!isAdmin) {
-        return res.status(403).json({ ok: false, error: "Admin only" });
-      }
+      const isAdmin = await checkIsAdmin(req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ ok: false, error: "Admin only" });
+    }
 
       await deleteClient(req.params.clientId);
       return res.json({ ok: true });
@@ -528,12 +540,10 @@ xuiRouter.post(
   "/admin/reset-traffic/:email",
   async (req: AuthedRequest, res: Response) => {
     try {
-      const isAdmin =
-        (req.user as any)?.admin === true ||
-        (req.user as any)?.claims?.admin === true;
-      if (!isAdmin) {
-        return res.status(403).json({ ok: false, error: "Admin only" });
-      }
+      const isAdmin = await checkIsAdmin(req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ ok: false, error: "Admin only" });
+    }
 
       await resetClientTraffic(req.params.email);
       return res.json({ ok: true });
@@ -562,12 +572,10 @@ xuiRouter.post(
   "/admin/update/:clientId",
   async (req: AuthedRequest, res: Response) => {
     try {
-      const isAdmin =
-        (req.user as any)?.admin === true ||
-        (req.user as any)?.claims?.admin === true;
-      if (!isAdmin) {
-        return res.status(403).json({ ok: false, error: "Admin only" });
-      }
+      const isAdmin = await checkIsAdmin(req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ ok: false, error: "Admin only" });
+    }
 
       const { clientId } = req.params;
       const { expiryTime, totalGB, limitIp, enable, email } = req.body;
@@ -612,12 +620,10 @@ xuiRouter.get(
   "/admin/inbounds",
   async (req: AuthedRequest, res: Response) => {
     try {
-      const isAdmin =
-        (req.user as any)?.admin === true ||
-        (req.user as any)?.claims?.admin === true;
-      if (!isAdmin) {
-        return res.status(403).json({ ok: false, error: "Admin only" });
-      }
+      const isAdmin = await checkIsAdmin(req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ ok: false, error: "Admin only" });
+    }
 
       const inbounds = await listInbounds();
       return res.json({ ok: true, data: inbounds });
@@ -635,12 +641,10 @@ xuiRouter.get(
   "/admin/status",
   async (req: AuthedRequest, res: Response) => {
     try {
-      const isAdmin =
-        (req.user as any)?.admin === true ||
-        (req.user as any)?.claims?.admin === true;
-      if (!isAdmin) {
-        return res.status(403).json({ ok: false, error: "Admin only" });
-      }
+      const isAdmin = await checkIsAdmin(req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ ok: false, error: "Admin only" });
+    }
 
       const status = await getSystemStatus();
       return res.json({ ok: true, data: status });
