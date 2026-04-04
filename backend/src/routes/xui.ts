@@ -341,16 +341,32 @@ xuiRouter.get("/admin/clients", async (req: AuthedRequest, res: Response) => {
     }
 
     const stats = await getClientStats();
-    // Merge with client config (UUIDs, subIds) from inbound settings
+    // Merge with client config (UUIDs, subIds, enable, expiryTime) from inbound settings
     const inbounds = await listInbounds();
-    const clientMap = new Map<string, { uuid: string; subId: string; limitIp: number }>();
+    const clientMap = new Map<string, {
+      uuid: string; subId: string; limitIp: number;
+      enable: boolean; expiryTime: number; totalGB: number;
+      inboundId: number;
+    }>();
     for (const inb of inbounds) {
       const settings = JSON.parse((inb as any).settings || "{}");
       for (const c of settings.clients || []) {
-        clientMap.set(c.email, { uuid: c.id, subId: c.subId || "", limitIp: c.limitIp || 0 });
+        clientMap.set(c.email, {
+          uuid: c.id,
+          subId: c.subId || "",
+          limitIp: c.limitIp || 0,
+          enable: c.enable !== false,
+          expiryTime: c.expiryTime || 0,
+          totalGB: c.totalGB || 0,
+          inboundId: inb.id,
+        });
       }
     }
 
+    // Build a set of emails that have stats
+    const statsEmails = new Set(stats.map((s: any) => s.email));
+
+    // Enrich stats entries with config data
     const enriched = stats.map((s: any) => {
       const cfg = clientMap.get(s.email);
       const links = cfg ? getAllClientLinks(cfg.uuid, cfg.subId, s.email) : null;
@@ -363,6 +379,30 @@ xuiRouter.get("/admin/clients", async (req: AuthedRequest, res: Response) => {
         vlessLink: links?.vlessLink || "",
       };
     });
+
+    // Add clients from inbound settings that have NO stats entry yet
+    // (e.g. trial users or newly provisioned clients who haven't connected)
+    for (const [email, cfg] of clientMap) {
+      if (!statsEmails.has(email)) {
+        const links = getAllClientLinks(cfg.uuid, cfg.subId, email);
+        enriched.push({
+          id: 0,
+          inboundId: cfg.inboundId,
+          enable: cfg.enable,
+          email,
+          up: 0,
+          down: 0,
+          total: cfg.totalGB,
+          expiryTime: cfg.expiryTime,
+          reset: 0,
+          uuid: cfg.uuid,
+          subId: cfg.subId,
+          limitIp: cfg.limitIp,
+          subscriptionUrl: links?.subscriptionUrl || "",
+          vlessLink: links?.vlessLink || "",
+        });
+      }
+    }
 
     return res.json({ ok: true, data: enriched });
   } catch (err: any) {

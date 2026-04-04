@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Plus, RefreshCw, ChevronDown, ChevronUp, X, Copy, Check,
   ToggleLeft, ToggleRight, Trash2, RotateCcw, Server, Wifi,
-  HardDrive, Cpu, Users, Shield, Link2, Globe, Pencil, Calendar,
+  HardDrive, Cpu, Users, Shield, Link2, Globe, Pencil, Calendar, Zap,
 } from 'lucide-react';
 import {
   getAdminClients,
@@ -184,25 +184,26 @@ const EDIT_TRAFFIC_OPTIONS = [
   { label: 'Unlimited', gb: 0 },
 ];
 
-function EditClientModal({ client, onClose, onSaved }: {
+function EditClientModal({ client, onClose, onSaved, extendMode }: {
   client: XuiAdminClient;
   onClose: () => void;
   onSaved: () => void;
+  extendMode?: boolean;
 }) {
   // Expiry: either a custom date string or a preset
   const currentExpiry = client.expiryTime > 0
     ? new Date(client.expiryTime).toISOString().split('T')[0]
     : '';
-  const [expiryDate, setExpiryDate] = useState(currentExpiry);
-  const [expiryMode, setExpiryMode] = useState<'custom' | 'preset'>('custom');
-  const [presetDays, setPresetDays] = useState(30);
+  const [expiryDate, setExpiryDate] = useState(extendMode ? '' : currentExpiry);
+  const [expiryMode, setExpiryMode] = useState<'custom' | 'preset'>(extendMode ? 'preset' : 'custom');
+  const [presetDays, setPresetDays] = useState(extendMode ? 30 : 30);
 
-  // Traffic
+  // Traffic — in extend mode default to unlimited
   const currentTrafficGB = client.total > 0 ? Math.round(client.total / (1024 * 1024 * 1024)) : 0;
-  const [trafficGB, setTrafficGB] = useState(currentTrafficGB);
+  const [trafficGB, setTrafficGB] = useState(extendMode ? 0 : currentTrafficGB);
 
-  // Connections
-  const [maxConn, setMaxConn] = useState(client.limitIp || 0);
+  // Connections — in extend mode default to 2
+  const [maxConn, setMaxConn] = useState(extendMode ? 2 : (client.limitIp || 0));
 
   const [saving, setSaving] = useState(false);
 
@@ -221,8 +222,13 @@ function EditClientModal({ client, onClose, onSaved }: {
         totalGB: trafficGB * 1024 * 1024 * 1024,
         limitIp: maxConn,
         email: client.email,
+        ...(extendMode ? { enable: true } : {}),
       });
-      toast.success(`${client.email} updated — changes reflect in V2RayTun within 5 minutes`);
+      toast.success(
+        extendMode
+          ? `${client.email} extended to subscription — active for ${presetDays} days`
+          : `${client.email} updated — changes reflect in V2RayTun within 5 minutes`
+      );
       onSaved();
       onClose();
     } catch (err: unknown) {
@@ -237,8 +243,15 @@ function EditClientModal({ client, onClose, onSaved }: {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="font-semibold text-lg">Edit Client</h2>
+            <h2 className="font-semibold text-lg">
+              {extendMode ? 'Extend to Subscription' : 'Edit Client'}
+            </h2>
             <p className="text-xs text-gray-400 mt-0.5">{client.email}</p>
+            {extendMode && (
+              <p className="text-xs text-green-600 mt-1 font-medium">
+                Convert this trial/expired user to a full subscription
+              </p>
+            )}
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-black">
             <X className="w-5 h-5" />
@@ -349,7 +362,7 @@ function EditClientModal({ client, onClose, onSaved }: {
           {/* Save */}
           <div className="flex gap-2 pt-1">
             <Button onClick={handleSave} className="flex-1" loading={saving}>
-              {saving ? 'Saving...' : 'Save changes'}
+              {saving ? 'Saving...' : extendMode ? 'Extend Subscription' : 'Save changes'}
             </Button>
             <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           </div>
@@ -372,9 +385,24 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
   const [resetting, setResetting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showExtend, setShowExtend] = useState(false);
 
   const traffic = client.up + client.down;
   const isExpired = client.expiryTime > 0 && client.expiryTime < Date.now();
+
+  // Trial detection: expiry is set and total window ≤ 3 hours, OR has "trial" in email
+  const isTrial = (() => {
+    if (client.email.toLowerCase().includes('trial')) return true;
+    if (client.expiryTime > 0) {
+      // Check if total allowed time was ≤ 3 hours (trial = 1 hour typically)
+      // If expiry is within 3h from now, or already expired and very little traffic
+      const msRemaining = client.expiryTime - Date.now();
+      const threeHoursMs = 3 * 60 * 60 * 1000;
+      if (msRemaining > 0 && msRemaining <= threeHoursMs && traffic < 100 * 1024 * 1024) return true;
+      if (isExpired && traffic < 500 * 1024 * 1024 && client.total === 0) return true;
+    }
+    return false;
+  })();
 
   const toggleEnabled = async () => {
     setToggling(true);
@@ -445,6 +473,7 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-3">
+          {isTrial && <Badge variant="default" className="bg-blue-100 text-blue-700 border-0">Trial</Badge>}
           {isExpired && <Badge variant="warning">Expired</Badge>}
           <Badge variant={client.enable ? 'success' : 'muted'}>
             {client.enable ? 'Active' : 'Disabled'}
@@ -491,6 +520,16 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
                 Edit
               </button>
 
+              {(isTrial || isExpired) && (
+                <button
+                  onClick={() => setShowExtend(true)}
+                  className="flex items-center gap-1.5 text-sm text-white px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 transition font-medium"
+                >
+                  <Zap className="w-4 h-4" />
+                  Extend to Subscription
+                </button>
+              )}
+
               <button
                 onClick={toggleEnabled} disabled={toggling}
                 className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-black px-3 py-1.5 rounded-lg border border-gray-200 hover:border-gray-400 transition"
@@ -526,6 +565,15 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
           client={client}
           onClose={() => setShowEdit(false)}
           onSaved={onRefresh}
+        />
+      )}
+
+      {showExtend && (
+        <EditClientModal
+          client={client}
+          onClose={() => setShowExtend(false)}
+          onSaved={onRefresh}
+          extendMode
         />
       )}
     </div>

@@ -77,6 +77,124 @@ const card: Variants = {
   show:   { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
 };
 
+// ── Countdown hook & display ──────────────────────────────────────────────────
+function useCountdown(targetEpochMs: number | null) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!targetEpochMs || targetEpochMs <= 0) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [targetEpochMs]);
+
+  if (!targetEpochMs || targetEpochMs <= 0) return null;
+  const diff = Math.max(0, targetEpochMs - now);
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+  return { days, hours, minutes, seconds, total: diff, expired: diff === 0 };
+}
+
+function CountdownDisplay({ targetEpochMs, label, variant = 'default' }: {
+  targetEpochMs: number | null;
+  label: string;
+  variant?: 'default' | 'trial' | 'urgent';
+}) {
+  const cd = useCountdown(targetEpochMs);
+  if (!cd) return null;
+
+  const isUrgent = variant === 'urgent' || cd.days === 0;
+  const isTrial = variant === 'trial';
+  const bgClass = cd.expired
+    ? 'bg-red-50 border-red-200'
+    : isUrgent
+    ? 'bg-amber-50 border-amber-200'
+    : isTrial
+    ? 'bg-blue-50 border-blue-200'
+    : 'bg-gray-50 border-gray-100';
+  const textClass = cd.expired
+    ? 'text-red-600'
+    : isUrgent
+    ? 'text-amber-700'
+    : isTrial
+    ? 'text-blue-700'
+    : 'text-gray-900';
+  const labelClass = cd.expired
+    ? 'text-red-400'
+    : isUrgent
+    ? 'text-amber-500'
+    : isTrial
+    ? 'text-blue-400'
+    : 'text-gray-400';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={`rounded-2xl border px-4 py-4 mb-4 ${bgClass}`}
+    >
+      <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2 ${labelClass}`}>
+        {cd.expired ? '⏰ Expired' : label}
+      </p>
+      {cd.expired ? (
+        <p className={`text-2xl font-bold ${textClass}`}>Time's up!</p>
+      ) : (
+        <div className="flex items-baseline gap-1">
+          {cd.days > 0 && (
+            <>
+              <span className={`text-3xl font-bold tabular-nums ${textClass}`}>{cd.days}</span>
+              <span className={`text-sm font-medium mr-2 ${labelClass}`}>d</span>
+            </>
+          )}
+          <span className={`text-3xl font-bold tabular-nums ${textClass}`}>{String(cd.hours).padStart(2, '0')}</span>
+          <span className={`text-sm font-medium ${labelClass}`}>h</span>
+          <span className={`text-3xl font-bold tabular-nums ${textClass}`}>{String(cd.minutes).padStart(2, '0')}</span>
+          <span className={`text-sm font-medium ${labelClass}`}>m</span>
+          {cd.days === 0 && (
+            <>
+              <span className={`text-3xl font-bold tabular-nums ${textClass}`}>{String(cd.seconds).padStart(2, '0')}</span>
+              <span className={`text-sm font-medium ${labelClass}`}>s</span>
+            </>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function StatsCountdownCell({ expiryTime }: { expiryTime: number }) {
+  const cd = useCountdown(expiryTime > 0 ? expiryTime : null);
+  if (!cd) {
+    return (
+      <div className="bg-gray-50 rounded-2xl px-4 py-3 text-center">
+        <p className="text-base font-bold text-black">∞</p>
+        <p className="text-xs text-gray-400 mt-0.5">No expiry</p>
+      </div>
+    );
+  }
+  const isUrgent = cd.days <= 1;
+  return (
+    <div className={`rounded-2xl px-4 py-3 text-center ${
+      cd.expired ? 'bg-red-50' : isUrgent ? 'bg-amber-50' : 'bg-gray-50'
+    }`}>
+      {cd.expired ? (
+        <p className="text-base font-bold text-red-600">Expired</p>
+      ) : cd.days > 0 ? (
+        <p className={`text-base font-bold ${isUrgent ? 'text-amber-700' : 'text-black'}`}>
+          {cd.days}d {cd.hours}h
+        </p>
+      ) : (
+        <p className="text-base font-bold text-amber-700">
+          {cd.hours}h {cd.minutes}m {cd.seconds}s
+        </p>
+      )}
+      <p className={`text-xs mt-0.5 ${cd.expired ? 'text-red-400' : isUrgent ? 'text-amber-500' : 'text-gray-400'}`}>
+        {cd.expired ? 'Plan ended' : 'Time left'}
+      </p>
+    </div>
+  );
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export function DashboardPage() {
   const { firebaseUser, profile, avatarDataUrl } = useAuth();
@@ -379,10 +497,7 @@ export function DashboardPage() {
                   <p className="text-base font-bold text-black">{formatBytes(stats.total)}</p>
                   <p className="text-xs text-gray-400 mt-0.5">Data used</p>
                 </div>
-                <div className="bg-gray-50 rounded-2xl px-4 py-3 text-center">
-                  <p className="text-base font-bold text-black">{formatExpiry(stats.expiryTime)}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Expires</p>
-                </div>
+                <StatsCountdownCell expiryTime={stats.expiryTime} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -473,12 +588,11 @@ export function DashboardPage() {
                 </div>
 
                 {activeOrder.expiresAt && (
-                  <div className={`flex items-center gap-1.5 text-xs font-medium mb-4 ${
-                    days !== null && days <= 5 ? 'text-red-500' : 'text-gray-400'
-                  }`}>
-                    <Clock className="w-3.5 h-3.5" />
-                    {`Expires in ${days} day${days !== 1 ? 's' : ''}`}
-                  </div>
+                  <CountdownDisplay
+                    targetEpochMs={new Date(activeOrder.expiresAt).getTime()}
+                    label="Time remaining"
+                    variant={days !== null && days <= 3 ? 'urgent' : 'default'}
+                  />
                 )}
 
                 {days !== null && days <= 7 && (
@@ -502,6 +616,15 @@ export function DashboardPage() {
                     Trial
                   </div>
                 </div>
+
+                {trial?.expiresAt && (
+                  <CountdownDisplay
+                    targetEpochMs={new Date(trial.expiresAt).getTime()}
+                    label="Trial time remaining"
+                    variant="trial"
+                  />
+                )}
+
                 <div className="pt-4 border-t border-gray-100">
                   <p className="text-xs text-gray-500 mb-3">Upgrade to keep access after your trial.</p>
                   <Link to="/plans">
