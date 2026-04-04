@@ -366,9 +366,20 @@ xuiRouter.get("/admin/clients", async (req: AuthedRequest, res: Response) => {
       return res.status(403).json({ ok: false, error: "Admin only" });
     }
 
-    const stats = await getClientStats();
-    // Merge with client config (UUIDs, subIds, enable, expiryTime) from inbound settings
+    // listInbounds() returns both clientStats AND settings.clients
+    // (getInbound/getClientStats only returns the single-inbound API which
+    //  may omit clientStats — so we use listInbounds for everything)
     const inbounds = await listInbounds();
+
+    // Collect stats from all inbounds
+    const stats: any[] = [];
+    for (const inb of inbounds) {
+      for (const s of inb.clientStats || []) {
+        stats.push({ ...s, inboundId: inb.id });
+      }
+    }
+
+    // Collect client configs (UUIDs, subIds, enable, expiry) from inbound settings
     const clientMap = new Map<string, {
       uuid: string; subId: string; limitIp: number;
       enable: boolean; expiryTime: number; totalGB: number;
