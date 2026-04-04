@@ -42,11 +42,17 @@ export const xuiPublicRouter = Router();
 
 /**
  * Check if a user is admin.
- * 1. Firebase custom claims: decoded.admin === true
- * 2. Firestore user doc: users/{uid}.role === 'admin'
+ * 1. Insecure/dev mode: all authenticated requests are trusted as admin
+ *    (auth middleware already skips real token verification)
+ * 2. Firebase custom claims: decoded.admin === true
+ * 3. Firestore user doc: users/{uid}.role === 'admin'
  */
+const insecureMode = process.env.ALLOW_INSECURE_FIREBASE === "true";
+
 async function checkIsAdmin(user: any): Promise<boolean> {
   if (!user?.uid) return false;
+  // In insecure mode, auth is already bypassed — trust the caller
+  if (insecureMode) return true;
   // Check Firebase custom claims first (fast)
   if (user.admin === true) return true;
   if (user.claims?.admin === true) return true;
