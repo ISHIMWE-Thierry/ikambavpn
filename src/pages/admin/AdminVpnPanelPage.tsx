@@ -21,6 +21,7 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import toast from 'react-hot-toast';
+import { notifyUserSubscriptionChanged } from '../../lib/email-service';
 
 // ── Add Client Modal ──────────────────────────────────────────────────────────
 
@@ -224,6 +225,16 @@ function EditClientModal({ client, onClose, onSaved, extendMode }: {
         email: client.email,
         ...(extendMode ? { enable: true } : {}),
       });
+
+      // Send email notification to the user
+      notifyUserSubscriptionChanged({
+        vpnEmail: client.email,
+        changeType: extendMode ? 'extended' : 'updated',
+        newExpiryMs: expiryTime,
+        newTrafficBytes: trafficGB * 1024 * 1024 * 1024,
+        newConnections: maxConn,
+      }).catch(() => {}); // fire-and-forget
+
       toast.success(
         extendMode
           ? `${client.email} extended to subscription — active for ${presetDays} days`
@@ -409,9 +420,17 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
     try {
       if (client.enable) {
         await disableAdminClient(client.uuid, client.email);
+        notifyUserSubscriptionChanged({
+          vpnEmail: client.email,
+          changeType: 'disabled',
+        }).catch(() => {});
         toast.success(`${client.email} disabled`);
       } else {
         await enableAdminClient(client.uuid, client.email);
+        notifyUserSubscriptionChanged({
+          vpnEmail: client.email,
+          changeType: 'enabled',
+        }).catch(() => {});
         toast.success(`${client.email} enabled`);
       }
       onRefresh();
@@ -440,6 +459,10 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
     setResetting(true);
     try {
       await resetAdminClientTraffic(client.email);
+      notifyUserSubscriptionChanged({
+        vpnEmail: client.email,
+        changeType: 'traffic_reset',
+      }).catch(() => {});
       toast.success('Traffic reset');
       onRefresh();
     } catch {

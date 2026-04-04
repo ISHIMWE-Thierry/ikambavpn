@@ -273,6 +273,100 @@ export async function notifyUserServiceActivated(data: ServiceActivatedEmailData
   });
 }
 
+// ── Subscription change notification ──────────────────────────────────────────
+
+export interface SubscriptionChangedEmailData {
+  /** The VPN email (may contain .x@ — will be cleaned automatically) */
+  vpnEmail: string;
+  changeType: 'extended' | 'enabled' | 'disabled' | 'traffic_reset' | 'updated';
+  newExpiryMs?: number;       // epoch ms, 0 = never
+  newTrafficBytes?: number;   // bytes, 0 = unlimited
+  newConnections?: number;
+  note?: string;
+}
+
+/**
+ * Strip the `.x` suffix that 3X-UI adds before the `@` to get the real email.
+ * e.g. "user.x@gmail.com" → "user@gmail.com"
+ */
+function cleanVpnEmail(email: string): string {
+  return email.replace(/\.x@/, '@');
+}
+
+function formatTraffic(bytes: number): string {
+  if (bytes === 0) return 'Unlimited';
+  const gb = bytes / (1024 * 1024 * 1024);
+  return gb >= 1 ? `${gb.toFixed(0)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+}
+
+function formatExpiry(ms: number): string {
+  if (ms === 0) return 'Never (unlimited)';
+  return new Date(ms).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+const changeLabels: Record<SubscriptionChangedEmailData['changeType'], { emoji: string; title: string; desc: string }> = {
+  extended:      { emoji: '🚀', title: 'Subscription Extended',   desc: 'Your Ikamba VPN subscription has been extended.' },
+  enabled:       { emoji: '✅', title: 'Account Enabled',         desc: 'Your Ikamba VPN account has been re-enabled. You can connect now.' },
+  disabled:      { emoji: '⏸️', title: 'Account Paused',          desc: 'Your Ikamba VPN account has been temporarily disabled by an administrator.' },
+  traffic_reset: { emoji: '🔄', title: 'Traffic Reset',           desc: 'Your traffic usage has been reset to zero — you have a fresh data allowance.' },
+  updated:       { emoji: '📝', title: 'Subscription Updated',    desc: 'Your Ikamba VPN subscription details have been updated.' },
+};
+
+export async function notifyUserSubscriptionChanged(data: SubscriptionChangedEmailData): Promise<void> {
+  const realEmail = cleanVpnEmail(data.vpnEmail);
+  if (!realEmail || !realEmail.includes('@')) return;
+
+  const info = changeLabels[data.changeType];
+  const subject = `${info.emoji} ${info.title}`;
+
+  const detailRows: string[] = [];
+  if (data.newExpiryMs !== undefined) {
+    detailRows.push(tableRow('Expires', formatExpiry(data.newExpiryMs)));
+  }
+  if (data.newTrafficBytes !== undefined) {
+    detailRows.push(tableRow('Data Limit', formatTraffic(data.newTrafficBytes)));
+  }
+  if (data.newConnections !== undefined) {
+    detailRows.push(tableRow('Max Connections', String(data.newConnections)));
+  }
+
+  const body = `
+    <h3 style="color:#000000;margin-top:0;">${info.title}</h3>
+    <p style="color:#666666;font-size:13px;">${info.desc}</p>
+    ${detailRows.length ? `
+    <table style="width:100%;border-collapse:collapse;">
+      ${detailRows.join('\n')}
+    </table>` : ''}
+    ${data.note ? `<p style="color:#666666;font-size:13px;margin-top:16px;"><strong>Note:</strong> ${data.note}</p>` : ''}
+    ${ctaButton('Open Dashboard', 'https://ikambavpn.com/dashboard')}
+  `;
+
+  const textParts = [info.desc];
+  if (data.newExpiryMs !== undefined) textParts.push(`Expires: ${formatExpiry(data.newExpiryMs)}`);
+  if (data.newTrafficBytes !== undefined) textParts.push(`Data: ${formatTraffic(data.newTrafficBytes)}`);
+  if (data.newConnections !== undefined) textParts.push(`Connections: ${data.newConnections}`);
+  if (data.note) textParts.push(`Note: ${data.note}`);
+
+  try {
+    await sendMail({
+      to: [realEmail],
+      subject,
+      html: baseTemplate(info.title, body),
+      text: textParts.join('\n'),
+      tag: `vpn-${data.changeType}`,
+    });
+  } catch (err) {
+    console.error('[email] Failed to send subscription change email:', err);
+    // Don't throw — email failure shouldn't block the admin action
+  }
+}
+
 export interface OrderStatusEmailData {
   userEmail: string;
   userName: string | null;
