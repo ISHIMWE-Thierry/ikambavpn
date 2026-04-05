@@ -5,17 +5,18 @@
  * 1. Re-enable any clients that got auto-disabled by 3X-UI (traffic limit, IP limit, etc.)
  * 2. Fix any clients that still have limitIp > 0 (set to 0 = unlimited)
  * 3. Restart Xray if it's not running
- * 4. Enforce anti-disconnect Xray policy (connIdle=0, uplinkOnly=0, downlinkOnly=0)
+ * 4. Enforce anti-disconnect Xray policy (connIdle=300, uplinkOnly=0, downlinkOnly=0)
  *
  * This ensures VPN connections NEVER get permanently dropped due to 3X-UI's
  * aggressive enforcement. The VPN should persist even under heavy bandwidth usage.
  *
  * Anti-disconnect settings explained:
- * - connIdle=0: Never kill idle connections (YouTube pauses, background apps)
+ * - connIdle=300: Kill truly idle connections after 5 min (prevents FD exhaustion)
  * - uplinkOnly=0: Never kill download-only streams (video streaming, large downloads)
  * - downlinkOnly=0: Never kill upload-only streams (file uploads, VoIP)
  * - bufferSize=0: Unlimited per-connection buffer (smoother streaming)
- * - TCP keepalive 30s: Prevent NAT/middlebox killing idle TCP connections
+ * - TCP keepalive 300s: Prevent NAT/middlebox killing idle TCP connections without
+ *   triggering ISP DPI (30s was flagged by Russian/mobile ISPs as tunneling)
  * - BBR congestion: Better throughput on lossy networks
  */
 
@@ -37,7 +38,7 @@ const REQUIRED_POLICY = {
   levels: {
     "0": {
       handshake: 10,
-      connIdle: 0,
+      connIdle: 300,       // 5 min idle timeout — prevents zombie connections (0 = never, caused FD exhaustion)
       uplinkOnly: 0,
       downlinkOnly: 0,
       bufferSize: 0,
@@ -55,10 +56,10 @@ const REQUIRED_POLICY = {
 
 /** Sockopt settings for anti-disconnect on all inbounds/outbounds */
 const REQUIRED_SOCKOPT = {
-  tcpKeepAliveIdle: 30,
-  tcpKeepAliveInterval: 10,
-  tcpKeepAliveProbes: 9,
-  tcpUserTimeout: 30000,
+  tcpKeepAliveIdle: 300,    // 5 min — avoids ISP/middlebox flagging (30s was too aggressive)
+  tcpKeepAliveInterval: 30, // 30s between probes (10s was too aggressive for mobile networks)
+  tcpKeepAliveProbes: 4,    // 4 probes × 30s = 2 min to detect dead connection
+  tcpUserTimeout: 60000,    // 60s total TCP timeout
   tcpcongestion: "bbr",
   tcpFastOpen: true,
 };
