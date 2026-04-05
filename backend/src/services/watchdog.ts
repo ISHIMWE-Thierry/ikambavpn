@@ -5,18 +5,19 @@
  * 1. Re-enable any clients that got auto-disabled by 3X-UI (traffic limit, IP limit, etc.)
  * 2. Fix any clients that still have limitIp > 0 (set to 0 = unlimited)
  * 3. Restart Xray if it's not running
- * 4. Enforce anti-disconnect Xray policy (connIdle=300, uplinkOnly=0, downlinkOnly=0)
+ * 4. Enforce anti-disconnect Xray policy (connIdle=900, uplinkOnly=0, downlinkOnly=0)
  *
  * This ensures VPN connections NEVER get permanently dropped due to 3X-UI's
  * aggressive enforcement. The VPN should persist even under heavy bandwidth usage.
  *
  * Anti-disconnect settings explained:
- * - connIdle=300: Kill truly idle connections after 5 min (prevents FD exhaustion)
+ * - connIdle=900: Kill truly idle connections after 15 min (survives YouTube pauses)
  * - uplinkOnly=0: Never kill download-only streams (video streaming, large downloads)
  * - downlinkOnly=0: Never kill upload-only streams (file uploads, VoIP)
  * - bufferSize=0: Unlimited per-connection buffer (smoother streaming)
- * - TCP keepalive 300s: Prevent NAT/middlebox killing idle TCP connections without
- *   triggering ISP DPI (30s was flagged by Russian/mobile ISPs as tunneling)
+ * - TCP keepalive 75s: Below mobile NAT timeout (~120s) to keep connections alive
+ *   without triggering ISP DPI
+ * - MPTCP: Survives WiFi↔cellular handoffs on mobile
  * - BBR congestion: Better throughput on lossy networks
  */
 
@@ -38,7 +39,7 @@ const REQUIRED_POLICY = {
   levels: {
     "0": {
       handshake: 10,
-      connIdle: 300,       // 5 min idle timeout — prevents zombie connections (0 = never, caused FD exhaustion)
+      connIdle: 900,       // 15 min idle timeout — survives YouTube pauses/buffer gaps on mobile
       uplinkOnly: 0,
       downlinkOnly: 0,
       bufferSize: 0,
@@ -56,12 +57,13 @@ const REQUIRED_POLICY = {
 
 /** Sockopt settings for anti-disconnect on all inbounds/outbounds */
 const REQUIRED_SOCKOPT = {
-  tcpKeepAliveIdle: 300,    // 5 min — avoids ISP/middlebox flagging (30s was too aggressive)
-  tcpKeepAliveInterval: 30, // 30s between probes (10s was too aggressive for mobile networks)
-  tcpKeepAliveProbes: 4,    // 4 probes × 30s = 2 min to detect dead connection
+  tcpKeepAliveIdle: 75,     // Below mobile NAT timeout (~120s) to keep connections alive
+  tcpKeepAliveInterval: 15, // 15s between probes — fast enough for mobile network switching
+  tcpKeepAliveProbes: 4,    // 4 probes × 15s = 1 min to detect dead connection
   tcpUserTimeout: 60000,    // 60s total TCP timeout
   tcpcongestion: "bbr",
   tcpFastOpen: true,
+  tcpMptcp: true,           // Multipath TCP — survives WiFi↔cellular switches on mobile
 };
 
 // Suppress TLS errors for IP-based panel cert
