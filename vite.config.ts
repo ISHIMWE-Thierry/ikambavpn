@@ -44,7 +44,7 @@ export default defineConfig({
             options: { cacheName: 'firebase-storage', expiration: { maxAgeSeconds: 60 * 60 * 24 * 30 } },
           },
           {
-            urlPattern: /^https:\/\/194\.76\.217\.4:4443\/.*/i,
+            urlPattern: /^https:\/\/ikambavpn\.duckdns\.org:4443\/.*/i,
             handler: 'NetworkFirst',
             options: { cacheName: 'vpn-api', networkTimeoutSeconds: 8 },
           },

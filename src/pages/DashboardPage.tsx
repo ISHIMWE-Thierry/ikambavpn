@@ -44,7 +44,7 @@ const DEVICE_CONFIG: Record<DeviceType, {
 };
 
 function getSubUrl(email: string) {
-  const base = import.meta.env.DEV ? 'http://localhost:4000' : (import.meta.env.VITE_API_URL || 'https://194.76.217.4:4443');
+  const base = import.meta.env.DEV ? 'http://localhost:4000' : (import.meta.env.VITE_API_URL || 'https://ikambavpn.duckdns.org:4443');
   return `${base}/xui-public/sub/${encodeURIComponent(email)}`;
 }
 
@@ -296,7 +296,7 @@ export function DashboardPage() {
 
   async function copyBackup() {
     if (!firebaseUser?.email || !canCopyLink) return;
-    const base = import.meta.env.DEV ? 'http://localhost:4000' : (import.meta.env.VITE_API_URL || 'https://194.76.217.4:4443');
+    const base = import.meta.env.DEV ? 'http://localhost:4000' : (import.meta.env.VITE_API_URL || 'https://ikambavpn.duckdns.org:4443');
     try {
       const res = await fetch(`${base}/xui-public/xhttp-link/${encodeURIComponent(firebaseUser.email)}`);
       const data = await res.json();
