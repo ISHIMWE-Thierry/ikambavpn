@@ -88,5 +88,13 @@ Users are getting auto-disconnected from the VPN.
 - **Service name:** `ikambavpn-api` (not `ikambavpn-backend`)
 - **Location:** `/opt/ikambavpn-backend/`
 - **Env:** `/opt/ikambavpn-backend/.env` (XPANEL_URL, XPANEL_INBOUND_ID=1, PORT=4000)
-- **Caddy proxy:** Port 4443 → localhost:4000 (TLS certs at `/etc/caddy/certs/`)
+- **Caddy proxy:** `ikambavpn.duckdns.org:4443` → localhost:4000 (Let's Encrypt auto-TLS)
 - **Watchdog:** Runs every 2 min, enforces policy + sockopt on config.json
+
+### TLS Certificate (port 4443)
+- **Domain:** `ikambavpn.duckdns.org` (DuckDNS free, points to 194.76.217.4)
+- **Cert:** Let's Encrypt, auto-provisioned and auto-renewed by Caddy
+- **Old setup:** Self-signed cert on IP → caused `ERR_CERT_AUTHORITY_INVALID` in browsers
+- **Frontend API URL:** Updated from `https://194.76.217.4:4443` → `https://ikambavpn.duckdns.org:4443`
+- **Files updated:** `DashboardPage.tsx`, `xui-api.ts`, `ai-service.ts`, `vite.config.ts`
+- **Deploy:** Railway auto-deploys frontend on push to `main`
