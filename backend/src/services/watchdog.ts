@@ -15,10 +15,14 @@
  * - uplinkOnly=0: Never kill download-only streams (video streaming, large downloads)
  * - downlinkOnly=0: Never kill upload-only streams (file uploads, VoIP)
  * - bufferSize=0: Unlimited per-connection buffer (smoother streaming)
- * - TCP keepalive 75s: Below mobile NAT timeout (~120s) to keep connections alive
+ * - TCP keepalive 60s: Below mobile NAT timeout (~120s) to keep connections alive
  *   without triggering ISP DPI
+ * - tcpMaxSeg=1400: Smaller MSS to avoid fragmentation on mobile/LTE tunnels
  * - MPTCP: Survives WiFi↔cellular handoffs on mobile
  * - BBR congestion: Better throughput on lossy networks
+ * - QUIC block (UDP:443): Forces YouTube/Google to TCP — QUIC bypasses Xray's
+ *   connection tracking and is the #1 cause of mobile video disconnects
+ * - Error logging: Captures disconnect events for diagnosis
  */
 
 import {
@@ -57,13 +61,33 @@ const REQUIRED_POLICY = {
 
 /** Sockopt settings for anti-disconnect on all inbounds/outbounds */
 const REQUIRED_SOCKOPT = {
-  tcpKeepAliveIdle: 75,     // Below mobile NAT timeout (~120s) to keep connections alive
+  tcpKeepAliveIdle: 60,     // 60s — well below mobile NAT timeout (~120s)
   tcpKeepAliveInterval: 15, // 15s between probes — fast enough for mobile network switching
   tcpKeepAliveProbes: 4,    // 4 probes × 15s = 1 min to detect dead connection
   tcpUserTimeout: 60000,    // 60s total TCP timeout
+  tcpMaxSeg: 1400,          // Smaller MSS avoids fragmentation on mobile/LTE tunnels
   tcpcongestion: "bbr",
   tcpFastOpen: true,
   tcpMptcp: true,           // Multipath TCP — survives WiFi↔cellular switches on mobile
+};
+
+/**
+ * QUIC block routing rule — forces YouTube/Google to fall back to TCP.
+ * QUIC (UDP:443) bypasses Xray's connection tracking and causes frequent
+ * disconnects on mobile. Blocking it makes all traffic go through TCP where
+ * keepalive and flow control work properly.
+ */
+const REQUIRED_QUIC_BLOCK_RULE = {
+  type: "field",
+  network: "udp",
+  port: "443",
+  outboundTag: "blocked",
+};
+
+/** Error logging config — essential for diagnosing disconnects */
+const REQUIRED_LOG = {
+  loglevel: "error",
+  error: "/var/log/xray/error.log",
 };
 
 // Suppress TLS errors for IP-based panel cert
@@ -162,6 +186,44 @@ async function enforceAntiDisconnectPolicy(): Promise<boolean> {
             changed = true;
           }
         }
+      }
+    }
+
+    // ── Enforce QUIC block routing rule (UDP:443 → blackhole) ──
+    // This is THE most critical anti-disconnect fix for YouTube on mobile.
+    // QUIC bypasses Xray's connection tracking → frequent drops.
+    // Blocking UDP:443 forces all traffic to TCP where keepalive works.
+    if (!config.routing) config.routing = {};
+    if (!config.routing.rules) config.routing.rules = [];
+    const rules = config.routing.rules;
+    const hasQuicBlock = rules.some(
+      (r: any) => r.network === "udp" && r.port === "443" && r.outboundTag === "blocked"
+    );
+    if (!hasQuicBlock) {
+      // Insert after the API rule (index 1) so it's checked early
+      const apiIdx = rules.findIndex((r: any) => r.outboundTag === "api");
+      rules.splice(apiIdx + 1, 0, { ...REQUIRED_QUIC_BLOCK_RULE });
+      console.log("[watchdog] Fixing routing: added QUIC block rule (UDP:443 → blocked)");
+      changed = true;
+    }
+
+    // ── Ensure "blocked" blackhole outbound exists ──
+    const outbounds = config.outbounds || [];
+    const hasBlocked = outbounds.some((o: any) => o.tag === "blocked" && o.protocol === "blackhole");
+    if (!hasBlocked) {
+      outbounds.push({ tag: "blocked", protocol: "blackhole", settings: {} });
+      config.outbounds = outbounds;
+      console.log("[watchdog] Fixing outbounds: added 'blocked' blackhole");
+      changed = true;
+    }
+
+    // ── Enforce error logging ──
+    if (!config.log) config.log = {};
+    for (const [key, val] of Object.entries(REQUIRED_LOG)) {
+      if (config.log[key] !== val) {
+        console.log(`[watchdog] Fixing log.${key}: ${config.log[key]} → ${val}`);
+        config.log[key] = val;
+        changed = true;
       }
     }
 
