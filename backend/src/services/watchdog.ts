@@ -11,18 +11,20 @@
  * aggressive enforcement. The VPN should persist even under heavy bandwidth usage.
  *
  * Anti-disconnect settings explained:
- * - connIdle=900: Kill truly idle connections after 15 min (survives YouTube pauses)
+ * - connIdle=1800: Kill truly idle connections after 30 min (long YouTube streams)
+ * - handshake=20: Extra time for REALITY handshake during YouTube burst connections
  * - uplinkOnly=0: Never kill download-only streams (video streaming, large downloads)
  * - downlinkOnly=0: Never kill upload-only streams (file uploads, VoIP)
  * - bufferSize=0: Unlimited per-connection buffer (smoother streaming)
- * - TCP keepalive 60s: Below mobile NAT timeout (~120s) to keep connections alive
- *   without triggering ISP DPI
+ * - TCP keepalive 60s: Below mobile NAT timeout (~120s)
  * - tcpMaxSeg=1400: Smaller MSS to avoid fragmentation on mobile/LTE tunnels
  * - MPTCP: Survives WiFi↔cellular handoffs on mobile
  * - BBR congestion: Better throughput on lossy networks
- * - QUIC block (UDP:443): Forces YouTube/Google to TCP — QUIC bypasses Xray's
- *   connection tracking and is the #1 cause of mobile video disconnects
- * - Error logging: Captures disconnect events for diagnosis
+ * - QUIC block (UDP:443): Forces YouTube/Google to TCP
+ * - Fragment outbound: Breaks TLS ClientHello to defeat ISP DPI
+ * - domainStrategy=IPIfNonMatch: Ensures sniffed domains drive routing rules
+ * - YouTube domains → fragment outbound: Anti-DPI for YouTube traffic
+ * - Warning logging: Captures disconnect events for diagnosis
  */
 
 import {
@@ -42,8 +44,8 @@ const DEFAULT_INBOUND_ID = Number(process.env.XPANEL_INBOUND_ID || "1");
 const REQUIRED_POLICY = {
   levels: {
     "0": {
-      handshake: 10,
-      connIdle: 900,       // 15 min idle timeout — survives YouTube pauses/buffer gaps on mobile
+      handshake: 20,       // 20s — extra time for REALITY handshake during YouTube burst
+      connIdle: 1800,      // 30 min idle timeout — long YouTube streams can have idle gaps
       uplinkOnly: 0,
       downlinkOnly: 0,
       bufferSize: 0,
@@ -86,8 +88,42 @@ const REQUIRED_QUIC_BLOCK_RULE = {
 
 /** Error logging config — essential for diagnosing disconnects */
 const REQUIRED_LOG = {
-  loglevel: "error",
+  loglevel: "warning",
   error: "/var/log/xray/error.log",
+};
+
+/** Fragment outbound — breaks up TLS ClientHello to defeat ISP DPI
+ * This is the #1 fix for YouTube disconnects on VLESS+REALITY.
+ * When ISPs detect the REALITY handshake pattern during YouTube's burst
+ * of 20+ simultaneous connections, they may reset the connections.
+ * Fragment splits the ClientHello into small pieces, hiding the pattern.
+ */
+const REQUIRED_FRAGMENT_OUTBOUND = {
+  tag: "fragment",
+  protocol: "freedom",
+  settings: {
+    fragment: {
+      packets: "tlshello",
+      length: "100-200",
+      interval: "10-20",
+    },
+  },
+};
+
+/** YouTube/Google domains that should route through the fragment outbound */
+const REQUIRED_YOUTUBE_FRAGMENT_RULE = {
+  type: "field",
+  domain: [
+    "domain:youtube.com",
+    "domain:googlevideo.com",
+    "domain:youtube-nocookie.com",
+    "domain:googleapis.com",
+    "domain:google.com",
+    "domain:gstatic.com",
+    "domain:ggpht.com",
+    "domain:ytimg.com",
+  ],
+  outboundTag: "fragment",
 };
 
 // Suppress TLS errors for IP-based panel cert
@@ -214,6 +250,42 @@ async function enforceAntiDisconnectPolicy(): Promise<boolean> {
       outbounds.push({ tag: "blocked", protocol: "blackhole", settings: {} });
       config.outbounds = outbounds;
       console.log("[watchdog] Fixing outbounds: added 'blocked' blackhole");
+      changed = true;
+    }
+
+    // ── Ensure "fragment" freedom outbound exists for anti-DPI ──
+    const hasFragment = outbounds.some((o: any) => o.tag === "fragment");
+    if (!hasFragment) {
+      // Insert before blocked
+      const blockedIdx = outbounds.findIndex((o: any) => o.tag === "blocked");
+      outbounds.splice(blockedIdx >= 0 ? blockedIdx : outbounds.length, 0, { ...REQUIRED_FRAGMENT_OUTBOUND });
+      config.outbounds = outbounds;
+      console.log("[watchdog] Fixing outbounds: added 'fragment' for anti-DPI");
+      changed = true;
+    }
+
+    // ── Enforce YouTube/Google domain → fragment routing rule ──
+    const hasYtFragmentRule = rules.some(
+      (r: any) => r.outboundTag === "fragment" && Array.isArray(r.domain)
+    );
+    if (!hasYtFragmentRule) {
+      // Insert after QUIC block rule
+      const quicIdx = rules.findIndex(
+        (r: any) => r.network === "udp" && r.port === "443" && r.outboundTag === "blocked"
+      );
+      const apiIdxForFrag = rules.findIndex((r: any) => r.outboundTag === "api");
+      const insertIdx = quicIdx >= 0 ? quicIdx + 1 : (apiIdxForFrag >= 0 ? apiIdxForFrag + 1 : 0);
+      rules.splice(insertIdx, 0, { ...REQUIRED_YOUTUBE_FRAGMENT_RULE });
+      console.log("[watchdog] Fixing routing: added YouTube/Google → fragment rule");
+      changed = true;
+    }
+
+    // ── Enforce routing.domainStrategy = IPIfNonMatch ──
+    // CRITICAL: "AsIs" means sniffing results are IGNORED for routing.
+    // IPIfNonMatch ensures sniffed domains are used for rule matching.
+    if (config.routing.domainStrategy !== "IPIfNonMatch") {
+      console.log(`[watchdog] Fixing routing.domainStrategy: ${config.routing.domainStrategy} → IPIfNonMatch`);
+      config.routing.domainStrategy = "IPIfNonMatch";
       changed = true;
     }
 
