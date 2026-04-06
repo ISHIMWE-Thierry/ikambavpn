@@ -22,40 +22,58 @@ Users are getting auto-disconnected from the VPN.
 ## Fixes Status
 | # | Fix | Status |
 |---|-----|--------|
-| 1 | Increase LimitNOFILE to 1048576 | ✅ Done (confirmed via `/proc/.../limits`) |
-| 2 | Install xray-watchdog.sh cron | ❌ Pending / optional for now |
-| 3 | Tune kernel tcp_keepalive (120/30/4) | ✅ Done (confirmed via `sysctl`) |
-| 4 | Disable broken inbound-8443 (XHTTP, empty flow) | ✅ Done — removed from panel |
-| 5 | Fix Xray sockopt keepalive (both inbound + outbound) | ✅ Done — tcpKeepAliveIdle=300, Interval=30, FastOpen=true |
-| 6 | Fix TCP Window Clamp (was 600, choked throughput) | ✅ Done — set to 0 |
-| 7 | Restart x-ui after all changes | ✅ Done — Xray running, no warnings |
-| 8 | Renew expired TLS cert on port 4443 (Caddy) | ✅ Done — new self-signed cert valid until Apr 5, 2027 |
-| 9 | **Backend watchdog overwriting Xray config** | ✅ Fixed — patched REQUIRED_SOCKOPT + REQUIRED_POLICY in watchdog.js |
-| 10| Start ikambavpn-api (was dead for ~2 days) | ✅ Done — service running with patched watchdog |
+| 1 | Increase LimitNOFILE to 1048576 | ✅ Done |
+| 2 | Tune kernel tcp_keepalive (60/15/4) | ✅ Done |
+| 3 | Disable broken inbound-8443 (XHTTP, empty flow) | ✅ Done |
+| 4 | Fix Xray sockopt (keepalive, bbr, mptcp, fastopen) | ✅ Done |
+| 5 | Fix TCP Window Clamp (was 600) → 0 | ✅ Done |
+| 6 | Renew TLS cert → Let's Encrypt via DuckDNS+Caddy | ✅ Done |
+| 7 | Fix backend watchdog overwriting config | ✅ Done |
+| 8 | Start ikambavpn-api (was dead ~2 days) | ✅ Done |
+| 9 | **QUIC block (UDP:443 → blackhole)** | ✅ Done — #1 fix for YouTube disconnects |
+| 10| tcpKeepAliveIdle 75→60 | ✅ Done — below all mobile NAT timeouts |
+| 11| tcpMaxSeg 1440→1400 | ✅ Done — avoids fragmentation on LTE |
+| 12| connIdle 300→900 (15 min) | ✅ Done — survives YouTube pauses |
+| 13| tcpMptcp=true | ✅ Done — WiFi↔cellular handoff |
+| 14| Error logging enabled | ✅ Done — /var/log/xray/error.log |
+| 15| **x-ui database template updated** | ✅ Done — all values survive panel restarts natively |
+| 16| Watchdog enforces routing rules + logging | ✅ Done — safety net for panel resets |
 
-## Key Config Values (after fixes)
+## Key Config Values (FINAL — April 6, 2025)
 ### Kernel (sysctl)
-- `net.ipv4.tcp_keepalive_time = 120`
-- `net.ipv4.tcp_keepalive_intvl = 30`
+- `net.ipv4.tcp_keepalive_time = 60`
+- `net.ipv4.tcp_keepalive_intvl = 15`
 - `net.ipv4.tcp_keepalive_probes = 4`
 - `net.netfilter.nf_conntrack_max = 262144`
 - `fs.file-max = 1048576`
 
 ### Xray sockopt (inbound-443 + outbound-direct)
-- `tcpKeepAliveIdle = 300`
-- `tcpKeepAliveInterval = 30`
+- `tcpKeepAliveIdle = 60`
+- `tcpKeepAliveInterval = 15`
 - `tcpKeepAliveProbes = 4`
 - `tcpUserTimeout = 60000`
+- `tcpMaxSeg = 1400`
 - `tcpFastOpen = true`
+- `tcpMptcp = true`
 - `tcpWindowClamp = 0`
 - `tcpcongestion = bbr`
 
 ### Xray policy (levels.0)
 - `handshake = 10`
-- `connIdle = 300` (was 0 — caused zombie FD accumulation)
+- `connIdle = 900` (15 min — survives YouTube pauses on mobile)
 - `uplinkOnly = 0`
 - `downlinkOnly = 0`
 - `bufferSize = 0`
+
+### Xray routing
+- Rule 0: API inbound → api outbound
+- **Rule 1: UDP port 443 → blocked (QUIC block — forces YouTube to TCP)**
+- Rule 2: geoip:private → blocked
+- Rule 3: bittorrent → blocked
+
+### Xray logging
+- `loglevel = error`
+- `error = /var/log/xray/error.log`
 
 ### Systemd (x-ui service)
 - `LimitNOFILE = 1048576`
