@@ -275,6 +275,81 @@ async function enforceAntiDisconnectPolicy(): Promise<boolean> {
 }
 
 /**
+ * Enforce critical sniffing settings in the x-ui database itself.
+ * This is essential because x-ui regenerates config.json from its DB on every
+ * Xray restart. If routeOnly=true in the DB, the QUIC block routing rule is
+ * completely bypassed — YouTube QUIC traffic flows through unblocked.
+ *
+ * Key fixes:
+ * - routeOnly MUST be false — otherwise sniffed traffic skips routing rules
+ * - destOverride MUST include "quic" — otherwise Xray can't detect QUIC to block it
+ */
+async function enforceDbSniffingSettings(): Promise<boolean> {
+  try {
+    const DB_PATH = "/etc/x-ui/x-ui.db";
+    const fs = await import("fs/promises");
+
+    // Check if DB exists (skip if not on VPS)
+    try {
+      await fs.access(DB_PATH);
+    } catch {
+      return true; // Not on VPS
+    }
+
+    // Dynamic import better-sqlite3 or use child_process for sqlite3
+    const { execSync } = await import("child_process");
+
+    // Read current sniffing value
+    const raw = execSync(
+      `sqlite3 "${DB_PATH}" "SELECT sniffing FROM inbounds WHERE port = 443"`,
+      { encoding: "utf-8" }
+    ).trim();
+
+    if (!raw) return true;
+
+    const sniffing = JSON.parse(raw);
+    let dbChanged = false;
+
+    // Fix routeOnly — MUST be false for routing rules (QUIC block) to work
+    if (sniffing.routeOnly !== false) {
+      console.log(`[watchdog] DB FIX: sniffing.routeOnly ${sniffing.routeOnly} → false`);
+      sniffing.routeOnly = false;
+      dbChanged = true;
+    }
+
+    // Fix destOverride — must include quic for QUIC detection
+    const dest: string[] = sniffing.destOverride || [];
+    for (const proto of ["http", "tls", "quic", "fakedns"]) {
+      if (!dest.includes(proto)) {
+        console.log(`[watchdog] DB FIX: adding "${proto}" to sniffing.destOverride`);
+        dest.push(proto);
+        dbChanged = true;
+      }
+    }
+    sniffing.destOverride = dest;
+
+    if (!sniffing.enabled) {
+      sniffing.enabled = true;
+      dbChanged = true;
+    }
+
+    if (dbChanged) {
+      const newVal = JSON.stringify(sniffing).replace(/'/g, "''");
+      execSync(
+        `sqlite3 "${DB_PATH}" "UPDATE inbounds SET sniffing = '${newVal}' WHERE port = 443"`,
+        { encoding: "utf-8" }
+      );
+      console.log("[watchdog] ✅ DB sniffing enforced: routeOnly=false, quic in destOverride");
+    }
+
+    return true;
+  } catch (err: any) {
+    console.error("[watchdog] DB sniffing enforcement error:", err.message);
+    return false;
+  }
+}
+
+/**
  * Run a single watchdog cycle.
  * Safe to call frequently — it's idempotent.
  */
@@ -296,6 +371,13 @@ export async function runWatchdog(): Promise<WatchdogResult> {
       result.policyEnforced = await enforceAntiDisconnectPolicy();
     } catch (err: any) {
       result.errors.push(`Policy enforcement failed: ${err.message}`);
+    }
+
+    // ── Step 0b: Enforce DB-level sniffing (routeOnly=false, quic in destOverride) ──
+    try {
+      await enforceDbSniffingSettings();
+    } catch (err: any) {
+      result.errors.push(`DB sniffing enforcement failed: ${err.message}`);
     }
 
     // ── Step 1: Check Xray status ──
