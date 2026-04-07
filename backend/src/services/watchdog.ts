@@ -22,7 +22,7 @@
  * - BBR congestion: Better throughput on lossy networks
  * - QUIC block (UDP:443): Forces YouTube/Google to TCP
  * - Fragment outbound: Breaks TLS ClientHello to defeat ISP DPI
- * - domainStrategy=IPIfNonMatch: Ensures sniffed domains drive routing rules
+ * - domainStrategy=AsIs: Fast routing, relies on Xray sniffing (no DNS lookups)
  * - YouTube domains → fragment outbound: Anti-DPI for YouTube traffic
  * - Warning logging: Captures disconnect events for diagnosis
  */
@@ -280,12 +280,12 @@ async function enforceAntiDisconnectPolicy(): Promise<boolean> {
       changed = true;
     }
 
-    // ── Enforce routing.domainStrategy = IPIfNonMatch ──
-    // CRITICAL: "AsIs" means sniffing results are IGNORED for routing.
-    // IPIfNonMatch ensures sniffed domains are used for rule matching.
-    if (config.routing.domainStrategy !== "IPIfNonMatch") {
-      console.log(`[watchdog] Fixing routing.domainStrategy: ${config.routing.domainStrategy} → IPIfNonMatch`);
-      config.routing.domainStrategy = "IPIfNonMatch";
+    // ── Enforce routing.domainStrategy = AsIs ──
+    // "AsIs" prevents slow DNS-over-HTTPS lookups for unmatched domains.
+    // Sniffing (destOverride) handles the domain matching for routing rules.
+    if (config.routing.domainStrategy !== "AsIs") {
+      console.log(`[watchdog] Fixing routing.domainStrategy: ${config.routing.domainStrategy} → AsIs`);
+      config.routing.domainStrategy = "AsIs";
       changed = true;
     }
 
