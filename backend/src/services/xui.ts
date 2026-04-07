@@ -32,6 +32,13 @@ const REALITY_SNI = "www.microsoft.com";
 const REALITY_FINGERPRINT = "chrome";
 const VLESS_PORT = 443;
 
+// WebSocket (anti-DPI primary) inbound — multiplexes all traffic over one TCP connection
+// This prevents ISP connection-count-based blocking (YouTube creates 50+ connections)
+const WS_PORT = 2083;
+const WS_PATH = "/ws-tunnel";
+const WS_HOST = "dl.google.com"; // camouflage Host header
+const WS_INBOUND_ID = Number(process.env.XPANEL_WS_INBOUND_ID || "3");
+
 // XHTTP+REALITY (anti-DPI fallback) inbound
 const XHTTP_PORT = 8443;
 const XHTTP_PATH = "/ikamba";
@@ -162,10 +169,13 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
     if (!clientId) return null;
 
     const remark = `IkambaVPN-${email.split("@")[0]}`;
+    const wsLink = buildWsLink(clientId, remark);
     const tcpLink = buildVlessLink(clientId, remark);
     const xhttpLink = buildXhttpLink(clientId, remark);
-    // TCP first — more stable. XHTTP as fallback for DPI bypass.
-    const vlessLink = `${tcpLink}\n${xhttpLink}`;
+    // WS first (default) — multiplexes over 1 TCP conn, defeats connection-count DPI.
+    // TCP second — faster for light browsing but ISP kills it on YouTube bursts.
+    // XHTTP third — fallback.
+    const vlessLink = `${wsLink}\n${tcpLink}\n${xhttpLink}`;
 
     // Build user info
     let userInfo = "upload=0; download=0; total=0; expire=0";
@@ -493,6 +503,30 @@ export function buildXhttpLink(clientId: string, remark: string): string {
 }
 
 /**
+ * Build a VLESS+WebSocket link for the anti-DPI primary inbound (port 2083).
+ *
+ * WebSocket multiplexes ALL user traffic over a single persistent TCP connection,
+ * preventing ISP connection-count-based DPI that kills REALITY+TCP connections
+ * when apps like YouTube create 50+ simultaneous TLS sessions.
+ *
+ * This is now the DEFAULT/PRIMARY transport for all users in Russia.
+ */
+export function buildWsLink(clientId: string, remark: string): string {
+  if (!clientId) {
+    throw new Error("buildWsLink: clientId is required");
+  }
+
+  const query = [
+    `type=ws`,
+    `security=none`,
+    `path=${WS_PATH}`,
+    `host=${WS_HOST}`,
+  ].join("&");
+
+  return `vless://${clientId}@${VPS_IP}:${WS_PORT}?${query}#${encodeURIComponent(remark + "-WS")}`;
+}
+
+/**
  * Build the subscription URL for a client (kept as fallback).
  */
 export function getSubscriptionUrl(subId: string): string {
@@ -523,14 +557,17 @@ export function getHiddifyDeepLink(vlessLink: string): string {
 /**
  * Get all connection links for a client.
  * subscriptionUrl now points to our self-hosted sub endpoint (not the broken 3X-UI one).
+ * WS link is now the primary — prevents ISP connection-count DPI.
  */
 export function getAllClientLinks(clientId: string, subId: string, email: string) {
   const remark = `IkambaVPN-${email.split("@")[0]}`;
+  const wsLink = buildWsLink(clientId, remark);
   const vlessLink = buildVlessLink(clientId, remark);
   // Self-hosted subscription endpoint that returns base64-encoded VLESS config
   const selfHostedSubUrl = `https://${VPS_IP}:4443/xui-public/sub/${encodeURIComponent(email)}`;
   return {
-    vlessLink,
+    vlessLink: wsLink, // WS is now the default/primary link
+    vlessTcpLink: vlessLink, // TCP REALITY kept as backup
     subscriptionUrl: selfHostedSubUrl,
     v2raytun: getV2RayTunDeepLink(selfHostedSubUrl),
     v2rayng: getV2RayNGDeepLink(selfHostedSubUrl),
@@ -603,6 +640,16 @@ export async function provisionUser(
       expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
       limitIp: options?.maxConnections ?? 0,
     }, XHTTP_INBOUND_ID).catch(() => { /* non-fatal: XHTTP inbound may not exist yet */ });
+
+    // Mirror to WebSocket inbound — same UUID, flow must be "" (WS doesn't use Vision)
+    await addClient({
+      id: clientId,
+      email,
+      flow: "",
+      totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
+      expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
+      limitIp: options?.maxConnections ?? 0,
+    }, WS_INBOUND_ID).catch(() => { /* non-fatal: WS inbound may not exist yet */ });
 
     const links = getAllClientLinks(clientId, subId, email);
 

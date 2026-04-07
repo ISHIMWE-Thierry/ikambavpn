@@ -24,6 +24,7 @@ import {
   getV2RayTunDeepLink,
   buildVlessLink,
   buildXhttpLink,
+  buildWsLink,
   GB,
   daysFromNow,
   resetClientTraffic,
@@ -208,11 +209,34 @@ xuiPublicRouter.get("/xhttp-link/:email", async (req: Request, res: Response) =>
     const entry = await getCachedSubscription(email);
     if (!entry) return res.status(404).json({ ok: false });
 
-    // The cached vlessLink is "tcpLink\nxhttpLink" — XHTTP is second (index 1)
-    const xhttpLink = entry.vlessLink.split("\n")[1];
+    // The cached vlessLink is "wsLink\ntcpLink\nxhttpLink" — XHTTP is third (index 2)
+    const links = entry.vlessLink.split("\n");
+    const xhttpLink = links[2] || links[1]; // fallback to TCP if no XHTTP
     if (!xhttpLink) return res.status(404).json({ ok: false, error: "XHTTP link not available" });
 
     return res.json({ ok: true, link: xhttpLink });
+  } catch (err: any) {
+    return res.status(503).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * GET /xui-public/ws-link/:email
+ * Returns the raw VLESS+WebSocket link for a user.
+ * WS is now the DEFAULT/PRIMARY transport — it multiplexes all traffic
+ * over one persistent TCP connection, defeating ISP connection-count DPI.
+ */
+xuiPublicRouter.get("/ws-link/:email", async (req: Request, res: Response) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const entry = await getCachedSubscription(email);
+    if (!entry) return res.status(404).json({ ok: false });
+
+    // The cached vlessLink is "wsLink\ntcpLink\nxhttpLink" — WS is first (index 0)
+    const wsLink = entry.vlessLink.split("\n")[0];
+    if (!wsLink) return res.status(404).json({ ok: false, error: "WS link not available" });
+
+    return res.json({ ok: true, link: wsLink });
   } catch (err: any) {
     return res.status(503).json({ ok: false, error: err.message });
   }
@@ -231,10 +255,10 @@ xuiPublicRouter.get("/sub/:email", async (req: Request, res: Response) => {
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Content-Disposition", "inline");
-    res.setHeader("Profile-Update-Interval", "24");
+    res.setHeader("Profile-Update-Interval", "1"); // Check every 1 hour for config updates
     res.setHeader("Subscription-Userinfo", entry.userInfo);
-    // Allow client apps to cache for 5 minutes to reduce hammering
-    res.setHeader("Cache-Control", "public, max-age=300");
+    // Allow client apps to cache for 2 minutes — fast enough for config switches
+    res.setHeader("Cache-Control", "public, max-age=120");
     return res.send(base64);
   } catch (err: any) {
     console.error(`[sub] Error for ${req.params.email}:`, err.message);
