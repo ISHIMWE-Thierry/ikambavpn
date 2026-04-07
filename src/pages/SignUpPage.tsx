@@ -13,6 +13,7 @@ import { COLLECTIONS } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { PageTransition } from '../components/PageTransition';
 import { generateAndSendOtp } from '../lib/otp-service';
 import toast from 'react-hot-toast';
 
@@ -182,7 +183,7 @@ export function SignUpPage() {
 
   return (
     <main className="flex-1 flex items-center justify-center px-4 py-12 min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <div className="w-full max-w-sm">
+      <PageTransition className="w-full max-w-sm">
         {/* Header */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center mb-4 shadow-lg">
@@ -330,7 +331,7 @@ export function SignUpPage() {
             Sign in
           </Link>
         </p>
-      </div>
+      </PageTransition>
     </main>
   );
 }

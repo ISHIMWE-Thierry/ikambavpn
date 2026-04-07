@@ -13,6 +13,7 @@ import {
   checkVpnServerHealth, runDiagnostics,
 } from '../lib/xui-api';
 import type { XuiClientStat, DiagnosticResult } from '../lib/xui-api';
+import { PremiumBadge } from '../components/PremiumBadge';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { formatDate, formatCurrency, daysUntilExpiry, isExpired } from '../lib/utils';
@@ -362,16 +363,24 @@ export function DashboardPage() {
         {/* ── Header ──────────────────────────────────────────────────── */}
         <motion.div variants={card} className="flex items-center justify-between px-1">
           <div>
-            <p className="text-gray-400 text-xs font-medium tracking-wide">{greet(profile?.firstname)}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-gray-400 text-xs font-medium tracking-wide">{greet(profile?.firstname)}</p>
+              {activeOrder && !expired && <PremiumBadge size="lg" />}
+            </div>
             <p className="text-gray-900 text-sm font-semibold mt-0.5 truncate max-w-[220px]">{firebaseUser?.email}</p>
           </div>
-          <Link to="/account">
+          <Link to="/account" className="relative">
             <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center
               text-gray-700 text-sm font-bold hover:opacity-80 transition-opacity ring-2 ring-white">
               {avatarDataUrl
                 ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
                 : initials}
             </div>
+            {activeOrder && !expired && (
+              <div className="absolute -bottom-0.5 -right-0.5">
+                <PremiumBadge size="sm" />
+              </div>
+            )}
           </Link>
         </motion.div>
 

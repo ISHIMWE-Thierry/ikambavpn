@@ -6,6 +6,7 @@ import { createOrder, uploadPaymentProof, updateOrderStatus, getAppSettings, typ
 import { notifyAdminsNewOrder, notifyAdminsPaymentProof } from '../lib/email-service';
 import { Button } from '../components/ui/button';
 import { formatCurrency } from '../lib/utils';
+import { PageTransition } from '../components/PageTransition';
 import type { VpnPlan } from '../types';
 import toast from 'react-hot-toast';
 
@@ -143,6 +144,7 @@ export function CheckoutPage() {
   const steps = Object.keys(STEP_LABELS) as Step[];
 
   return (
+    <PageTransition>
     <main className="flex-1 max-w-lg mx-auto px-4 py-12">
       {/* Step indicator */}
       <div className="flex items-center gap-1 mb-8 text-xs text-gray-400">
@@ -300,6 +302,7 @@ export function CheckoutPage() {
         </div>
       )}
     </main>
+    </PageTransition>
   );
 }
 

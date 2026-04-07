@@ -5,6 +5,7 @@ import { getPlans } from '../lib/db-service';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { PageTransition } from '../components/PageTransition';
 import { formatCurrency } from '../lib/utils';
 import type { VpnPlan } from '../types';
 
@@ -99,6 +100,7 @@ export function PlansPage() {
   }
 
   return (
+    <PageTransition>
     <main className="flex-1 py-16 overflow-hidden">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-12">
@@ -234,5 +236,6 @@ export function PlansPage() {
         </a>
       </p>
     </main>
+    </PageTransition>
   );
 }

@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { useAuth } from '../contexts/AuthContext';
-import { updateUser } from '../lib/db-service';
+import { updateUser, getUserOrders } from '../lib/db-service';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { PageTransition } from '../components/PageTransition';
+import { PremiumBadge } from '../components/PremiumBadge';
+import { isExpired } from '../lib/utils';
+import { useEffect } from 'react';
 import toast from 'react-hot-toast';
 
 export function AccountPage() {
@@ -14,11 +18,23 @@ export function AccountPage() {
   const [lastname, setLastname] = useState(profile?.lastname || '');
   const [tel, setTel] = useState(profile?.tel || '');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
+
+  // Check if user has an active paid subscription
+  useEffect(() => {
+    if (!firebaseUser) return;
+    getUserOrders(firebaseUser.uid)
+      .then((orders) => {
+        const hasActive = orders.some((o) => o.status === 'active' && !isExpired(o.expiresAt));
+        setIsPremium(hasActive);
+      })
+      .catch(() => {});
+  }, [firebaseUser]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,17 +89,28 @@ export function AccountPage() {
     : firebaseUser?.email || '';
 
   return (
+    <PageTransition>
     <main className="flex-1 max-w-2xl mx-auto px-4 sm:px-6 py-10">
       {/* Avatar header */}
       <div className="flex items-center gap-4 mb-8">
-        <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-200 flex items-center
-          justify-center text-gray-600 text-xl font-bold shrink-0 ring-4 ring-white shadow-sm">
-          {avatarDataUrl
-            ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
-            : initials}
+        <div className="relative shrink-0">
+          <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-200 flex items-center
+            justify-center text-gray-600 text-xl font-bold ring-4 ring-white shadow-sm">
+            {avatarDataUrl
+              ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
+              : initials}
+          </div>
+          {isPremium && (
+            <div className="absolute -bottom-0.5 -right-0.5">
+              <PremiumBadge size="md" />
+            </div>
+          )}
         </div>
         <div>
-          <p className="text-lg font-bold text-gray-900">{displayName}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-lg font-bold text-gray-900">{displayName}</p>
+            {isPremium && <PremiumBadge size="lg" />}
+          </div>
           <p className="text-sm text-gray-400">{firebaseUser?.email}</p>
           {profile?.tel && <p className="text-sm text-gray-500 mt-0.5">{profile.tel}</p>}
         </div>
@@ -199,5 +226,6 @@ export function AccountPage() {
         </Card>
       </div>
     </main>
+    </PageTransition>
   );
 }

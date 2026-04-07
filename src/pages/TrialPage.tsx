@@ -21,6 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getUserTrial, createTrial, updateTrial } from '../lib/db-service';
 import { provisionXuiAccount } from '../lib/xui-api';
 import { Button } from '../components/ui/button';
+import { PageTransition } from '../components/PageTransition';
 import toast from 'react-hot-toast';
 
 type Stage = 'loading' | 'available' | 'used' | 'provisioning' | 'success' | 'error';
@@ -129,6 +130,7 @@ export function TrialPage() {
   }
 
   return (
+    <PageTransition>
     <main className="flex-1 max-w-md mx-auto px-4 py-16">
 
       {stage === 'available' && (
@@ -217,5 +219,6 @@ export function TrialPage() {
         </div>
       )}
     </main>
+    </PageTransition>
   );
 }
