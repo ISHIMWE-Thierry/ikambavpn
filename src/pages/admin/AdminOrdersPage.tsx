@@ -49,16 +49,27 @@ function ActivateForm({ order, onDone }: ActivateFormProps) {
     setLoading(true);
     try {
       // Provision VLESS+REALITY account in the same 3X-UI panel as the dashboard
-      await provisionXuiAccount({
+      const result = await provisionXuiAccount({
         email: order.userEmail,
         trafficLimitGB: 0,
         expiryDays,
         maxConnections: 2,
       });
 
+      const expiresAt = new Date(Date.now() + expiryDays * 86_400_000).toISOString();
+
       await updateOrderStatus(order.id, 'active', {
         activatedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + expiryDays * 86_400_000).toISOString(),
+        expiresAt,
+        // Store VPN credentials so user info is preserved in Firestore
+        credentials: {
+          xuiClientId: result.clientId,
+          xuiSubId: result.subId,
+          xuiSubscriptionUrl: result.subscriptionUrl,
+          xuiV2raytunLink: result.v2raytunLink,
+          xuiV2rayngLink: result.v2rayngLink,
+          xuiHiddifyLink: result.hiddifyLink,
+        },
       });
 
       // Email tells user to go to dashboard to copy their VPN link

@@ -200,8 +200,14 @@ export async function updateOrderStatus(
 // ── Payment proof upload ───────────────────────────────────────────────────────
 
 export async function uploadPaymentProof(orderId: string, file: File): Promise<string> {
-  const storageRef = ref(storage, `payment_proofs/${orderId}/${file.name}`);
-  await uploadBytes(storageRef, file);
+  // Sanitize filename: remove special chars, preserve extension
+  const ext = file.name.split('.').pop() || 'jpg';
+  const safeName = `proof_${Date.now()}.${ext}`;
+  const storageRef = ref(storage, `payment_proofs/${orderId}/${safeName}`);
+
+  // Set proper content type for the upload
+  const metadata = { contentType: file.type || 'image/jpeg' };
+  await uploadBytes(storageRef, file, metadata);
   return getDownloadURL(storageRef);
 }
 

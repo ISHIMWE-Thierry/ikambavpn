@@ -240,7 +240,12 @@ export function DashboardPage() {
       setStats(s); setActivated(true);
       runHealth();
       healthRef.current = setInterval(runHealth, 60_000);
-    }).catch(() => {});
+    }).catch(() => {
+      // VPN backend unreachable — still try health check and mark activated
+      // if user has an active order (Firestore is the source of truth for entitlement)
+      runHealth();
+      healthRef.current = setInterval(runHealth, 60_000);
+    });
     return () => { if (healthRef.current) clearInterval(healthRef.current); };
   }, [firebaseUser?.email, runHealth]);
 
@@ -251,6 +256,13 @@ export function DashboardPage() {
       getUserTrial(firebaseUser.uid).catch(() => null),
     ]).then(([o, t]) => {
       setOrders(o); setTrial(t);
+      // If user has an active order or trial in Firestore, mark as activated
+      // even if VPN stats endpoint failed (backend might be temporarily down)
+      const hasActive = o.some((order) => order.status === 'active');
+      const hasTrial = t?.status === 'active';
+      if (hasActive || hasTrial) {
+        setActivated(true);
+      }
     }).finally(() => setDataLoading(false));
   }, [firebaseUser]);
 

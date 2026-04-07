@@ -1,0 +1,24 @@
+[
+  {
+    "origin": [
+      "https://ikamba-1c669.web.app",
+      "https://ikamba-1c669.firebaseapp.com",
+      "https://ikambavpn.com",
+      "http://localhost:5173",
+      "http://localhost:3000"
+    ],
+    "method": ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "x-goog-resumable",
+      "x-goog-upload-protocol",
+      "x-goog-upload-command",
+      "x-goog-upload-offset",
+      "x-goog-upload-url",
+      "x-firebase-storage-version",
+      "Authorization"
+    ]
+  }
+]

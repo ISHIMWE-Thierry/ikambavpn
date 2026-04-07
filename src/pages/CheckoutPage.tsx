@@ -84,7 +84,22 @@ export function CheckoutPage() {
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) setProofFile(file);
+    if (!file) return;
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File is too large. Maximum size is 10 MB.');
+      return;
+    }
+
+    // Validate file type
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
+    if (!allowed.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|webp|heic|heif|pdf)$/i)) {
+      toast.error('Please upload an image (JPG, PNG, WEBP) or PDF file.');
+      return;
+    }
+
+    setProofFile(file);
   };
 
   const handleUploadProof = async () => {
@@ -105,8 +120,16 @@ export function CheckoutPage() {
         proofUrl: url,
       }).catch(() => {});
       setStep('done');
-    } catch {
-      toast.error('Failed to upload proof. Please try again.');
+    } catch (err: any) {
+      console.error('[Checkout] Upload failed:', err);
+      const msg = err?.code === 'storage/unauthorized'
+        ? 'Upload not authorised. Please sign in again and retry.'
+        : err?.code === 'storage/canceled'
+        ? 'Upload was cancelled. Please try again.'
+        : err?.code === 'storage/retry-limit-exceeded'
+        ? 'Network issue — please check your connection and try again.'
+        : 'Failed to upload proof. Please try again.';
+      toast.error(msg);
     } finally {
       setUploading(false);
     }
@@ -228,16 +251,24 @@ export function CheckoutPage() {
             onClick={() => fileInputRef.current?.click()}
             className="border-2 border-dashed border-gray-200 rounded-2xl p-10 flex flex-col items-center gap-3 cursor-pointer hover:border-black transition"
           >
-            <Upload className="w-8 h-8 text-gray-400" />
+            {proofFile && proofFile.type.startsWith('image/') ? (
+              <img
+                src={URL.createObjectURL(proofFile)}
+                alt="Payment proof preview"
+                className="max-h-48 rounded-xl object-contain"
+              />
+            ) : (
+              <Upload className="w-8 h-8 text-gray-400" />
+            )}
             {proofFile ? (
               <p className="text-sm font-medium text-black">{proofFile.name}</p>
             ) : (
-              <p className="text-sm text-gray-400">Click to upload your screenshot</p>
+              <p className="text-sm text-gray-400">Tap to upload your screenshot</p>
             )}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,.pdf"
+              accept="image/*,.pdf,.heic,.heif"
               className="hidden"
               onChange={handleFileChange}
             />
