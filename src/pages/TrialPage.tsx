@@ -50,8 +50,16 @@ export function TrialPage() {
       let trial = null;
       try { trial = await getUserTrial(firebaseUser!.uid); } catch { /* ignore */ }
 
-      if (trial?.status === 'active')  { navigate('/dashboard'); return; }
-      if (trial?.status === 'expired') { setStage('used'); return; }
+      // Trial is only truly active if status='active' AND expiresAt is in the future
+      const isTrialActive = trial?.status === 'active'
+        && !!trial?.expiresAt
+        && new Date(trial.expiresAt) > new Date();
+
+      if (isTrialActive)  { navigate('/dashboard'); return; }
+      // Treat as used if status is 'expired' OR if active but past expiresAt
+      if (trial?.status === 'expired' || (trial?.status === 'active' && !isTrialActive)) {
+        setStage('used'); return;
+      }
       if (trial?.id) setPendingTrialId(trial.id);
 
       setStage('available');

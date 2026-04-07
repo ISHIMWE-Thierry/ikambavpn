@@ -259,7 +259,8 @@ export function DashboardPage() {
       // If user has an active order or trial in Firestore, mark as activated
       // even if VPN stats endpoint failed (backend might be temporarily down)
       const hasActive = o.some((order) => order.status === 'active');
-      const hasTrial = t?.status === 'active';
+      // Trial is only active if status is 'active' AND not past expiresAt
+      const hasTrial = t?.status === 'active' && !!t?.expiresAt && new Date(t.expiresAt) > new Date();
       if (hasActive || hasTrial) {
         setActivated(true);
       }
@@ -271,7 +272,11 @@ export function DashboardPage() {
   const historyOrders = orders.filter((o) => o.status !== 'pending_payment' && o.status !== 'payment_submitted');
   const days         = daysUntilExpiry(activeOrder?.expiresAt);
   const expired      = isExpired(activeOrder?.expiresAt);
-  const activeTrial  = trial?.status === 'active';
+  // Trial is only active if status is 'active' AND expiresAt is in the future
+  const activeTrial  = trial?.status === 'active' && !!trial?.expiresAt && !isExpired(trial.expiresAt);
+  const trialExpired = trial?.status === 'active' && !!trial?.expiresAt && isExpired(trial.expiresAt);
+  // If the trial expired by time but Firestore still says 'active', treat as used
+  const trialUsed    = trial?.status === 'expired' || trialExpired;
 
   // User can activate/copy link only if they have active paid plan OR active trial
   const canActivate  = (!expired && !!activeOrder) || activeTrial;
@@ -741,7 +746,7 @@ export function DashboardPage() {
                 </div>
 
                 <div className="pt-4 border-t border-gray-100 space-y-2">
-                  {trial?.status !== 'active' && trial?.status !== 'expired' ? (
+                  {!trialUsed && !trial ? (
                     /* No trial used yet */
                     <>
                       <p className="text-xs text-gray-500 mb-3">Try before you buy — no payment needed.</p>
