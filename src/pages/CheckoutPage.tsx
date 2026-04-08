@@ -44,8 +44,9 @@ export function CheckoutPage() {
   const [rcPackages, setRcPackages] = useState<RCPackage[]>([]);
 
   // Whether RevenueCat card option is available
+  // Card payments are disabled until the API key is active AND admin enables it
   const rcApiKeySet = !!import.meta.env.VITE_REVENUECAT_API_KEY;
-  const cardAvailable = rcApiKeySet;
+  const cardAvailable = rcApiKeySet && (paymentSettings?.paygateEnabled ?? false);
 
   // Compute USD equivalent using admin rate
   const rubRate = paymentSettings?.rubToUsdRate || 0;
@@ -59,7 +60,13 @@ export function CheckoutPage() {
       return;
     }
     // Load payment account details from shared appdata (same doc as Blink-1)
-    getAppSettings().then(setPaymentSettings);
+    getAppSettings().then((settings) => {
+      setPaymentSettings(settings);
+      // If card payments were disabled by admin, force-switch to bank
+      if (!settings.paygateEnabled && paymentMethod === 'card') {
+        setPaymentMethod('bank');
+      }
+    });
 
     // Init RevenueCat and load offerings
     if (firebaseUser && rcApiKeySet) {

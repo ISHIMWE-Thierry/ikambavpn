@@ -427,3 +427,130 @@ export async function setAppConfig(data: Partial<AppConfig>): Promise<void> {
 
 // Re-export serverTimestamp for convenience
 export { serverTimestamp };
+
+// ── VPN Client Firestore Sync ─────────────────────────────────────────────────
+// Keeps Firestore `vpn_clients` collection in sync with 3X-UI Xray panel data.
+// Each document is keyed by the client's email (sanitized as doc ID).
+
+export interface VpnClientRecord {
+  id?: string;
+  email: string;
+  uuid: string;
+  subId: string;
+  enabled: boolean;
+  expiryTime: number;
+  totalTrafficLimit: number;     // bytes (0 = unlimited)
+  uploadBytes: number;
+  downloadBytes: number;
+  limitIp: number;               // max concurrent connections
+  subscriptionUrl: string;
+  vlessLink: string;
+  source: 'admin_panel';        // how this record was created
+  syncedAt: ReturnType<typeof now>;
+  createdAt?: ReturnType<typeof now>;
+  updatedAt: ReturnType<typeof now>;
+}
+
+const VPN_CLIENTS_COLLECTION = 'vpn_clients';
+
+/** Sanitize email to use as Firestore doc ID (replace dots/@ with underscores) */
+function emailToDocId(email: string): string {
+  return email.toLowerCase().replace(/[.@]/g, '_');
+}
+
+/** Upsert a single VPN client to Firestore */
+export async function syncVpnClientToFirestore(client: {
+  email: string;
+  uuid: string;
+  subId?: string;
+  enable?: boolean;
+  expiryTime?: number;
+  total?: number;
+  up?: number;
+  down?: number;
+  limitIp?: number;
+  subscriptionUrl?: string;
+  vlessLink?: string;
+}): Promise<void> {
+  const docId = emailToDocId(client.email);
+  const docRef = doc(db, VPN_CLIENTS_COLLECTION, docId);
+
+  const data: Record<string, any> = {
+    email: client.email,
+    uuid: client.uuid,
+    subId: client.subId || '',
+    enabled: client.enable !== false,
+    expiryTime: client.expiryTime || 0,
+    totalTrafficLimit: client.total || 0,
+    uploadBytes: client.up || 0,
+    downloadBytes: client.down || 0,
+    limitIp: client.limitIp || 0,
+    subscriptionUrl: client.subscriptionUrl || '',
+    vlessLink: client.vlessLink || '',
+    source: 'admin_panel',
+    syncedAt: now(),
+    updatedAt: now(),
+  };
+
+  await setDoc(docRef, data, { merge: true });
+}
+
+/** Bulk-sync all VPN clients from 3X-UI to Firestore */
+export async function bulkSyncVpnClientsToFirestore(clients: Array<{
+  email: string;
+  uuid: string;
+  subId?: string;
+  enable?: boolean;
+  expiryTime?: number;
+  total?: number;
+  up?: number;
+  down?: number;
+  limitIp?: number;
+  subscriptionUrl?: string;
+  vlessLink?: string;
+}>): Promise<{ synced: number; errors: number }> {
+  let synced = 0;
+  let errors = 0;
+  for (const client of clients) {
+    try {
+      await syncVpnClientToFirestore(client);
+      synced++;
+    } catch (err) {
+      console.error(`Failed to sync ${client.email}:`, err);
+      errors++;
+    }
+  }
+  return { synced, errors };
+}
+
+/** Mark a VPN client as deleted in Firestore */
+export async function markVpnClientDeleted(email: string): Promise<void> {
+  const docId = emailToDocId(email);
+  const docRef = doc(db, VPN_CLIENTS_COLLECTION, docId);
+  await updateDoc(docRef, {
+    enabled: false,
+    deletedAt: now(),
+    updatedAt: now(),
+  }).catch(() => {
+    // Doc may not exist yet — ignore
+  });
+}
+
+/** Update a VPN client's status in Firestore */
+export async function updateVpnClientStatus(email: string, updates: {
+  enabled?: boolean;
+  expiryTime?: number;
+  totalTrafficLimit?: number;
+  limitIp?: number;
+  uploadBytes?: number;
+  downloadBytes?: number;
+}): Promise<void> {
+  const docId = emailToDocId(email);
+  const docRef = doc(db, VPN_CLIENTS_COLLECTION, docId);
+  await setDoc(docRef, {
+    email,
+    ...updates,
+    syncedAt: now(),
+    updatedAt: now(),
+  }, { merge: true });
+}

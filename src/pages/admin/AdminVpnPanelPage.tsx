@@ -3,6 +3,7 @@ import {
   Plus, RefreshCw, ChevronDown, ChevronUp, X, Copy, Check,
   ToggleLeft, ToggleRight, Trash2, RotateCcw, Server, Wifi,
   HardDrive, Cpu, Users, Shield, Link2, Globe, Pencil, Calendar, Zap,
+  Database,
 } from 'lucide-react';
 import {
   getAdminClients,
@@ -17,6 +18,12 @@ import {
   formatExpiry,
 } from '../../lib/xui-api';
 import type { XuiAdminClient, XuiSystemStatus } from '../../lib/xui-api';
+import {
+  syncVpnClientToFirestore,
+  bulkSyncVpnClientsToFirestore,
+  markVpnClientDeleted,
+  updateVpnClientStatus,
+} from '../../lib/db-service';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
@@ -63,6 +70,18 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
         maxConnections: maxConn,
       });
       setResult({ subscriptionUrl: res.subscriptionUrl });
+      // Sync new client to Firestore
+      syncVpnClientToFirestore({
+        email,
+        uuid: res.clientId,
+        subId: res.subId,
+        enable: true,
+        expiryTime: expiryDays > 0 ? Date.now() + expiryDays * 86400000 : 0,
+        total: trafficGB * 1024 * 1024 * 1024,
+        limitIp: maxConn,
+        subscriptionUrl: res.subscriptionUrl,
+        vlessLink: res.vlessLink,
+      }).catch((err) => console.warn('Firestore sync failed:', err));
       toast.success('Client created');
       onCreated();
     } catch (err: unknown) {
@@ -225,6 +244,14 @@ function EditClientModal({ client, onClose, onSaved, extendMode }: {
         email: client.email,
         ...(extendMode ? { enable: true } : {}),
       });
+
+      // Sync changes to Firestore
+      updateVpnClientStatus(client.email, {
+        enabled: extendMode ? true : client.enable,
+        expiryTime,
+        totalTrafficLimit: trafficGB * 1024 * 1024 * 1024,
+        limitIp: maxConn,
+      }).catch((err) => console.warn('Firestore sync failed:', err));
 
       // Send email notification to the user
       notifyUserSubscriptionChanged({
@@ -420,6 +447,7 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
     try {
       if (client.enable) {
         await disableAdminClient(client.uuid, client.email);
+        updateVpnClientStatus(client.email, { enabled: false }).catch(() => {});
         notifyUserSubscriptionChanged({
           vpnEmail: client.email,
           changeType: 'disabled',
@@ -427,6 +455,7 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
         toast.success(`${client.email} disabled`);
       } else {
         await enableAdminClient(client.uuid, client.email);
+        updateVpnClientStatus(client.email, { enabled: true }).catch(() => {});
         notifyUserSubscriptionChanged({
           vpnEmail: client.email,
           changeType: 'enabled',
@@ -446,6 +475,7 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
     setDeleting(true);
     try {
       await deleteAdminClient(client.uuid);
+      markVpnClientDeleted(client.email).catch(() => {});
       toast.success(`${client.email} deleted`);
       onRefresh();
     } catch {
@@ -459,6 +489,7 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
     setResetting(true);
     try {
       await resetAdminClientTraffic(client.email);
+      updateVpnClientStatus(client.email, { uploadBytes: 0, downloadBytes: 0 }).catch(() => {});
       notifyUserSubscriptionChanged({
         vpnEmail: client.email,
         changeType: 'traffic_reset',
@@ -669,6 +700,7 @@ export function AdminVpnPanelPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState('');
+  const [syncing, setSyncing] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -683,6 +715,28 @@ export function AdminVpnPanelPage() {
       toast.error('Failed to load VPN panel data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  /** Bulk-sync all 3X-UI clients to Firestore (for old entries that weren't saved) */
+  const handleSyncAllToDb = async () => {
+    if (clients.length === 0) {
+      toast.error('No clients to sync');
+      return;
+    }
+    setSyncing(true);
+    try {
+      const { synced, errors } = await bulkSyncVpnClientsToFirestore(clients);
+      if (errors > 0) {
+        toast(`Synced ${synced} clients, ${errors} failed`, { icon: '⚠️' });
+      } else {
+        toast.success(`All ${synced} clients synced to Firestore ✓`);
+      }
+    } catch (err) {
+      console.error('Bulk sync failed:', err);
+      toast.error('Failed to sync clients to database');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -716,6 +770,16 @@ export function AdminVpnPanelPage() {
             <button onClick={load} className="p-2 hover:bg-gray-50 rounded-xl transition" title="Refresh">
               <RefreshCw className="w-5 h-5 text-gray-400" />
             </button>
+            <Button
+              onClick={handleSyncAllToDb}
+              size="sm"
+              variant="secondary"
+              loading={syncing}
+              disabled={syncing || loading || clients.length === 0}
+              title="Sync all Xray clients to Firestore database"
+            >
+              <Database className="w-4 h-4 mr-1" /> {syncing ? 'Syncing...' : 'Sync to DB'}
+            </Button>
             <Button onClick={() => setShowModal(true)} size="sm">
               <Plus className="w-4 h-4 mr-1" /> Add client
             </Button>
