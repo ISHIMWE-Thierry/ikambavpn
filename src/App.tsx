@@ -21,6 +21,9 @@ import { AdminSettingsPage } from './pages/admin/AdminSettingsPage'
 import { TrialPage } from './pages/TrialPage'
 import { RussiaGuidePage } from './pages/RussiaGuidePage'
 import { EmailVerificationPage } from './pages/EmailVerificationPage'
+import { TermsPage } from './pages/TermsPage'
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
+import { RefundPolicyPage } from './pages/RefundPolicyPage'
 
 export default function App() {
   return (
@@ -37,6 +40,9 @@ export default function App() {
         <Route path="/plans" element={<PlansPage />} />
         <Route path="/russia-guide" element={<RussiaGuidePage />} />
         <Route path="/verify-email" element={<EmailVerificationPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/refund-policy" element={<RefundPolicyPage />} />
 
         {/* Protected — users */}
         <Route
