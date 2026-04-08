@@ -25,12 +25,12 @@ export function AccountPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
 
-  // Check if user has an active paid subscription
+  // Check if user has an active paid subscription on Premium plan
   useEffect(() => {
     if (!firebaseUser) return;
     getUserOrders(firebaseUser.uid)
       .then((orders) => {
-        const hasActive = orders.some((o) => o.status === 'active' && !!o.expiresAt && !isExpired(o.expiresAt));
+        const hasActive = orders.some((o) => o.status === 'active' && !!o.expiresAt && !isExpired(o.expiresAt) && o.planName?.toLowerCase() === 'premium');
         setIsPremium(hasActive);
       })
       .catch(() => {});

@@ -209,6 +209,7 @@ export function DashboardPage() {
   const [hasEverCopied, setHasEverCopied] = useState(false);
   const [copiedBackup, setCopiedBackup] = useState(false);
   const [activateError, setActivateError] = useState<string | null>(null);
+  const [upgradePopup, setUpgradePopup] = useState<VpnPlan | null>(null);
   const [stats, setStats]             = useState<XuiClientStat | null>(null);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const [diagResult, setDiagResult]   = useState<DiagnosticResult | null>(null);
@@ -461,7 +462,7 @@ export function DashboardPage() {
           <div>
             <div className="flex items-center gap-1.5">
               <p className="text-gray-400 text-xs font-medium tracking-wide">{greet(profile?.firstname)}</p>
-              {activeOrder && !expired && <PremiumBadge size="lg" />}
+              {activeOrder && !expired && activeOrder.planName?.toLowerCase() === 'premium' && <PremiumBadge size="lg" />}
             </div>
             <p className="text-gray-900 text-sm font-semibold mt-0.5 truncate max-w-[220px]">{firebaseUser?.email}</p>
           </div>
@@ -472,7 +473,7 @@ export function DashboardPage() {
                 ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
                 : initials}
             </div>
-            {activeOrder && !expired && (
+            {activeOrder && !expired && activeOrder.planName?.toLowerCase() === 'premium' && (
               <div className="absolute -bottom-0.5 -right-0.5">
                 <PremiumBadge size="sm" />
               </div>
@@ -735,7 +736,28 @@ export function DashboardPage() {
               <>
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-semibold">{activeOrder.planName}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold">{activeOrder.planName}</h3>
+                      {/* Upgrade badge — only if there are more expensive plans */}
+                      {(() => {
+                        const upgradePlans = plans.filter((p) => p.price > activeOrder.amount && p.currency === activeOrder.currency);
+                        if (upgradePlans.length === 0) return null;
+                        const nextPlan = upgradePlans[0];
+                        return (
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => setUpgradePopup(nextPlan)}
+                            className="inline-flex items-center gap-1 bg-gradient-to-r from-gray-900 to-black
+                              text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1
+                              rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                          >
+                            <ArrowRight className="w-3 h-3" />
+                            Upgrade
+                          </motion.button>
+                        );
+                      })()}
+                    </div>
                     <p className="text-sm text-gray-500 mt-0.5">{activeOrder.planDuration}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -772,71 +794,6 @@ export function DashboardPage() {
                     variant={days !== null && days <= 3 ? 'urgent' : 'default'}
                   />
                 )}
-
-                {/* Upgrade tiers — horizontal scroll, show only plans more expensive than current */}
-                {(() => {
-                  const upgradePlans = plans.filter((p) => p.price > activeOrder.amount && p.currency === activeOrder.currency);
-                  if (upgradePlans.length === 0) return null;
-                  return (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 }}
-                      className="mt-4 pt-4 border-t border-gray-100"
-                    >
-                      <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-3">
-                        Upgrade your plan
-                      </p>
-                      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 -mx-6 px-6 snap-x snap-mandatory"
-                        style={{ WebkitOverflowScrolling: 'touch' }}
-                      >
-                        {upgradePlans.map((plan, i) => {
-                          const diff = plan.price - activeOrder.amount;
-                          return (
-                            <motion.div
-                              key={plan.id}
-                              initial={{ opacity: 0, scale: 0.92, x: 20 }}
-                              animate={{ opacity: 1, scale: 1, x: 0 }}
-                              transition={{ delay: 0.1 + i * 0.08, duration: 0.3 }}
-                              className="snap-center shrink-0 w-[180px]"
-                            >
-                              <div
-                                onClick={() => navigate('/checkout', { state: { plan } })}
-                                className="relative flex flex-col rounded-2xl border border-gray-100 bg-gray-50
-                                  hover:border-gray-300 cursor-pointer active:scale-[0.97] transition-all
-                                  duration-200 p-4 h-full"
-                              >
-                                <p className="text-sm font-bold text-black">{plan.name}</p>
-                                <p className="text-[11px] text-gray-500 mt-0.5">{plan.description}</p>
-                                <div className="mt-2">
-                                  <span className="text-xl font-bold text-black">
-                                    +{diff} ₽
-                                  </span>
-                                  <span className="text-[10px] text-gray-400 ml-1">/ {plan.duration}</span>
-                                </div>
-                                <p className="text-[10px] text-gray-400 mt-0.5">
-                                  Total: {plan.currency === 'RUB' ? `${plan.price} ₽` : formatCurrency(plan.price, plan.currency)}
-                                </p>
-                                <ul className="mt-2 space-y-1 flex-1">
-                                  {plan.features.slice(0, 2).map((f) => (
-                                    <li key={f} className="flex items-center gap-1.5 text-[10px] text-gray-600">
-                                      <Check className="w-2.5 h-2.5 shrink-0 text-black" />
-                                      {f}
-                                    </li>
-                                  ))}
-                                </ul>
-                                <div className="mt-3 rounded-xl py-1.5 text-center text-[11px] font-semibold
-                                  bg-black text-white">
-                                  Upgrade to {plan.name}
-                                </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  );
-                })()}
 
                 {days !== null && days <= 7 && (
                   <Link to="/plans" className="mt-3 block">
@@ -1415,6 +1372,87 @@ export function DashboardPage() {
 
         <div className="h-6" />
       </motion.div>
+
+      {/* ── Upgrade popup ─────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {upgradePopup && activeOrder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => setUpgradePopup(null)}
+          >
+            <motion.div
+              initial={{ y: 100, opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 100, opacity: 0, scale: 0.95 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-[420px] p-6 pb-8 sm:pb-6 mx-4 sm:mx-0 shadow-2xl"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-bold text-black">Upgrade to {upgradePopup.name}</h3>
+                <button
+                  onClick={() => setUpgradePopup(null)}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center
+                    text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors text-sm font-bold"
+                >✕</button>
+              </div>
+
+              {/* Plan comparison */}
+              <div className="bg-gray-50 rounded-2xl p-4 mb-4">
+                <div className="flex items-center justify-between text-sm mb-2">
+                  <span className="text-gray-500">Current plan</span>
+                  <span className="font-semibold text-black">{activeOrder.planName}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm mb-2">
+                  <span className="text-gray-500">New plan</span>
+                  <span className="font-bold text-black">{upgradePopup.name}</span>
+                </div>
+                <div className="border-t border-gray-200 my-2" />
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">Price difference</span>
+                  <span className="font-bold text-black text-lg">
+                    +{upgradePopup.price - activeOrder.amount} ₽
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-400 text-right mt-0.5">
+                  Total: {upgradePopup.currency === 'RUB' ? `${upgradePopup.price} ₽` : formatCurrency(upgradePopup.price, upgradePopup.currency)} / {upgradePopup.duration}
+                </p>
+              </div>
+
+              {/* Features */}
+              <div className="mb-5">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">What you get</p>
+                <ul className="space-y-1.5">
+                  {upgradePopup.features.map((f) => (
+                    <li key={f} className="flex items-center gap-2 text-sm text-gray-700">
+                      <Check className="w-3.5 h-3.5 shrink-0 text-black" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* CTA */}
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={() => {
+                  setUpgradePopup(null);
+                  navigate('/checkout', { state: { plan: upgradePopup } });
+                }}
+                className="w-full rounded-full h-12 bg-black text-white text-sm font-semibold
+                  hover:bg-gray-800 transition-all duration-150 flex items-center justify-center gap-2"
+              >
+                <ArrowRight className="w-4 h-4" />
+                Upgrade to {upgradePopup.name} — {upgradePopup.currency === 'RUB' ? `${upgradePopup.price} ₽` : formatCurrency(upgradePopup.price, upgradePopup.currency)}
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
