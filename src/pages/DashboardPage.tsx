@@ -289,9 +289,11 @@ export function DashboardPage() {
     getAppSettings().then(setPaymentSettings).catch(() => {});
   }, []);
 
-  // Load plans when tier picker is opened (lazy)
+  // Load plans when tier picker is opened OR user has active plan (for upgrade cards)
+  const hasActiveOrder = orders.some((o) => o.status === 'active' && !!o.expiresAt && !isExpired(o.expiresAt));
   useEffect(() => {
-    if (!showTierPicker || plans.length > 0) return;
+    if (plans.length > 0) return;
+    if (!showTierPicker && !hasActiveOrder) return;
     getPlans().then((p) => {
       if (p.length) setPlans(p);
       else setPlans([
@@ -304,13 +306,37 @@ export function DashboardPage() {
       { id: 'popular-1m', name: 'Popular', description: 'Most chosen plan', duration: '1 Month', price: 79, currency: 'RUB', features: ['3 devices', 'All servers', 'Priority support'], popular: true },
       { id: 'premium-1m', name: 'Premium', description: 'Full access', duration: '1 Month', price: 99, currency: 'RUB', features: ['5 devices', 'All servers', 'Premium support'] },
     ]));
-  }, [showTierPicker, plans.length]);
+  }, [showTierPicker, plans.length, hasActiveOrder]);
 
   // Refetch orders after proof upload
   const refreshOrders = useCallback(() => {
     if (!firebaseUser) return;
     getUserOrders(firebaseUser.uid).then(setOrders).catch(() => {});
   }, [firebaseUser]);
+
+  // Full refresh — orders, trial, stats, health
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshAll = useCallback(async () => {
+    if (!firebaseUser) return;
+    setRefreshing(true);
+    try {
+      const [o, t] = await Promise.all([
+        getUserOrders(firebaseUser.uid).catch(() => [] as VpnOrder[]),
+        getUserTrial(firebaseUser.uid).catch(() => null),
+      ]);
+      setOrders(o);
+      setTrial(t);
+      if (firebaseUser.email) {
+        getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
+      }
+      runHealth();
+      toast.success('Refreshed');
+    } catch {
+      toast.error('Failed to refresh');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [firebaseUser, runHealth]);
 
   function handleProofFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -780,7 +806,19 @@ export function DashboardPage() {
                     <h3 className="text-lg font-semibold">{activeOrder.planName}</h3>
                     <p className="text-sm text-gray-500 mt-0.5">{activeOrder.planDuration}</p>
                   </div>
-                  {statusBadge(activeOrder.status)}
+                  <div className="flex items-center gap-2">
+                    {statusBadge(activeOrder.status)}
+                    <motion.button
+                      whileTap={{ scale: 0.85, rotate: 180 }}
+                      onClick={refreshAll}
+                      disabled={refreshing}
+                      className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center
+                        hover:bg-gray-200 transition-colors disabled:opacity-40"
+                      title="Refresh"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 text-gray-500 ${refreshing ? 'animate-spin' : ''}`} />
+                    </motion.button>
+                  </div>
                 </div>
 
                 <div className="space-y-2 mb-5">
@@ -803,8 +841,73 @@ export function DashboardPage() {
                   />
                 )}
 
+                {/* Upgrade tiers — horizontal scroll, show only plans more expensive than current */}
+                {(() => {
+                  const upgradePlans = plans.filter((p) => p.price > activeOrder.amount && p.currency === activeOrder.currency);
+                  if (upgradePlans.length === 0) return null;
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 }}
+                      className="mt-4 pt-4 border-t border-gray-100"
+                    >
+                      <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-3">
+                        Upgrade your plan
+                      </p>
+                      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 -mx-6 px-6 snap-x snap-mandatory"
+                        style={{ WebkitOverflowScrolling: 'touch' }}
+                      >
+                        {upgradePlans.map((plan, i) => {
+                          const diff = plan.price - activeOrder.amount;
+                          return (
+                            <motion.div
+                              key={plan.id}
+                              initial={{ opacity: 0, scale: 0.92, x: 20 }}
+                              animate={{ opacity: 1, scale: 1, x: 0 }}
+                              transition={{ delay: 0.1 + i * 0.08, duration: 0.3 }}
+                              className="snap-center shrink-0 w-[180px]"
+                            >
+                              <div
+                                onClick={() => navigate('/checkout', { state: { plan } })}
+                                className="relative flex flex-col rounded-2xl border border-gray-100 bg-gray-50
+                                  hover:border-gray-300 cursor-pointer active:scale-[0.97] transition-all
+                                  duration-200 p-4 h-full"
+                              >
+                                <p className="text-sm font-bold text-black">{plan.name}</p>
+                                <p className="text-[11px] text-gray-500 mt-0.5">{plan.description}</p>
+                                <div className="mt-2">
+                                  <span className="text-xl font-bold text-black">
+                                    +{diff} ₽
+                                  </span>
+                                  <span className="text-[10px] text-gray-400 ml-1">/ {plan.duration}</span>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                  Total: {plan.currency === 'RUB' ? `${plan.price} ₽` : formatCurrency(plan.price, plan.currency)}
+                                </p>
+                                <ul className="mt-2 space-y-1 flex-1">
+                                  {plan.features.slice(0, 2).map((f) => (
+                                    <li key={f} className="flex items-center gap-1.5 text-[10px] text-gray-600">
+                                      <Check className="w-2.5 h-2.5 shrink-0 text-black" />
+                                      {f}
+                                    </li>
+                                  ))}
+                                </ul>
+                                <div className="mt-3 rounded-xl py-1.5 text-center text-[11px] font-semibold
+                                  bg-black text-white">
+                                  Upgrade to {plan.name}
+                                </div>
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  );
+                })()}
+
                 {days !== null && days <= 7 && (
-                  <Link to="/plans">
+                  <Link to="/plans" className="mt-3 block">
                     <button className="w-full rounded-full h-10 border-2 border-black text-sm font-semibold
                       hover:bg-black hover:text-white transition-all duration-150">
                       Renew plan
