@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo, type ChangeEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
   Power, Copy, Check, Wifi, WifiOff, Shield, Zap, Clock,
@@ -7,7 +7,7 @@ import {
   ChevronRight, AlertCircle, ArrowRight, Upload, Image,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserOrders, getUserTrial, uploadPaymentProof, updateOrderStatus, getAppSettings, type AppPaymentSettings } from '../lib/db-service';
+import { getUserOrders, getUserTrial, uploadPaymentProof, updateOrderStatus, getAppSettings, getPlans, type AppPaymentSettings } from '../lib/db-service';
 import { notifyAdminsPaymentProof } from '../lib/email-service';
 import toast from 'react-hot-toast';
 import {
@@ -19,7 +19,7 @@ import { PremiumBadge } from '../components/PremiumBadge';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { formatDate, formatCurrency, daysUntilExpiry, isExpired } from '../lib/utils';
-import type { VpnOrder, OrderStatus, VpnTrial } from '../types';
+import type { VpnOrder, OrderStatus, VpnTrial, VpnPlan } from '../types';
 
 // ── Device detection ──────────────────────────────────────────────────────────
 type DeviceType = 'ios' | 'android' | 'mac' | 'windows' | 'linux' | 'unknown';
@@ -233,6 +233,13 @@ export function DashboardPage() {
   const [paymentSettings, setPaymentSettings] = useState<AppPaymentSettings | null>(null);
   const proofInputRef = useRef<HTMLInputElement>(null);
 
+  // Inline tier picker state
+  const [showTierPicker, setShowTierPicker] = useState(false);
+  const [plans, setPlans]                   = useState<VpnPlan[]>([]);
+  const tierScrollRef = useRef<HTMLDivElement>(null);
+
+  const navigate = useNavigate();
+
   const device = useMemo(() => detectDevice(), []);
   const cfg = DEVICE_CONFIG[device];
   const subUrl = firebaseUser?.email ? getSubUrl(firebaseUser.email) : null;
@@ -281,6 +288,23 @@ export function DashboardPage() {
   useEffect(() => {
     getAppSettings().then(setPaymentSettings).catch(() => {});
   }, []);
+
+  // Load plans when tier picker is opened (lazy)
+  useEffect(() => {
+    if (!showTierPicker || plans.length > 0) return;
+    getPlans().then((p) => {
+      if (p.length) setPlans(p);
+      else setPlans([
+        { id: 'basic-1m', name: 'Basic', description: 'Essential protection', duration: '1 Month', price: 49, currency: 'RUB', features: ['1 device', 'All servers', 'No-logs policy'] },
+        { id: 'popular-1m', name: 'Popular', description: 'Most chosen plan', duration: '1 Month', price: 79, currency: 'RUB', features: ['3 devices', 'All servers', 'Priority support'], popular: true },
+        { id: 'premium-1m', name: 'Premium', description: 'Full access', duration: '1 Month', price: 99, currency: 'RUB', features: ['5 devices', 'All servers', 'Premium support'] },
+      ]);
+    }).catch(() => setPlans([
+      { id: 'basic-1m', name: 'Basic', description: 'Essential protection', duration: '1 Month', price: 49, currency: 'RUB', features: ['1 device', 'All servers', 'No-logs policy'] },
+      { id: 'popular-1m', name: 'Popular', description: 'Most chosen plan', duration: '1 Month', price: 79, currency: 'RUB', features: ['3 devices', 'All servers', 'Priority support'], popular: true },
+      { id: 'premium-1m', name: 'Premium', description: 'Full access', duration: '1 Month', price: 99, currency: 'RUB', features: ['5 devices', 'All servers', 'Premium support'] },
+    ]));
+  }, [showTierPicker, plans.length]);
 
   // Refetch orders after proof upload
   const refreshOrders = useCallback(() => {
@@ -334,7 +358,7 @@ export function DashboardPage() {
     }
   }
 
-  const activeOrder  = orders.find((o) => o.status === 'active');
+  const activeOrder  = orders.find((o) => o.status === 'active' && !!o.expiresAt && !isExpired(o.expiresAt));
   const pendingOrders = orders.filter((o) => o.status === 'pending_payment' || o.status === 'payment_submitted');
   const historyOrders = orders.filter((o) => o.status !== 'pending_payment' && o.status !== 'payment_submitted');
   const days         = daysUntilExpiry(activeOrder?.expiresAt);
@@ -581,10 +605,15 @@ export function DashboardPage() {
                 transition={{ duration: 0.3 }}
                 className="flex flex-col items-center mb-8"
               >
-                <div className="w-32 h-32 rounded-full bg-gray-100 flex items-center justify-center shadow-none">
-                  <Power className="w-10 h-10 text-gray-300" />
-                </div>
-                <p className="mt-3 text-sm text-gray-400 font-medium">No active plan</p>
+                <motion.div
+                  animate={{ scale: [1, 1.05, 1] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                  className="w-32 h-32 rounded-full bg-gradient-to-br from-gray-100 to-gray-200
+                    flex items-center justify-center shadow-inner"
+                >
+                  <Shield className="w-10 h-10 text-gray-400" />
+                </motion.div>
+                <p className="mt-3 text-sm text-gray-400 font-medium">VPN not activated</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -653,7 +682,26 @@ export function DashboardPage() {
             <div className="h-12 flex items-center justify-center">
               <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
             </div>
-          ) : null /* No entitlement — plan card below has CTAs */}
+          ) : (
+            /* No entitlement — "Activate VPN" opens tier picker */
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={() => {
+                if (pendingOrders.length > 0) {
+                  // Scroll to pending orders section instead
+                  document.getElementById('pending-orders')?.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                  setShowTierPicker((v) => !v);
+                }
+              }}
+              className="w-full rounded-full h-12 bg-black text-white text-sm font-semibold
+                hover:bg-gray-800 active:scale-[0.97] transition-all duration-150
+                flex items-center justify-center gap-2"
+            >
+              <Power className="w-4 h-4" />
+              {pendingOrders.length > 0 ? 'View your pending order' : 'Activate VPN'}
+            </motion.button>
+          )}
 
           {/* Paste hint — stays visible once copied */}
           <AnimatePresence>
@@ -797,63 +845,186 @@ export function DashboardPage() {
                 </div>
               </>
             ) : (
-              /* No plan at all */
+              /* No plan — Activate VPN with inline tier picker */
               <>
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold">No active plan</h3>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      {activated ? 'Activate a plan to copy your VPN link.' : 'Get started below.'}
+                {/* If user has pending orders, show guidance instead of tier picker */}
+                {pendingOrders.length > 0 ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-center"
+                  >
+                    <div className="w-12 h-12 mx-auto mb-3 bg-amber-100 rounded-full flex items-center justify-center">
+                      <Clock className="w-6 h-6 text-amber-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-1">Order in progress</h3>
+                    <p className="text-sm text-gray-500 mb-4">
+                      You have a pending order. Complete payment below to activate.
                     </p>
-                  </div>
-                </div>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => document.getElementById('pending-orders')?.scrollIntoView({ behavior: 'smooth' })}
+                      className="w-full rounded-full h-10 border-2 border-black text-sm font-semibold
+                        hover:bg-black hover:text-white transition-all duration-150 flex items-center
+                        justify-center gap-1.5"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" /> Go to your order
+                    </motion.button>
+                  </motion.div>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h3 className="text-lg font-semibold">Get protected</h3>
+                        <p className="text-sm text-gray-500 mt-0.5">Choose a plan to activate your VPN.</p>
+                      </div>
+                    </div>
 
-                <div className="space-y-2 mb-5">
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Shield className="w-4 h-4 shrink-0" /> Full VPN access
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Zap className="w-4 h-4 shrink-0" /> Works in Russia & restricted regions
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Clock className="w-4 h-4 shrink-0" /> Plans from 49 ₽ / month
-                  </div>
-                </div>
+                    {/* Inline horizontal tier picker */}
+                    <AnimatePresence>
+                      {showTierPicker && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.35, ease: 'easeOut' }}
+                          className="overflow-hidden"
+                        >
+                          <div
+                            ref={tierScrollRef}
+                            className="flex gap-3 overflow-x-auto no-scrollbar pb-3 pt-1 snap-x snap-mandatory
+                              -mx-6 px-6"
+                            style={{ WebkitOverflowScrolling: 'touch' }}
+                          >
+                            {plans.map((plan, i) => (
+                              <motion.div
+                                key={plan.id}
+                                initial={{ opacity: 0, scale: 0.9, x: 30 }}
+                                animate={{ opacity: 1, scale: 1, x: 0 }}
+                                transition={{ delay: i * 0.08, duration: 0.35, ease: 'easeOut' }}
+                                className="snap-center shrink-0 w-[200px]"
+                              >
+                                <div
+                                  onClick={() => navigate('/checkout', { state: { plan } })}
+                                  className={`relative flex flex-col rounded-2xl border cursor-pointer
+                                    active:scale-[0.97] transition-all duration-200 p-4 h-full ${
+                                    plan.popular
+                                      ? 'border-black bg-black text-white shadow-lg'
+                                      : 'border-gray-100 bg-gray-50 hover:border-gray-300'
+                                  }`}
+                                >
+                                  {plan.popular && (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: -6 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      transition={{ delay: 0.3 }}
+                                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white text-black
+                                        text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full
+                                        shadow-sm"
+                                    >
+                                      Popular
+                                    </motion.div>
+                                  )}
+                                  <p className={`text-sm font-bold ${plan.popular ? 'text-white' : 'text-black'}`}>
+                                    {plan.name}
+                                  </p>
+                                  <p className={`text-[11px] mt-0.5 ${plan.popular ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    {plan.description}
+                                  </p>
+                                  <div className="mt-3">
+                                    <span className={`text-2xl font-bold ${plan.popular ? 'text-white' : 'text-black'}`}>
+                                      {plan.currency === 'RUB' ? `${plan.price} ₽` : formatCurrency(plan.price, plan.currency)}
+                                    </span>
+                                    <span className={`text-[10px] ml-1 ${plan.popular ? 'text-gray-400' : 'text-gray-400'}`}>
+                                      / {plan.duration}
+                                    </span>
+                                  </div>
+                                  <ul className="mt-3 space-y-1.5 flex-1">
+                                    {plan.features.slice(0, 3).map((f) => (
+                                      <li key={f} className={`flex items-center gap-1.5 text-[11px] ${
+                                        plan.popular ? 'text-gray-300' : 'text-gray-600'
+                                      }`}>
+                                        <Check className={`w-3 h-3 shrink-0 ${plan.popular ? 'text-white' : 'text-black'}`} />
+                                        {f}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <div className={`mt-3 rounded-xl py-2 text-center text-xs font-semibold ${
+                                    plan.popular
+                                      ? 'bg-white text-black'
+                                      : 'bg-black text-white'
+                                  }`}>
+                                    Get {plan.name}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            ))}
+                          </div>
 
-                <div className="pt-4 border-t border-gray-100 space-y-2">
-                  {!trialUsed && !trial ? (
-                    /* No trial used yet */
-                    <>
-                      <p className="text-xs text-gray-500 mb-3">Try before you buy — no payment needed.</p>
-                      <Link to="/trial">
-                        <button className="w-full rounded-full h-11 bg-black text-white text-sm font-semibold
+                          {/* Dot indicators */}
+                          {plans.length > 1 && (
+                            <div className="flex justify-center gap-1 mt-1 mb-2">
+                              {plans.map((_, i) => (
+                                <div key={i} className={`rounded-full transition-all duration-300 ${
+                                  i === (plans.findIndex(p => p.popular) ?? 1)
+                                    ? 'w-3.5 h-1.5 bg-black' : 'w-1.5 h-1.5 bg-gray-300'
+                                }`} />
+                              ))}
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {!showTierPicker && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="space-y-2 mb-4"
+                      >
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <Shield className="w-4 h-4 shrink-0" /> Full VPN access
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <Zap className="w-4 h-4 shrink-0" /> Works in Russia & restricted regions
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <Clock className="w-4 h-4 shrink-0" /> Plans from 49 ₽ / month
+                        </div>
+                      </motion.div>
+                    )}
+
+                    <div className="pt-4 border-t border-gray-100 space-y-2">
+                      <motion.button
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => setShowTierPicker((v) => !v)}
+                        className="w-full rounded-full h-11 bg-black text-white text-sm font-semibold
                           hover:bg-gray-800 active:scale-[0.97] transition-all duration-150
-                          flex items-center justify-center gap-2">
-                          <Clock className="w-4 h-4" /> Get 1-hour free trial
-                        </button>
-                      </Link>
-                      <Link to="/plans">
-                        <button className="w-full rounded-full h-10 border border-gray-200 text-sm font-medium
-                          text-gray-600 hover:border-black hover:text-black transition-all duration-150
-                          flex items-center justify-center gap-1.5 mt-2">
-                          View plans <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </Link>
-                    </>
-                  ) : (
-                    /* Trial used — push to paid plan */
-                    <>
-                      <p className="text-xs text-gray-500 mb-3">Your trial has ended. Pick a plan to continue.</p>
-                      <Link to="/plans">
-                        <button className="w-full rounded-full h-11 bg-black text-white text-sm font-semibold
-                          hover:bg-gray-800 active:scale-[0.97] transition-all duration-150
-                          flex items-center justify-center gap-2">
-                          View plans <ArrowRight className="w-4 h-4" />
-                        </button>
-                      </Link>
-                    </>
-                  )}
-                </div>
+                          flex items-center justify-center gap-2"
+                      >
+                        <Power className="w-4 h-4" />
+                        {showTierPicker ? 'Hide plans' : 'Activate VPN'}
+                      </motion.button>
+
+                      {/* Trial button — shown below tiers if trial not used */}
+                      {!trialUsed && !trial && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.15 }}
+                        >
+                          <Link to="/trial">
+                            <button className="w-full rounded-full h-10 border border-gray-200 text-sm font-medium
+                              text-gray-600 hover:border-black hover:text-black transition-all duration-150
+                              flex items-center justify-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5" /> Try 1 hour free
+                            </button>
+                          </Link>
+                        </motion.div>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
           </motion.div>
@@ -861,8 +1032,12 @@ export function DashboardPage() {
 
         {/* ── Pending orders ───────────────────────────────────────────── */}
         {pendingOrders.length > 0 && (
-          <motion.div variants={card}>
-            <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2.5 px-1">Pending</p>
+          <motion.div id="pending-orders" variants={card}
+            initial="hidden" animate="show"
+          >
+            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2.5 px-1">
+              ⏳ Your pending order
+            </p>
             <div className="flex flex-col gap-3">
               {pendingOrders.map((o) => (
                 <div key={o.id} className="bg-white rounded-2xl overflow-hidden">

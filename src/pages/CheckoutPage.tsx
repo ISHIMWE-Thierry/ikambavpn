@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, type ChangeEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Upload, CheckCircle, Copy } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { createOrder, uploadPaymentProof, updateOrderStatus, getAppSettings, type AppPaymentSettings } from '../lib/db-service';
+import { createOrder, uploadPaymentProof, updateOrderStatus, getAppSettings, getUserOrders, type AppPaymentSettings } from '../lib/db-service';
 import { notifyAdminsNewOrder, notifyAdminsPaymentProof } from '../lib/email-service';
 import { Button } from '../components/ui/button';
 import { formatCurrency } from '../lib/utils';
@@ -41,7 +41,20 @@ export function CheckoutPage() {
     }
     // Load payment account details from shared appdata (same doc as Blink-1)
     getAppSettings().then(setPaymentSettings);
-  }, [plan, navigate]);
+
+    // Block duplicate orders — if user has a pending order, redirect to dashboard
+    if (firebaseUser) {
+      getUserOrders(firebaseUser.uid).then((orders) => {
+        const pending = orders.find(
+          (o) => o.status === 'pending_payment' || o.status === 'payment_submitted',
+        );
+        if (pending) {
+          toast('You already have a pending order. Complete it first.', { icon: '⏳' });
+          navigate('/dashboard');
+        }
+      }).catch(() => {});
+    }
+  }, [plan, navigate, firebaseUser]);
 
   if (!plan) return null;
 

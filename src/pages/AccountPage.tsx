@@ -30,7 +30,7 @@ export function AccountPage() {
     if (!firebaseUser) return;
     getUserOrders(firebaseUser.uid)
       .then((orders) => {
-        const hasActive = orders.some((o) => o.status === 'active' && !isExpired(o.expiresAt));
+        const hasActive = orders.some((o) => o.status === 'active' && !!o.expiresAt && !isExpired(o.expiresAt));
         setIsPremium(hasActive);
       })
       .catch(() => {});
