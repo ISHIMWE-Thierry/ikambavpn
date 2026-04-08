@@ -116,3 +116,47 @@ Users are getting auto-disconnected from the VPN.
 - **Frontend API URL:** Updated from `https://194.76.217.4:4443` → `https://ikambavpn.duckdns.org:4443`
 - **Files updated:** `DashboardPage.tsx`, `xui-api.ts`, `ai-service.ts`, `vite.config.ts`
 - **Deploy:** Railway auto-deploys frontend on push to `main`
+
+## Feature: Dashboard Payment Proof Upload (Commit db99e68)
+- **Problem:** Users who left the CheckoutPage mid-flow had `pending_payment` orders but NO way to upload proof from the dashboard — they were stuck.
+- **Solution:** Added inline payment proof upload UI directly on DashboardPage for orders with status `pending_payment`.
+- **File changed:** `src/pages/DashboardPage.tsx` (+161 lines)
+- **UI includes:**
+  - Payment details card (bank name, account number with copy button, amount)
+  - File picker with drag/drop area, image preview, 10MB limit
+  - Accepted types: jpg, png, webp, heic, pdf
+  - Upload button with loading spinner
+  - `payment_submitted` orders show confirmation message instead
+- **Functions used:** `uploadPaymentProof()`, `updateOrderStatus()`, `getAppSettings()`, `notifyAdminsPaymentProof()`
+- **Firestore rules fix (Blink-1 repo, commit 3eb1ceb):** `vpn_orders` update rule was blocking status changes — only allowed `paymentProofUrl` + `updatedAt`. Updated to also allow `status` field, restricted to `pending_payment` → `payment_submitted` transition only.
+
+## Feature: Premium Animations & Verified Badge (Commit 215d7ca)
+- **PageTransition.tsx:** Wraps pages with framer-motion fade+slide animation
+- **PremiumBadge.tsx:** Animated gradient "PREMIUM" badge for premium users
+- Added to all user-facing pages (Dashboard, Account, etc.)
+
+## Auth Flows (Audited — All Correct)
+- **Email signup:** Creates Firebase Auth user → redirects to `/verify-email` → OTP sent via `sendOTPEmail()` → verified → Firestore user doc created → dashboard
+- **Google signup:** Firebase popup → `getAdditionalUserInfo(result).isNewUser` check → Firestore doc created → dashboard (skips OTP — Google already verified)
+- **Race condition protection:** `hasRedirectedRef` prevents double redirects from `onAuthStateChanged` listener
+- **No issues found** — all flows working correctly
+
+## Shared Firebase Project Architecture
+- **Project:** `ikamba-1c669`
+- **Shared by:** IkambaVPN, Blink-1, Hpersona
+- **Firestore rules:** Deployed ONLY from Blink-1 repo (`/Users/ishimwethierry/Downloads/Ikamba Remit./blink-1/firestore.rules`)
+- **Storage rules:** Fully open (`allow read, write: if true`) — also in Blink-1 repo
+- **Important:** When VPN Firestore collections need rule changes, edit & deploy from Blink-1 repo
+
+## Deployment
+- **Frontend:** Firebase Hosting (`ikamba-1c669.web.app`) + Railway (auto-deploys on push to `main`)
+- **Backend:** VPS at `/opt/ikambavpn-backend/`, service `ikambavpn-api`
+- **Firestore rules:** `cd blink-1 && firebase deploy --only firestore:rules`
+
+## ⚠️ Lessons Learned — Do NOT Repeat These Mistakes
+1. **Always check Firestore security rules when adding write operations.** If `updateOrderStatus()` writes a `status` field, the Firestore rules MUST allow that field in `affectedKeys()`. Missed this initially — would have caused silent failures in production.
+2. **Firestore rules are in Blink-1 repo, not VPN repo.** Shared Firebase project means rules deploy from one place only.
+3. **CheckoutPage already had proof upload.** Always audit existing code before building new features — DashboardPage was the actual gap, not the entire proof upload flow.
+4. **Google signup users skip OTP correctly.** Don't "fix" what isn't broken — the `isNewUser` check + `hasRedirectedRef` pattern is intentional and correct.
+5. **`affectedKeys().hasOnly()` is strict.** Every field written by `updateDoc()` must be in the allowed list, including server timestamps and status transitions.
+6. **Test Firestore rules changes by tracing the exact fields written.** Read the function source (`updateOrderStatus`) → list every field it writes → verify each is in `affectedKeys().hasOnly([...])` in the rules.
