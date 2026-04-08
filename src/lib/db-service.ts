@@ -267,6 +267,8 @@ export interface AppPaymentSettings {
   paygateUsdcWallet?: string;
   /** Whether PayGate.to card payments are enabled */
   paygateEnabled?: boolean;
+  /** Admin-controlled RUB → USD rate (e.g. 100 means 100 RUB = 1 USD) */
+  rubToUsdRate?: number;
 }
 
 const PAYMENT_FALLBACK: AppPaymentSettings = {
@@ -289,6 +291,7 @@ export async function getAppSettings(): Promise<AppPaymentSettings> {
         depositInstructions: d.depositInstructions || PAYMENT_FALLBACK.depositInstructions,
         paygateUsdcWallet: d.paygateUsdcWallet || '',
         paygateEnabled: d.paygateEnabled ?? false,
+        rubToUsdRate: d.rubToUsdRate || 0,
       };
     }
     // Fall back to first doc in appdata collection (Blink-1 sometimes stores it there)
@@ -302,6 +305,7 @@ export async function getAppSettings(): Promise<AppPaymentSettings> {
         depositInstructions: d.depositInstructions || PAYMENT_FALLBACK.depositInstructions,
         paygateUsdcWallet: d.paygateUsdcWallet || '',
         paygateEnabled: d.paygateEnabled ?? false,
+        rubToUsdRate: d.rubToUsdRate || 0,
       };
     }
   } catch {

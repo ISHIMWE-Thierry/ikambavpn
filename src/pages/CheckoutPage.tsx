@@ -27,6 +27,7 @@ export function CheckoutPage() {
   const { firebaseUser, profile } = useAuth();
 
   const plan = (location.state as { plan?: VpnPlan })?.plan;
+  const isUpgrade = (location.state as { isUpgrade?: boolean })?.isUpgrade ?? false;
 
   const [step, setStep] = useState<Step>('review');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank');
@@ -46,6 +47,12 @@ export function CheckoutPage() {
   // Whether PayGate card option is available
   const cardAvailable = !!(paymentSettings?.paygateEnabled && paymentSettings?.paygateUsdcWallet);
 
+  // Compute USD equivalent using admin rate
+  const rubRate = paymentSettings?.rubToUsdRate || 0;
+  const planUsdEquiv = (plan && plan.currency === 'RUB' && rubRate > 0)
+    ? +(plan.price / rubRate).toFixed(2)
+    : null;
+
   useEffect(() => {
     if (!plan) {
       navigate('/plans');
@@ -54,19 +61,38 @@ export function CheckoutPage() {
     // Load payment account details from shared appdata (same doc as Blink-1)
     getAppSettings().then(setPaymentSettings);
 
-    // Block duplicate orders — if user has a pending order, redirect to dashboard
+    // Guard: block if user has pending order OR has active plan (unless upgrading)
     if (firebaseUser) {
       getUserOrders(firebaseUser.uid).then((orders) => {
+        // Block if pending order exists
         const pending = orders.find(
           (o) => o.status === 'pending_payment' || o.status === 'payment_submitted',
         );
         if (pending) {
           toast('You already have a pending order. Complete it first.', { icon: '⏳' });
           navigate('/dashboard');
+          return;
+        }
+
+        // Block if active plan exists and this is NOT an upgrade
+        const active = orders.find(
+          (o) => o.status === 'active' && !!o.expiresAt && new Date(o.expiresAt) > new Date(),
+        );
+        if (active && !isUpgrade) {
+          toast('You already have an active plan. Upgrade from your dashboard.', { icon: '✅' });
+          navigate('/dashboard');
+          return;
+        }
+
+        // If upgrading, ensure new plan is actually higher value
+        if (active && isUpgrade && plan.price <= active.amount) {
+          toast('You can only upgrade to a higher plan.', { icon: '⬆️' });
+          navigate('/dashboard');
+          return;
         }
       }).catch(() => {});
     }
-  }, [plan, navigate, firebaseUser]);
+  }, [plan, navigate, firebaseUser, isUpgrade]);
 
   if (!plan) return null;
 
@@ -127,10 +153,14 @@ export function CheckoutPage() {
     }
     setCardProcessing(true);
     try {
-      // 1. Convert plan price to USD
+      // 1. Convert plan price to USD using admin rate first, fallback to PayGate API
       let amountUsd = plan.price;
       if (plan.currency.toUpperCase() !== 'USD') {
-        amountUsd = await convertToUsd(plan.price, plan.currency);
+        if (rubRate > 0) {
+          amountUsd = +(plan.price / rubRate).toFixed(2);
+        } else {
+          amountUsd = await convertToUsd(plan.price, plan.currency);
+        }
       }
       setUsdAmount(amountUsd);
 
@@ -279,8 +309,16 @@ export function CheckoutPage() {
               <div>
                 <p className="font-semibold text-black">{plan.name} Plan</p>
                 <p className="text-sm text-gray-500">{plan.duration}</p>
+                {isUpgrade && (
+                  <p className="text-xs text-green-600 font-medium mt-1">⬆ Upgrade</p>
+                )}
               </div>
-              <p className="font-bold text-black">{formatCurrency(plan.price, plan.currency)}</p>
+              <div className="text-right">
+                <p className="font-bold text-black">{formatCurrency(plan.price, plan.currency)}</p>
+                {planUsdEquiv && (
+                  <p className="text-xs text-gray-400 mt-0.5">≈ ${planUsdEquiv}</p>
+                )}
+              </div>
             </div>
           </div>
 

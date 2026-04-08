@@ -897,7 +897,7 @@ export function DashboardPage() {
                                 className="snap-center shrink-0 w-[200px]"
                               >
                                 <div
-                                  onClick={() => navigate('/checkout', { state: { plan } })}
+                                  onClick={() => navigate('/checkout', { state: { plan, isUpgrade: true } })}
                                   className={`relative flex flex-col rounded-2xl border cursor-pointer
                                     active:scale-[0.97] transition-all duration-200 p-4 h-full ${
                                     plan.popular
@@ -1441,7 +1441,7 @@ export function DashboardPage() {
                 whileTap={{ scale: 0.97 }}
                 onClick={() => {
                   setUpgradePopup(null);
-                  navigate('/checkout', { state: { plan: upgradePopup } });
+                  navigate('/checkout', { state: { plan: upgradePopup, isUpgrade: true } });
                 }}
                 className="w-full rounded-full h-12 bg-black text-white text-sm font-semibold
                   hover:bg-gray-800 transition-all duration-150 flex items-center justify-center gap-2"

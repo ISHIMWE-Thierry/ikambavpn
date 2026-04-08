@@ -28,6 +28,10 @@ export function AdminSettingsPage() {
   const [paygateEnabled, setPaygateEnabled] = useState(false);
   const [savingPaygate, setSavingPaygate] = useState(false);
 
+  // Exchange rate
+  const [rubRate, setRubRate] = useState('');
+  const [savingRate, setSavingRate] = useState(false);
+
   const patchVersion = bumpVersion(APP_VERSION, 'patch');
   const minorVersion = bumpVersion(APP_VERSION, 'minor');
   const majorVersion = bumpVersion(APP_VERSION, 'major');
@@ -46,6 +50,8 @@ export function AdminSettingsPage() {
         // PayGate settings
         setPaygateWallet(ps.paygateUsdcWallet || '');
         setPaygateEnabled(ps.paygateEnabled ?? false);
+        // Exchange rate
+        setRubRate(ps.rubToUsdRate ? String(ps.rubToUsdRate) : '');
       })
       .catch(() => toast.error('Failed to load config'))
       .finally(() => setLoading(false));
@@ -417,6 +423,68 @@ export function AdminSettingsPage() {
                 }}
               >
                 <Save className="w-3.5 h-3.5" /> Save card payment settings
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Exchange rate (RUB → USD) */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4" />
+              <h2 className="font-semibold">Exchange rate</h2>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Set how many RUB = 1 USD. Users with non-Russian cards will see USD equivalents.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">RUB per 1 USD</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={rubRate}
+                  onChange={(e) => setRubRate(e.target.value)}
+                  placeholder="e.g. 96.5"
+                  className="w-full font-mono text-sm border border-gray-200 rounded-xl
+                    px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-black"
+                />
+              </div>
+
+              {rubRate && Number(rubRate) > 0 && (
+                <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm">
+                  <p className="text-gray-500">Preview:</p>
+                  <p className="font-medium mt-1">49 ₽ → ≈ ${(49 / Number(rubRate)).toFixed(2)}</p>
+                  <p className="font-medium">79 ₽ → ≈ ${(79 / Number(rubRate)).toFixed(2)}</p>
+                  <p className="font-medium">99 ₽ → ≈ ${(99 / Number(rubRate)).toFixed(2)}</p>
+                </div>
+              )}
+
+              <Button
+                size="sm"
+                loading={savingRate}
+                onClick={async () => {
+                  const rate = Number(rubRate);
+                  if (!rate || rate <= 0) {
+                    toast.error('Enter a valid rate (e.g. 96.5)');
+                    return;
+                  }
+                  setSavingRate(true);
+                  try {
+                    await setAppSettings({ rubToUsdRate: rate });
+                    toast.success(`Exchange rate saved: ${rate} RUB = 1 USD`);
+                  } catch {
+                    toast.error('Failed to save rate.');
+                  } finally {
+                    setSavingRate(false);
+                  }
+                }}
+              >
+                <Save className="w-3.5 h-3.5" /> Save exchange rate
               </Button>
             </div>
           </CardContent>

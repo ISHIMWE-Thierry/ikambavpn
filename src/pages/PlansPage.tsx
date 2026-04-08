@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Shield } from 'lucide-react';
-import { getPlans } from '../lib/db-service';
+import { getPlans, getUserOrders, getAppSettings } from '../lib/db-service';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { PageTransition } from '../components/PageTransition';
 import { formatCurrency } from '../lib/utils';
-import type { VpnPlan } from '../types';
+import type { VpnPlan, VpnOrder } from '../types';
 
 // Fallback static plans if Firestore has none yet
 const DEFAULT_PLANS: VpnPlan[] = [
@@ -52,13 +52,33 @@ export function PlansPage() {
   const [loading, setLoading] = useState(true);
   const [activeIdx, setActiveIdx] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [activeOrder, setActiveOrder] = useState<VpnOrder | null>(null);
+  const [hasPending, setHasPending] = useState(false);
+  const [rubToUsdRate, setRubToUsdRate] = useState(0);
 
   useEffect(() => {
     getPlans()
       .then((p) => setPlans(p.length ? p : DEFAULT_PLANS))
       .catch(() => setPlans(DEFAULT_PLANS))
       .finally(() => setLoading(false));
-  }, []);
+
+    getAppSettings()
+      .then((s) => setRubToUsdRate(s.rubToUsdRate || 0))
+      .catch(() => {});
+
+    if (firebaseUser) {
+      getUserOrders(firebaseUser.uid).then((orders) => {
+        const active = orders.find(
+          (o) => o.status === 'active' && !!o.expiresAt && new Date(o.expiresAt) > new Date(),
+        );
+        if (active) setActiveOrder(active);
+        const pending = orders.some(
+          (o) => o.status === 'pending_payment' || o.status === 'payment_submitted',
+        );
+        setHasPending(pending);
+      }).catch(() => {});
+    }
+  }, [firebaseUser]);
 
   // Scroll to popular card on load (mobile)
   useEffect(() => {
@@ -83,7 +103,34 @@ export function PlansPage() {
 
   const handleSelect = (plan: VpnPlan) => {
     if (!firebaseUser) { navigate('/signup'); return; }
+    if (hasPending) {
+      navigate('/dashboard');
+      return;
+    }
+    if (activeOrder) {
+      // Only allow upgrading to a higher plan
+      if (plan.price <= activeOrder.amount) return;
+      navigate('/checkout', { state: { plan, isUpgrade: true } });
+      return;
+    }
     navigate('/checkout', { state: { plan } });
+  };
+
+  /** Label & disabled state for a plan button */
+  const planButtonState = (plan: VpnPlan) => {
+    if (hasPending) return { label: 'Pending order…', disabled: true };
+    if (activeOrder) {
+      if (plan.price === activeOrder.amount) return { label: 'Current plan', disabled: true };
+      if (plan.price < activeOrder.amount) return { label: `Get ${plan.name}`, disabled: true };
+      return { label: `Upgrade to ${plan.name}`, disabled: false };
+    }
+    return { label: `Get ${plan.name}`, disabled: false };
+  };
+
+  /** USD equivalent string */
+  const usdEquiv = (plan: VpnPlan) => {
+    if (plan.currency !== 'RUB' || rubToUsdRate <= 0) return null;
+    return `≈ $${(plan.price / rubToUsdRate).toFixed(2)}`;
   };
 
   const handleTrial = () => {
@@ -158,6 +205,9 @@ export function PlansPage() {
                   {plan.currency === 'RUB' ? `${plan.price} ₽` : formatCurrency(plan.price, plan.currency)}
                 </span>
                 <span className={`text-sm ml-1 ${plan.popular ? 'text-gray-400' : 'text-gray-400'}`}>/ {plan.duration}</span>
+                {usdEquiv(plan) && (
+                  <p className={`text-xs mt-1 ${plan.popular ? 'text-gray-400' : 'text-gray-400'}`}>{usdEquiv(plan)}</p>
+                )}
               </div>
               <ul className="flex flex-col gap-2 mb-8 flex-1">
                 {plan.features.map((f) => (
@@ -169,11 +219,14 @@ export function PlansPage() {
               </ul>
               <button
                 onClick={() => handleSelect(plan)}
+                disabled={planButtonState(plan).disabled}
                 className={`w-full rounded-xl py-3 text-sm font-semibold transition-colors ${
-                  plan.popular ? 'bg-white text-black hover:bg-gray-100' : 'bg-black text-white hover:bg-gray-800'
+                  planButtonState(plan).disabled
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : plan.popular ? 'bg-white text-black hover:bg-gray-100' : 'bg-black text-white hover:bg-gray-800'
                 }`}
               >
-                Get {plan.name}
+                {planButtonState(plan).label}
               </button>
             </div>
           </div>
@@ -209,6 +262,9 @@ export function PlansPage() {
                 {plan.currency === 'RUB' ? `${plan.price} ₽` : formatCurrency(plan.price, plan.currency)}
               </span>
               <span className="text-gray-400 text-sm ml-1">/ {plan.duration}</span>
+              {usdEquiv(plan) && (
+                <p className="text-xs text-gray-400 mt-1">{usdEquiv(plan)}</p>
+              )}
             </div>
             <ul className="flex flex-col gap-2 mb-8 flex-1">
               {plan.features.map((f) => (
@@ -221,9 +277,10 @@ export function PlansPage() {
             <Button
               variant={plan.popular ? 'primary' : 'secondary'}
               className="w-full"
+              disabled={planButtonState(plan).disabled}
               onClick={() => handleSelect(plan)}
             >
-              Get {plan.name}
+              {planButtonState(plan).label}
             </Button>
           </div>
         ))}
