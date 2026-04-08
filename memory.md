@@ -171,3 +171,11 @@ Users are getting auto-disconnected from the VPN.
 - **Pending order guard (Dashboard):** If user has a pending order, "Activate VPN" button changes to "View your pending order" and scrolls to the pending section.
 - **Pending order guard (Checkout):** CheckoutPage now checks for existing pending/submitted orders and redirects to dashboard with toast if one exists.
 - **Files changed:** `DashboardPage.tsx`, `AccountPage.tsx`, `CheckoutPage.tsx`
+
+## Feature: Pull-to-Refresh, Upgrade Tiers, B&W Badge (Commit 59c4a60)
+- **Pull-to-refresh:** Added `refreshAll` callback that re-fetches orders, trial status, XUI stats, and health check. Spinning RefreshCw icon button added next to the active plan status badge. Shows toast on completion.
+- **Upgrade tiers:** Active subscribers now see horizontal scrollable upgrade cards below their plan countdown. Only plans MORE expensive than the current plan are shown. Each card displays "+Δ ₽" price difference, full price subtitle, top 2 features, and "Upgrade to {plan.name}" button (not "Get"). Days left are NOT changed.
+- **B&W Premium Badge:** `PremiumBadge.tsx` changed from amber/yellow gradient to solid black background with white text/icon. Both large pill and small/medium icon variants updated.
+- **Bug fix:** `activeOrder` variable was used in a `useEffect` before its declaration. Fixed by computing `hasActiveOrder` from `orders` array above the useEffect and using that as the dependency instead.
+- **Lesson:** In React components, `useEffect` dependencies must reference variables declared ABOVE the hook — derived `const` values computed later in the component body cause "used before declaration" errors. Either compute them earlier or use the source data (`orders`) as the dependency.
+- **Files changed:** `DashboardPage.tsx`, `PremiumBadge.tsx`

@@ -208,10 +208,6 @@ export function DashboardPage() {
   const [copied, setCopied]           = useState(false);
   const [hasEverCopied, setHasEverCopied] = useState(false);
   const [copiedBackup, setCopiedBackup] = useState(false);
-  const [copiedWs, setCopiedWs]       = useState(false);
-  const [updateDismissed, setUpdateDismissed] = useState(() =>
-    localStorage.getItem('ws-update-dismissed') === '2',
-  );
   const [activateError, setActivateError] = useState<string | null>(null);
   const [stats, setStats]             = useState<XuiClientStat | null>(null);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
@@ -443,22 +439,6 @@ export function DashboardPage() {
         setCopiedBackup(true); setTimeout(() => setCopiedBackup(false), 3000);
       }
     } catch {}
-  }
-
-  /** Copy the new WS link — better YouTube / anti-DPI transport */
-  async function copyWsLink() {
-    if (!subUrl || !canCopyLink) return;
-    try {
-      await navigator.clipboard.writeText(subUrl);
-      setCopiedWs(true);
-      setHasEverCopied(true);
-      setTimeout(() => setCopiedWs(false), 3000);
-    } catch {}
-  }
-
-  function dismissUpdate() {
-    localStorage.setItem('ws-update-dismissed', '2');
-    setUpdateDismissed(true);
   }
 
   async function runDiag() {
@@ -745,54 +725,6 @@ export function DashboardPage() {
             )}
           </AnimatePresence>
         </motion.div>
-
-        {/* ── Config update banner — shown once until user dismisses ──── */}
-        {activated && canCopyLink && !updateDismissed && (
-          <motion.div
-            variants={card}
-            className="relative bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 text-black rounded-3xl p-5 overflow-hidden"
-          >
-            <button
-              onClick={dismissUpdate}
-              className="absolute top-3 right-3 w-6 h-6 rounded-full bg-white/80 flex items-center justify-center
-                text-gray-400 hover:text-gray-600 text-xs font-bold"
-              aria-label="Dismiss"
-            >✕</button>
-
-            <div className="flex items-start gap-3 mb-3">
-              <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                <RefreshCw className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-blue-900">VPN Update Available</p>
-                <p className="text-xs text-blue-700 mt-1 leading-relaxed">
-                  We upgraded your connection for better YouTube &amp; video streaming.
-                  Re-import your link to switch to the faster transport.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <button
-                onClick={copyWsLink}
-                className={`w-full rounded-full h-10 flex items-center justify-center gap-2
-                  text-sm font-semibold transition-all duration-150 ${
-                  copiedWs
-                    ? 'bg-green-500 text-white'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                {copiedWs
-                  ? <><Check className="w-4 h-4" /> Copied — now import in {cfg.appName}</>
-                  : <><Copy className="w-4 h-4" /> Copy updated VPN link</>
-                }
-              </button>
-              <p className="text-[10px] text-blue-600 text-center leading-relaxed">
-                Open {cfg.appName} → delete old config → tap <strong>+</strong> → Import from clipboard → Connect
-              </p>
-            </div>
-          </motion.div>
-        )}
 
         {/* ── Plan / no-plan card ──────────────────────────────────────── */}
         {!dataLoading && (
