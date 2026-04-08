@@ -160,3 +160,14 @@ Users are getting auto-disconnected from the VPN.
 4. **Google signup users skip OTP correctly.** Don't "fix" what isn't broken — the `isNewUser` check + `hasRedirectedRef` pattern is intentional and correct.
 5. **`affectedKeys().hasOnly()` is strict.** Every field written by `updateDoc()` must be in the allowed list, including server timestamps and status transitions.
 6. **Test Firestore rules changes by tracing the exact fields written.** Read the function source (`updateOrderStatus`) → list every field it writes → verify each is in `affectedKeys().hasOnly([...])` in the rules.
+7. **`isExpired()` returns false for undefined `expiresAt`.** This means any order with `status:'active'` but no `expiresAt` will appear as non-expired. Always require BOTH `status === 'active'` AND `!!expiresAt && !isExpired(expiresAt)` when gating premium features.
+8. **Block duplicate orders at checkout.** Users can accidentally create multiple pending orders. CheckoutPage must check for existing pending orders before allowing a new one.
+
+## Feature: Premium Badge Fix + Activate VPN Tier Picker (Commit 23f2c3a)
+- **Bug fixed:** PremiumBadge was showing for users without valid paid subscriptions because `isExpired(undefined)` returns `false`. Now requires `!!o.expiresAt && !isExpired(o.expiresAt)` on both DashboardPage and AccountPage.
+- **UX overhaul:** Replaced gray power orb "No active plan" with animated "Activate VPN" button
+- **Inline tier picker:** Tapping "Activate VPN" reveals horizontal scrollable plan cards (animated with framer-motion stagger). Each card shows name, price, features, and navigates to checkout on tap.
+- **Trial button:** Shown below tiers when user hasn't used their trial yet.
+- **Pending order guard (Dashboard):** If user has a pending order, "Activate VPN" button changes to "View your pending order" and scrolls to the pending section.
+- **Pending order guard (Checkout):** CheckoutPage now checks for existing pending/submitted orders and redirects to dashboard with toast if one exists.
+- **Files changed:** `DashboardPage.tsx`, `AccountPage.tsx`, `CheckoutPage.tsx`
