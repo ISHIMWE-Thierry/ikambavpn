@@ -263,6 +263,10 @@ export interface AppPaymentSettings {
   depositAccountNumber: string;
   depositBankName: string;
   depositInstructions: string;
+  /** USDC (Polygon) wallet address for PayGate.to payouts */
+  paygateUsdcWallet?: string;
+  /** Whether PayGate.to card payments are enabled */
+  paygateEnabled?: boolean;
 }
 
 const PAYMENT_FALLBACK: AppPaymentSettings = {
@@ -283,6 +287,8 @@ export async function getAppSettings(): Promise<AppPaymentSettings> {
         depositAccountNumber: d.depositAccountNumber || PAYMENT_FALLBACK.depositAccountNumber,
         depositBankName: d.depositBankName || PAYMENT_FALLBACK.depositBankName,
         depositInstructions: d.depositInstructions || PAYMENT_FALLBACK.depositInstructions,
+        paygateUsdcWallet: d.paygateUsdcWallet || '',
+        paygateEnabled: d.paygateEnabled ?? false,
       };
     }
     // Fall back to first doc in appdata collection (Blink-1 sometimes stores it there)
@@ -294,12 +300,18 @@ export async function getAppSettings(): Promise<AppPaymentSettings> {
         depositAccountNumber: d.depositAccountNumber || PAYMENT_FALLBACK.depositAccountNumber,
         depositBankName: d.depositBankName || PAYMENT_FALLBACK.depositBankName,
         depositInstructions: d.depositInstructions || PAYMENT_FALLBACK.depositInstructions,
+        paygateUsdcWallet: d.paygateUsdcWallet || '',
+        paygateEnabled: d.paygateEnabled ?? false,
       };
     }
   } catch {
     // Silent fallback
   }
   return PAYMENT_FALLBACK;
+}
+
+export async function setAppSettings(data: Partial<AppPaymentSettings>): Promise<void> {
+  await setDoc(doc(db, 'appdata', 'appSettings'), data, { merge: true });
 }
 
 // ── Trials ────────────────────────────────────────────────────────────────────

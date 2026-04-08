@@ -47,6 +47,12 @@ export interface VpnOrder {
   credentials?: VpnCredentials;
   createdAt: string;
   updatedAt: string;
+  // PayGate.to card payment fields
+  paygateIpnToken?: string;
+  paygatePolygonAddress?: string;
+  paygateAmountUsd?: number;
+  paygateTxId?: string;
+  paygateAmountReceived?: string;
 }
 
 export interface VpnCredentials {

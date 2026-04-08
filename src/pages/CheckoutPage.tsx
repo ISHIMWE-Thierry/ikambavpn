@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef, type ChangeEvent } from 'react';
+import { useEffect, useState, useRef, useCallback, type ChangeEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Upload, CheckCircle, Copy } from 'lucide-react';
+import { Upload, CheckCircle, Copy, CreditCard, Building2, Loader2, ExternalLink } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { createOrder, uploadPaymentProof, updateOrderStatus, getAppSettings, getUserOrders, type AppPaymentSettings } from '../lib/db-service';
 import { notifyAdminsNewOrder, notifyAdminsPaymentProof } from '../lib/email-service';
+import { generateWallet, buildPaymentUrl, convertToUsd, buildCallbackUrl, pollPaymentStatus } from '../lib/paygate';
 import { Button } from '../components/ui/button';
 import { formatCurrency } from '../lib/utils';
 import { PageTransition } from '../components/PageTransition';
@@ -11,6 +12,7 @@ import type { VpnPlan } from '../types';
 import toast from 'react-hot-toast';
 
 type Step = 'review' | 'payment' | 'proof' | 'done';
+type PaymentMethod = 'bank' | 'card';
 
 const STEP_LABELS: Record<Step, string> = {
   review: 'Review',
@@ -27,12 +29,22 @@ export function CheckoutPage() {
   const plan = (location.state as { plan?: VpnPlan })?.plan;
 
   const [step, setStep] = useState<Step>('review');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank');
   const [paymentSettings, setPaymentSettings] = useState<AppPaymentSettings | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // PayGate card payment state
+  const [cardProcessing, setCardProcessing] = useState(false);
+  const [cardPaymentUrl, setCardPaymentUrl] = useState<string | null>(null);
+  const [pollingPayment, setPollingPayment] = useState(false);
+  const [usdAmount, setUsdAmount] = useState<number | null>(null);
+
+  // Whether PayGate card option is available
+  const cardAvailable = !!(paymentSettings?.paygateEnabled && paymentSettings?.paygateUsdcWallet);
 
   useEffect(() => {
     if (!plan) {
@@ -65,6 +77,10 @@ export function CheckoutPage() {
     }
     setCreatingOrder(true);
     try {
+      const methodLabel = paymentMethod === 'card'
+        ? 'Card (PayGate.to)'
+        : paymentSettings?.depositBankName || 'Bank Transfer';
+
       const id = await createOrder({
         userId: firebaseUser.uid,
         userEmail: firebaseUser.email,
@@ -75,7 +91,7 @@ export function CheckoutPage() {
         amount: plan.price,
         currency: plan.currency,
         status: 'pending_payment',
-        paymentMethod: paymentSettings?.depositBankName || 'Bank Transfer',
+        paymentMethod: methodLabel,
       });
       setOrderId(id);
       // Notify admins — fire and forget, never block the user
@@ -88,13 +104,93 @@ export function CheckoutPage() {
         amount: plan.price,
         currency: plan.currency,
       }).catch(() => {});
-      setStep('payment');
-    } catch {
+
+      if (paymentMethod === 'card') {
+        // PayGate flow: convert to USD → generate wallet → build payment URL
+        await handleCardPayment(id);
+      } else {
+        setStep('payment');
+      }
+    } catch (err: any) {
+      console.error('[Checkout] Order creation failed:', err);
       toast.error('Failed to create order. Please try again.');
     } finally {
       setCreatingOrder(false);
     }
   };
+
+  /** PayGate card payment: convert currency → generate wallet → redirect */
+  const handleCardPayment = useCallback(async (orderIdParam: string) => {
+    if (!paymentSettings?.paygateUsdcWallet) {
+      toast.error('Card payments are not configured yet.');
+      return;
+    }
+    setCardProcessing(true);
+    try {
+      // 1. Convert plan price to USD
+      let amountUsd = plan.price;
+      if (plan.currency.toUpperCase() !== 'USD') {
+        amountUsd = await convertToUsd(plan.price, plan.currency);
+      }
+      setUsdAmount(amountUsd);
+
+      // 2. Build callback URL for PayGate to hit
+      const callbackUrl = await buildCallbackUrl(orderIdParam, paymentSettings.paygateUsdcWallet);
+
+      // 3. Generate temporary encrypted wallet
+      const wallet = await generateWallet(paymentSettings.paygateUsdcWallet, callbackUrl);
+
+      // 4. Build the payment page URL
+      const payUrl = buildPaymentUrl(
+        wallet.address_in,
+        amountUsd,
+        firebaseUser?.email || undefined,
+      );
+      setCardPaymentUrl(payUrl);
+
+      // 5. Store PayGate reference on the order
+      await updateOrderStatus(orderIdParam, 'pending_payment', {
+        paygateIpnToken: wallet.ipn_token || '',
+        paygatePolygonAddress: wallet.polygon_address_in,
+        paygateAmountUsd: amountUsd,
+      });
+
+      // 6. Move to payment step (shows the "Open payment page" button)
+      setStep('payment');
+
+      // 7. Start polling for payment confirmation in the background
+      if (wallet.ipn_token) {
+        startPaymentPolling(orderIdParam, wallet.ipn_token);
+      }
+    } catch (err: any) {
+      console.error('[Checkout] PayGate card payment error:', err);
+      toast.error('Failed to initialize card payment. Try bank transfer instead.');
+      setPaymentMethod('bank');
+      setStep('payment');
+    } finally {
+      setCardProcessing(false);
+    }
+  }, [paymentSettings, plan, firebaseUser]);
+
+  /** Poll PayGate for payment status in background */
+  const startPaymentPolling = useCallback(async (oid: string, ipnToken: string) => {
+    setPollingPayment(true);
+    try {
+      const result = await pollPaymentStatus(ipnToken, 10_000, 90); // 15 min max
+      // Payment confirmed by PayGate!
+      await updateOrderStatus(oid, 'payment_submitted', {
+        paygateTxId: result.txid_out || '',
+        paygateAmountReceived: result.value_coin || '',
+      });
+      toast.success('Payment received! 🎉');
+      setStep('done');
+    } catch {
+      // Timeout or error — they can still complete via callback
+      console.warn('[Checkout] PayGate polling timed out');
+    } finally {
+      setPollingPayment(false);
+    }
+  }, []);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -154,7 +250,9 @@ export function CheckoutPage() {
     toast.success('Copied!');
   };
 
-  const steps = Object.keys(STEP_LABELS) as Step[];
+  const steps = paymentMethod === 'card'
+    ? (['review', 'payment', 'done'] as Step[])
+    : (Object.keys(STEP_LABELS) as Step[]);
 
   return (
     <PageTransition>
@@ -186,18 +284,146 @@ export function CheckoutPage() {
             </div>
           </div>
 
-          <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600">
-            You will receive payment instructions on the next step. After paying, upload a screenshot to confirm.
+          {/* Payment method selector */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-3">Choose payment method</p>
+            <div className="flex flex-col gap-2.5">
+              {/* Bank transfer option — always available */}
+              <button
+                onClick={() => setPaymentMethod('bank')}
+                className={`flex items-center gap-3 w-full text-left rounded-2xl border-2 px-4 py-4 transition-all
+                  ${paymentMethod === 'bank'
+                    ? 'border-black bg-gray-50'
+                    : 'border-gray-100 hover:border-gray-300'
+                  }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0
+                  ${paymentMethod === 'bank' ? 'bg-black text-white' : 'bg-gray-100 text-gray-500'}`}
+                >
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-black">Russian bank transfer</p>
+                  <p className="text-xs text-gray-400">Sberbank, Tinkoff, SBP</p>
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0
+                  ${paymentMethod === 'bank' ? 'border-black' : 'border-gray-300'}`}
+                >
+                  {paymentMethod === 'bank' && <div className="w-2.5 h-2.5 rounded-full bg-black" />}
+                </div>
+              </button>
+
+              {/* Card payment option — only if PayGate is enabled */}
+              {cardAvailable && (
+                <button
+                  onClick={() => setPaymentMethod('card')}
+                  className={`flex items-center gap-3 w-full text-left rounded-2xl border-2 px-4 py-4 transition-all
+                    ${paymentMethod === 'card'
+                      ? 'border-black bg-gray-50'
+                      : 'border-gray-100 hover:border-gray-300'
+                    }`}
+                >
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0
+                    ${paymentMethod === 'card' ? 'bg-black text-white' : 'bg-gray-100 text-gray-500'}`}
+                  >
+                    <CreditCard className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-black">Pay with card</p>
+                    <p className="text-xs text-gray-400">Visa, Mastercard, Apple Pay, Google Pay</p>
+                  </div>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0
+                    ${paymentMethod === 'card' ? 'border-black' : 'border-gray-300'}`}
+                  >
+                    {paymentMethod === 'card' && <div className="w-2.5 h-2.5 rounded-full bg-black" />}
+                  </div>
+                </button>
+              )}
+            </div>
           </div>
 
-          <Button onClick={handleConfirmPlan} loading={creatingOrder} className="w-full">
-            Continue to payment
+          <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600">
+            {paymentMethod === 'card'
+              ? 'You will be redirected to a secure payment page to complete your purchase.'
+              : 'You will receive payment instructions on the next step. After paying, upload a screenshot to confirm.'}
+          </div>
+
+          <Button onClick={handleConfirmPlan} loading={creatingOrder || cardProcessing} className="w-full">
+            {paymentMethod === 'card' ? 'Continue to card payment' : 'Continue to payment'}
           </Button>
         </div>
       )}
 
-      {/* Step 2: Payment instructions */}
-      {step === 'payment' && (
+      {/* Step 2: Payment instructions (bank) or card redirect */}
+      {step === 'payment' && paymentMethod === 'card' && (
+        <div className="flex flex-col gap-6">
+          <h1 className="text-2xl font-bold">Complete card payment</h1>
+
+          <div className="border border-gray-100 rounded-2xl p-5 flex flex-col gap-4">
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Amount to pay</p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-3xl font-bold">{formatCurrency(plan.price, plan.currency)}</p>
+                {usdAmount && plan.currency.toUpperCase() !== 'USD' && (
+                  <p className="text-sm text-gray-400">≈ ${usdAmount.toFixed(2)} USD</p>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-4">
+              <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+                <CreditCard className="w-4 h-4" />
+                <span>Visa, Mastercard, Apple Pay, Google Pay</span>
+              </div>
+
+              {cardPaymentUrl ? (
+                <a
+                  href={cardPaymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full h-12 bg-black text-white
+                    rounded-xl text-sm font-semibold hover:bg-gray-800 active:scale-[0.98]
+                    transition-all duration-150"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open payment page
+                </a>
+              ) : (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {pollingPayment && (
+            <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600">
+              <Loader2 className="w-4 h-4 animate-spin text-gray-400 shrink-0" />
+              <span>Waiting for payment confirmation… This page will update automatically.</span>
+            </div>
+          )}
+
+          <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600 leading-relaxed">
+            Click the button above to open the secure payment page. After completing payment,
+            return here — your order will be confirmed automatically within a few minutes.
+          </div>
+
+          <p className="text-xs text-gray-400 text-center">
+            Having trouble?{' '}
+            <button
+              onClick={() => {
+                setPaymentMethod('bank');
+                setCardPaymentUrl(null);
+              }}
+              className="underline hover:text-black transition"
+            >
+              Switch to bank transfer
+            </button>
+          </p>
+        </div>
+      )}
+
+      {step === 'payment' && paymentMethod === 'bank' && (
         <div className="flex flex-col gap-6">
           <h1 className="text-2xl font-bold">Make your payment</h1>
 
