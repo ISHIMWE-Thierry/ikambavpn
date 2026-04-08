@@ -381,6 +381,13 @@ export interface AppConfig {
   minBuildNumber: number;       // Users below this build are force-refreshed
   maintenanceMode: boolean;     // Show maintenance screen to all users
   maintenanceMessage: string;   // Custom message shown during maintenance
+  // Semver version control (like Blink-1)
+  version?: string;             // Current deployed version e.g. "1.2.0"
+  versionDeployedAt?: number;   // Epoch ms when version was deployed
+  versionMessage?: string;      // Message shown to users in update banner
+  versionForceRefresh?: boolean;// If true, force immediate refresh
+  versionMinimum?: string;      // Block users below this version
+  versionUpdatedBy?: string;    // Admin email who deployed
 }
 
 const APP_CONFIG_DOC = doc(db, 'app_config', 'vpn');

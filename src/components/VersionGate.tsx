@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, Shield, Wrench } from 'lucide-react';
 import { getAppConfig, type AppConfig } from '../lib/db-service';
 import { APP_BUILD } from '../lib/version';
+import { APP_VERSION, compareVersions } from '../lib/app-version';
 
 type State = 'ok' | 'outdated' | 'maintenance';
 
@@ -19,6 +20,7 @@ async function forceReload() {
 export function VersionGate({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<State>('ok');
   const [message, setMessage] = useState('');
+  const [remoteVersion, setRemoteVersion] = useState('');
   const [reloading, setReloading] = useState(false);
 
   useEffect(() => {
@@ -26,7 +28,27 @@ export function VersionGate({ children }: { children: React.ReactNode }) {
       if (cfg.maintenanceMode) {
         setMessage(cfg.maintenanceMessage || 'We\'re doing a quick upgrade. Back shortly.');
         setState('maintenance');
-      } else if (APP_BUILD < cfg.minBuildNumber) {
+        return;
+      }
+
+      // Check numeric build number
+      if (APP_BUILD < cfg.minBuildNumber) {
+        setState('outdated');
+        return;
+      }
+
+      // Check semver version — critical (blocking)
+      if (cfg.versionMinimum && compareVersions(APP_VERSION, cfg.versionMinimum) < 0) {
+        setRemoteVersion(cfg.version || cfg.versionMinimum);
+        setMessage(cfg.versionMessage || 'Critical update required. Please refresh.');
+        setState('outdated');
+        return;
+      }
+
+      // Check semver version — force refresh
+      if (cfg.version && cfg.versionForceRefresh && compareVersions(APP_VERSION, cfg.version) < 0) {
+        setRemoteVersion(cfg.version);
+        setMessage(cfg.versionMessage || 'An important update is available.');
         setState('outdated');
       }
     }).catch(() => {
@@ -80,9 +102,13 @@ export function VersionGate({ children }: { children: React.ReactNode }) {
               ) : (
                 <>
                   <h1 className="text-2xl font-bold text-black mb-3">Update required</h1>
-                  <p className="text-gray-500 text-sm leading-relaxed mb-8">
+                  <p className="text-gray-500 text-sm leading-relaxed mb-2">
                     A new version of Ikamba VPN is available. Tap below to get the latest version.
                   </p>
+                  {message && (
+                    <p className="text-sm text-gray-700 font-medium mb-6">{message}</p>
+                  )}
+                  {!message && <div className="mb-6" />}
                   <button
                     onClick={handleReload}
                     disabled={reloading}
@@ -92,7 +118,9 @@ export function VersionGate({ children }: { children: React.ReactNode }) {
                     <RefreshCw className={`w-4 h-4 ${reloading ? 'animate-spin' : ''}`} />
                     {reloading ? 'Updating…' : 'Update now'}
                   </button>
-                  <p className="text-xs text-gray-400 mt-4">Build {APP_BUILD} → latest</p>
+                  <p className="text-xs text-gray-400 mt-4">
+                    {APP_VERSION}{remoteVersion ? ` → ${remoteVersion}` : ' → latest'}
+                  </p>
                 </>
               )}
             </motion.div>

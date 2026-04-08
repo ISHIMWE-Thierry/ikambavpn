@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, ShoppingBag, CheckCircle, Clock, ChevronRight, Plus, Zap, Shield, ExternalLink, Brain } from 'lucide-react';
+import { Users, ShoppingBag, CheckCircle, Clock, ChevronRight, Plus, Zap, Shield, ExternalLink, Brain, Settings } from 'lucide-react';
 import { getAllOrders, getAllUsers, getAllTrials, getPaymentAccounts, savePaymentAccount, updatePaymentAccount } from '../../lib/db-service';
 import { getServices } from '../../lib/api';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
@@ -170,6 +170,15 @@ export function AdminDashboardPage() {
               >
                 <span className="text-sm font-medium flex items-center gap-2">
                   <Brain className="w-4 h-4" /> AI Monitor
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </Link>
+              <Link
+                to="/admin/settings"
+                className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition"
+              >
+                <span className="text-sm font-medium flex items-center gap-2">
+                  <Settings className="w-4 h-4" /> App Settings & Version
                 </span>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </Link>
