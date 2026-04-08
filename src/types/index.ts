@@ -47,12 +47,14 @@ export interface VpnOrder {
   credentials?: VpnCredentials;
   createdAt: string;
   updatedAt: string;
-  // PayGate.to card payment fields
+  // PayGate.to card payment fields (legacy)
   paygateIpnToken?: string;
   paygatePolygonAddress?: string;
   paygateAmountUsd?: number;
   paygateTxId?: string;
   paygateAmountReceived?: string;
+  // RevenueCat card payment fields
+  rcPurchaseComplete?: boolean;
 }
 
 export interface VpnCredentials {

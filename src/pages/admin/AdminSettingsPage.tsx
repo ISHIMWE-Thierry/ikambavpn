@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, Shield, Wrench, Save, Rocket, ArrowUp, ArrowUpRight, AlertTriangle, CheckCircle, XCircle, CreditCard, Wallet } from 'lucide-react';
+import { RefreshCw, Shield, Wrench, Save, Rocket, ArrowUp, ArrowUpRight, AlertTriangle, CheckCircle, XCircle, CreditCard } from 'lucide-react';
 import { getAppConfig, setAppConfig, getAppSettings, setAppSettings, type AppConfig, type AppPaymentSettings } from '../../lib/db-service';
 import { APP_BUILD } from '../../lib/version';
 import { APP_VERSION, bumpVersion, compareVersions } from '../../lib/app-version';
@@ -23,11 +23,6 @@ export function AdminSettingsPage() {
   const [versionMessage, setVersionMessage] = useState('');
   const [updateType, setUpdateType] = useState<'optional' | 'recommended' | 'critical'>('optional');
 
-  // PayGate.to settings
-  const [paygateWallet, setPaygateWallet] = useState('');
-  const [paygateEnabled, setPaygateEnabled] = useState(false);
-  const [savingPaygate, setSavingPaygate] = useState(false);
-
   // Exchange rate
   const [rubRate, setRubRate] = useState('');
   const [savingRate, setSavingRate] = useState(false);
@@ -47,9 +42,6 @@ export function AdminSettingsPage() {
         if (cfg.versionMinimum) setUpdateType('critical');
         else if (cfg.versionForceRefresh) setUpdateType('recommended');
         else setUpdateType('optional');
-        // PayGate settings
-        setPaygateWallet(ps.paygateUsdcWallet || '');
-        setPaygateEnabled(ps.paygateEnabled ?? false);
         // Exchange rate
         setRubRate(ps.rubToUsdRate ? String(ps.rubToUsdRate) : '');
       })
@@ -347,83 +339,41 @@ export function AdminSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* PayGate.to card payment gateway */}
+        {/* Card payments (RevenueCat) */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4" />
-              <h2 className="font-semibold">Card payments (PayGate.to)</h2>
+              <h2 className="font-semibold">Card payments (RevenueCat)</h2>
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              Accept Visa, Mastercard, Apple Pay, Google Pay via PayGate.to. Payouts in USDC (Polygon).
+              Accept Visa, Mastercard, Apple Pay, Google Pay via RevenueCat + Stripe.
             </p>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Enable card payments</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Show "Pay with Card" option for non-Russian card holders.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setPaygateEnabled(!paygateEnabled)}
-                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-                    paygateEnabled ? 'bg-black' : 'bg-gray-200'
-                  }`}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 text-sm">
+                <div className={`w-2 h-2 rounded-full ${
+                  import.meta.env.VITE_REVENUECAT_API_KEY ? 'bg-green-500' : 'bg-red-400'
+                }`} />
+                <span className="text-gray-600">
+                  {import.meta.env.VITE_REVENUECAT_API_KEY
+                    ? 'API key configured'
+                    : 'API key not set — add VITE_REVENUECAT_API_KEY to your environment'}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Products, prices, and entitlements are managed in the{' '}
+                <a
+                  href="https://app.revenuecat.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-black transition"
                 >
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow
-                    transition-transform duration-200 ${paygateEnabled ? 'translate-x-5' : ''}`}
-                  />
-                </button>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">
-                  <Wallet className="w-3 h-3 inline mr-1" />
-                  USDC (Polygon) wallet address
-                </label>
-                <input
-                  value={paygateWallet}
-                  onChange={(e) => setPaygateWallet(e.target.value)}
-                  placeholder="0x..."
-                  className="w-full font-mono text-sm border border-gray-200 rounded-xl
-                    px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-black"
-                />
-                <p className="text-[10px] text-gray-400 mt-1">
-                  Your self-custodial USDC wallet on Polygon. Payouts arrive instantly per order.
-                </p>
-              </div>
-
-              {paygateEnabled && !paygateWallet.trim() && (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-100
-                  rounded-xl px-4 py-3 text-xs text-amber-700">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  Card payments are enabled but no wallet is set. Customers won't see the card option.
-                </div>
-              )}
-
-              <Button
-                size="sm"
-                loading={savingPaygate}
-                onClick={async () => {
-                  setSavingPaygate(true);
-                  try {
-                    await setAppSettings({
-                      paygateUsdcWallet: paygateWallet.trim(),
-                      paygateEnabled,
-                    });
-                    toast.success('PayGate settings saved.');
-                  } catch {
-                    toast.error('Failed to save PayGate settings.');
-                  } finally {
-                    setSavingPaygate(false);
-                  }
-                }}
-              >
-                <Save className="w-3.5 h-3.5" /> Save card payment settings
-              </Button>
+                  RevenueCat dashboard
+                </a>
+                . Stripe handles payment processing.
+              </p>
             </div>
           </CardContent>
         </Card>

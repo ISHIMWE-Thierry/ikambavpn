@@ -1,14 +1,15 @@
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Upload, CheckCircle, Copy, CreditCard, Building2, Loader2, ExternalLink } from 'lucide-react';
+import { Upload, CheckCircle, Copy, CreditCard, Building2, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { createOrder, uploadPaymentProof, updateOrderStatus, getAppSettings, getUserOrders, type AppPaymentSettings } from '../lib/db-service';
 import { notifyAdminsNewOrder, notifyAdminsPaymentProof } from '../lib/email-service';
-import { generateWallet, buildPaymentUrl, convertToUsd, buildCallbackUrl, pollPaymentStatus } from '../lib/paygate';
+import { initRevenueCat, getCurrentOffering, purchasePackage, isRevenueCatReady } from '../lib/revenuecat';
 import { Button } from '../components/ui/button';
 import { formatCurrency } from '../lib/utils';
 import { PageTransition } from '../components/PageTransition';
 import type { VpnPlan } from '../types';
+import type { Package as RCPackage } from '@revenuecat/purchases-js';
 import toast from 'react-hot-toast';
 
 type Step = 'review' | 'payment' | 'proof' | 'done';
@@ -38,14 +39,13 @@ export function CheckoutPage() {
   const [creatingOrder, setCreatingOrder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // PayGate card payment state
+  // RevenueCat card payment state
   const [cardProcessing, setCardProcessing] = useState(false);
-  const [cardPaymentUrl, setCardPaymentUrl] = useState<string | null>(null);
-  const [pollingPayment, setPollingPayment] = useState(false);
-  const [usdAmount, setUsdAmount] = useState<number | null>(null);
+  const [rcPackages, setRcPackages] = useState<RCPackage[]>([]);
 
-  // Whether PayGate card option is available
-  const cardAvailable = !!(paymentSettings?.paygateEnabled && paymentSettings?.paygateUsdcWallet);
+  // Whether RevenueCat card option is available
+  const rcApiKeySet = !!import.meta.env.VITE_REVENUECAT_API_KEY;
+  const cardAvailable = rcApiKeySet;
 
   // Compute USD equivalent using admin rate
   const rubRate = paymentSettings?.rubToUsdRate || 0;
@@ -60,6 +60,14 @@ export function CheckoutPage() {
     }
     // Load payment account details from shared appdata (same doc as Blink-1)
     getAppSettings().then(setPaymentSettings);
+
+    // Init RevenueCat and load offerings
+    if (firebaseUser && rcApiKeySet) {
+      initRevenueCat(firebaseUser.uid);
+      getCurrentOffering().then((offering) => {
+        if (offering) setRcPackages(offering.availablePackages);
+      }).catch((err) => console.warn('[Checkout] RC offerings fetch failed:', err));
+    }
 
     // Guard: block if user has pending order OR has active plan (unless upgrading)
     if (firebaseUser) {
@@ -104,7 +112,7 @@ export function CheckoutPage() {
     setCreatingOrder(true);
     try {
       const methodLabel = paymentMethod === 'card'
-        ? 'Card (PayGate.to)'
+        ? 'Card (RevenueCat)'
         : paymentSettings?.depositBankName || 'Bank Transfer';
 
       const id = await createOrder({
@@ -132,7 +140,7 @@ export function CheckoutPage() {
       }).catch(() => {});
 
       if (paymentMethod === 'card') {
-        // PayGate flow: convert to USD → generate wallet → build payment URL
+        // RevenueCat flow: open Stripe checkout via RC SDK
         await handleCardPayment(id);
       } else {
         setStep('payment');
@@ -145,82 +153,62 @@ export function CheckoutPage() {
     }
   };
 
-  /** PayGate card payment: convert currency → generate wallet → redirect */
+  /** RevenueCat card payment: find matching RC package → open checkout */
   const handleCardPayment = useCallback(async (orderIdParam: string) => {
-    if (!paymentSettings?.paygateUsdcWallet) {
+    if (!isRevenueCatReady()) {
       toast.error('Card payments are not configured yet.');
       return;
     }
     setCardProcessing(true);
     try {
-      // 1. Convert plan price to USD using admin rate first, fallback to PayGate API
-      let amountUsd = plan.price;
-      if (plan.currency.toUpperCase() !== 'USD') {
-        if (rubRate > 0) {
-          amountUsd = +(plan.price / rubRate).toFixed(2);
-        } else {
-          amountUsd = await convertToUsd(plan.price, plan.currency);
-        }
+      // Find the RevenueCat package that matches this plan by identifier or name
+      let rcPkg = rcPackages.find(
+        (p) => p.identifier === plan.id || p.identifier === `$rc_${plan.name.toLowerCase()}`,
+      );
+      // Fallback: pick the first package if only one exists, or by product name
+      if (!rcPkg && rcPackages.length === 1) rcPkg = rcPackages[0];
+      if (!rcPkg) rcPkg = rcPackages.find((p) => p.webBillingProduct?.title?.toLowerCase().includes(plan.name.toLowerCase()));
+
+      if (!rcPkg) {
+        toast.error('No matching product found. Please contact support.');
+        setPaymentMethod('bank');
+        setStep('payment');
+        return;
       }
-      setUsdAmount(amountUsd);
 
-      // 2. Build callback URL for PayGate to hit
-      const callbackUrl = await buildCallbackUrl(orderIdParam, paymentSettings.paygateUsdcWallet);
-
-      // 3. Generate temporary encrypted wallet
-      const wallet = await generateWallet(paymentSettings.paygateUsdcWallet, callbackUrl);
-
-      // 4. Build the payment page URL
-      const payUrl = buildPaymentUrl(
-        wallet.address_in,
-        amountUsd,
+      // Open RevenueCat / Stripe checkout — this blocks until purchase is complete or cancelled
+      const customerInfo = await purchasePackage(
+        rcPkg,
         firebaseUser?.email || undefined,
       );
-      setCardPaymentUrl(payUrl);
 
-      // 5. Store PayGate reference on the order
-      await updateOrderStatus(orderIdParam, 'pending_payment', {
-        paygateIpnToken: wallet.ipn_token || '',
-        paygatePolygonAddress: wallet.polygon_address_in,
-        paygateAmountUsd: amountUsd,
-      });
-
-      // 6. Move to payment step (shows the "Open payment page" button)
-      setStep('payment');
-
-      // 7. Start polling for payment confirmation in the background
-      if (wallet.ipn_token) {
-        startPaymentPolling(orderIdParam, wallet.ipn_token);
+      // Purchase succeeded — update order status
+      const hasEntitlement = Object.keys(customerInfo.entitlements.active).length > 0;
+      if (hasEntitlement) {
+        await updateOrderStatus(orderIdParam, 'payment_submitted', {
+          rcPurchaseComplete: true,
+        });
+        toast.success('Payment received! 🎉');
+        setStep('done');
+      } else {
+        // Payment went through but no entitlement yet — still mark as submitted
+        await updateOrderStatus(orderIdParam, 'payment_submitted');
+        setStep('done');
       }
     } catch (err: any) {
-      console.error('[Checkout] PayGate card payment error:', err);
-      toast.error('Failed to initialize card payment. Try bank transfer instead.');
+      console.error('[Checkout] RevenueCat card payment error:', err);
+      // User may have closed the checkout — don't show error for cancellation
+      if (err?.message?.includes('cancelled') || err?.message?.includes('closed')) {
+        toast('Payment cancelled. You can retry or switch to bank transfer.', { icon: '↩️' });
+      } else {
+        toast.error('Card payment failed. Try bank transfer instead.');
+      }
       setPaymentMethod('bank');
       setStep('payment');
     } finally {
       setCardProcessing(false);
     }
-  }, [paymentSettings, plan, firebaseUser]);
-
-  /** Poll PayGate for payment status in background */
-  const startPaymentPolling = useCallback(async (oid: string, ipnToken: string) => {
-    setPollingPayment(true);
-    try {
-      const result = await pollPaymentStatus(ipnToken, 10_000, 90); // 15 min max
-      // Payment confirmed by PayGate!
-      await updateOrderStatus(oid, 'payment_submitted', {
-        paygateTxId: result.txid_out || '',
-        paygateAmountReceived: result.value_coin || '',
-      });
-      toast.success('Payment received! 🎉');
-      setStep('done');
-    } catch {
-      // Timeout or error — they can still complete via callback
-      console.warn('[Checkout] PayGate polling timed out');
-    } finally {
-      setPollingPayment(false);
-    }
-  }, []);
+  }, [rcPackages, plan, firebaseUser]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -351,7 +339,7 @@ export function CheckoutPage() {
                 </div>
               </button>
 
-              {/* Card payment option — only if PayGate is enabled */}
+              {/* Card payment option — only if RevenueCat is configured */}
               {cardAvailable && (
                 <button
                   onClick={() => setPaymentMethod('card')}
@@ -392,7 +380,7 @@ export function CheckoutPage() {
         </div>
       )}
 
-      {/* Step 2: Payment instructions (bank) or card redirect */}
+      {/* Step 2: Payment instructions (card via RevenueCat) */}
       {step === 'payment' && paymentMethod === 'card' && (
         <div className="flex flex-col gap-6">
           <h1 className="text-2xl font-bold">Complete card payment</h1>
@@ -402,8 +390,8 @@ export function CheckoutPage() {
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Amount to pay</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-3xl font-bold">{formatCurrency(plan.price, plan.currency)}</p>
-                {usdAmount && plan.currency.toUpperCase() !== 'USD' && (
-                  <p className="text-sm text-gray-400">≈ ${usdAmount.toFixed(2)} USD</p>
+                {planUsdEquiv !== null && plan.currency.toUpperCase() !== 'USD' && (
+                  <p className="text-sm text-gray-400">≈ ${planUsdEquiv.toFixed(2)} USD</p>
                 )}
               </div>
             </div>
@@ -414,36 +402,29 @@ export function CheckoutPage() {
                 <span>Visa, Mastercard, Apple Pay, Google Pay</span>
               </div>
 
-              {cardPaymentUrl ? (
-                <a
-                  href={cardPaymentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+              {cardProcessing ? (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                  <p className="text-sm text-gray-500">Opening secure checkout…</p>
+                </div>
+              ) : (
+                <button
+                  onClick={() => orderId && handleCardPayment(orderId)}
+                  disabled={!orderId || rcPackages.length === 0}
                   className="flex items-center justify-center gap-2 w-full h-12 bg-black text-white
                     rounded-xl text-sm font-semibold hover:bg-gray-800 active:scale-[0.98]
-                    transition-all duration-150"
+                    transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <ExternalLink className="w-4 h-4" />
-                  Open payment page
-                </a>
-              ) : (
-                <div className="flex justify-center py-4">
-                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                </div>
+                  <CreditCard className="w-4 h-4" />
+                  Pay with card
+                </button>
               )}
             </div>
           </div>
 
-          {pollingPayment && (
-            <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600">
-              <Loader2 className="w-4 h-4 animate-spin text-gray-400 shrink-0" />
-              <span>Waiting for payment confirmation… This page will update automatically.</span>
-            </div>
-          )}
-
           <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600 leading-relaxed">
-            Click the button above to open the secure payment page. After completing payment,
-            return here — your order will be confirmed automatically within a few minutes.
+            Click the button above to open the secure checkout. You'll be able to pay with your card,
+            Apple Pay, or Google Pay. Your order will be confirmed automatically.
           </div>
 
           <p className="text-xs text-gray-400 text-center">
@@ -451,7 +432,6 @@ export function CheckoutPage() {
             <button
               onClick={() => {
                 setPaymentMethod('bank');
-                setCardPaymentUrl(null);
               }}
               className="underline hover:text-black transition"
             >
