@@ -10,4 +10,4 @@
  *   2. Deploy
  *   3. Go to /admin/settings → set Min build number to the new value
  */
-export const APP_BUILD = 1;
+export const APP_BUILD = 2;

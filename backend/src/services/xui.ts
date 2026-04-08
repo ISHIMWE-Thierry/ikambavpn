@@ -47,6 +47,9 @@ const XHTTP_INBOUND_ID = 2;
 // HTTPS agent that tolerates IP-based or short-lived certs
 const tlsAgent = new https.Agent({ rejectUnauthorized: false });
 
+// Public-facing backend domain for subscription URLs (DuckDNS domain with valid TLS)
+const BACKEND_DOMAIN = process.env.XPANEL_BACKEND_DOMAIN || "ikambavpn.duckdns.org";
+
 // For Node.js native fetch with HTTPS IP certs — set at module level
 if (PANEL_URL.startsWith("https://")) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
@@ -563,8 +566,8 @@ export function getAllClientLinks(clientId: string, subId: string, email: string
   const remark = `IkambaVPN-${email.split("@")[0]}`;
   const wsLink = buildWsLink(clientId, remark);
   const vlessLink = buildVlessLink(clientId, remark);
-  // Self-hosted subscription endpoint that returns base64-encoded VLESS config
-  const selfHostedSubUrl = `https://${VPS_IP}:4443/xui-public/sub/${encodeURIComponent(email)}`;
+  // Self-hosted subscription endpoint — uses DuckDNS domain for proper TLS cert
+  const selfHostedSubUrl = `https://${BACKEND_DOMAIN}:4443/xui-public/sub/${encodeURIComponent(email)}`;
   return {
     vlessLink: wsLink, // WS is now the default/primary link
     vlessTcpLink: vlessLink, // TCP REALITY kept as backup

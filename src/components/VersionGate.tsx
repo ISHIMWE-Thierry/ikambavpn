@@ -7,13 +7,42 @@ import { APP_VERSION, compareVersions } from '../lib/app-version';
 
 type State = 'ok' | 'outdated' | 'maintenance';
 
-async function forceReload() {
-  // Unregister service workers first so they don't serve cached version
+/** Storage key to prevent infinite reload loops */
+const RELOAD_KEY = 'ikamba_version_reload';
+const MAX_RELOADS = 2; // max auto-reloads before showing manual button
+
+/**
+ * Clear ALL caches aggressively:
+ *  1. Unregister service workers
+ *  2. Delete all Cache API entries (the CDN/SW cache)
+ *  3. Clear localStorage (except reload-loop guard)
+ *  4. Clear sessionStorage
+ */
+async function nukeAllCaches() {
+  // 1. Unregister service workers
   if ('serviceWorker' in navigator) {
     const regs = await navigator.serviceWorker.getRegistrations();
     await Promise.all(regs.map((r) => r.unregister()));
   }
-  // Hard reload — bypass cache
+
+  // 2. Delete all Cache API entries (Vite build cache, SW precache, etc.)
+  if ('caches' in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  }
+
+  // 3. Clear localStorage (preserve reload-loop guard)
+  const reloadCount = localStorage.getItem(RELOAD_KEY);
+  localStorage.clear();
+  if (reloadCount) localStorage.setItem(RELOAD_KEY, reloadCount);
+
+  // 4. Clear sessionStorage
+  sessionStorage.clear();
+}
+
+async function forceReload() {
+  await nukeAllCaches();
+  // Hard reload — bypass browser cache
   window.location.reload();
 }
 
@@ -24,40 +53,61 @@ export function VersionGate({ children }: { children: React.ReactNode }) {
   const [reloading, setReloading] = useState(false);
 
   useEffect(() => {
-    getAppConfig().then((cfg: AppConfig) => {
+    getAppConfig().then(async (cfg: AppConfig) => {
       if (cfg.maintenanceMode) {
         setMessage(cfg.maintenanceMessage || 'We\'re doing a quick upgrade. Back shortly.');
         setState('maintenance');
         return;
       }
 
+      let isOutdated = false;
+
       // Check numeric build number
       if (APP_BUILD < cfg.minBuildNumber) {
-        setState('outdated');
-        return;
+        isOutdated = true;
       }
 
       // Check semver version — critical (blocking)
       if (cfg.versionMinimum && compareVersions(APP_VERSION, cfg.versionMinimum) < 0) {
         setRemoteVersion(cfg.version || cfg.versionMinimum);
         setMessage(cfg.versionMessage || 'Critical update required. Please refresh.');
-        setState('outdated');
-        return;
+        isOutdated = true;
       }
 
       // Check semver version — force refresh
-      if (cfg.version && cfg.versionForceRefresh && compareVersions(APP_VERSION, cfg.version) < 0) {
+      if (!isOutdated && cfg.version && cfg.versionForceRefresh && compareVersions(APP_VERSION, cfg.version) < 0) {
         setRemoteVersion(cfg.version);
         setMessage(cfg.versionMessage || 'An important update is available.');
+        isOutdated = true;
+      }
+
+      if (isOutdated) {
+        // Auto-clear caches and reload (with loop protection)
+        const reloadCount = Number(localStorage.getItem(RELOAD_KEY) || '0');
+        if (reloadCount < MAX_RELOADS) {
+          // Increment counter, nuke caches, and hard-reload automatically
+          localStorage.setItem(RELOAD_KEY, String(reloadCount + 1));
+          await nukeAllCaches();
+          window.location.reload();
+          return; // won't reach here — browser is reloading
+        }
+        // Exceeded auto-reload limit → show manual update screen
+        // (means the deploy hasn't propagated yet, or cached by CDN edge)
         setState('outdated');
+      } else {
+        // Version matches — clear any stale reload counter
+        localStorage.removeItem(RELOAD_KEY);
       }
     }).catch(() => {
-      // Network error — don't block the user
+      // Network error — don't block the user, clear reload counter
+      localStorage.removeItem(RELOAD_KEY);
     });
   }, []);
 
   const handleReload = async () => {
     setReloading(true);
+    // Reset counter so auto-reload kicks in again
+    localStorage.setItem(RELOAD_KEY, '0');
     await forceReload();
   };
 

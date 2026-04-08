@@ -504,8 +504,11 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
   };
 
   const copySubUrl = () => {
-    if (!client.subscriptionUrl) return;
-    navigator.clipboard.writeText(client.subscriptionUrl);
+    // Always build a fresh subscription URL using the canonical domain format
+    // (matches what DashboardPage gives users — ikambavpn.duckdns.org)
+    const base = import.meta.env.DEV ? 'http://localhost:4000' : 'https://ikambavpn.duckdns.org:4443';
+    const freshUrl = `${base}/xui-public/sub/${encodeURIComponent(client.email)}`;
+    navigator.clipboard.writeText(freshUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -547,22 +550,20 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
               <p><span className="text-gray-400">Max connections: </span>{client.limitIp || 'Unlimited'}</p>
             </div>
 
-            {/* Subscription link */}
-            {client.subscriptionUrl && (
-              <div className="flex flex-col gap-1.5">
-                <p className="text-xs font-medium text-gray-500">Subscription URL</p>
-                <div className="bg-white rounded-xl p-2.5 font-mono text-[11px] break-all text-gray-600 border border-gray-200">
-                  {client.subscriptionUrl}
-                </div>
-                <button
-                  onClick={copySubUrl}
-                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-black w-fit"
-                >
-                  {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
-                  {copied ? 'Copied' : 'Copy subscription link'}
-                </button>
+            {/* Subscription link — always show fresh URL using canonical domain */}
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs font-medium text-gray-500">Subscription URL</p>
+              <div className="bg-white rounded-xl p-2.5 font-mono text-[11px] break-all text-gray-600 border border-gray-200">
+                {`https://ikambavpn.duckdns.org:4443/xui-public/sub/${encodeURIComponent(client.email)}`}
               </div>
-            )}
+              <button
+                onClick={copySubUrl}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-black w-fit"
+              >
+                {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+                {copied ? 'Copied' : 'Copy subscription link'}
+              </button>
+            </div>
 
             {/* Actions */}
             <div className="flex flex-wrap gap-2 pt-1">

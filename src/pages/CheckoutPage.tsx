@@ -4,13 +4,29 @@ import { Upload, CheckCircle, Copy, CreditCard, Building2, Loader2 } from 'lucid
 import { useAuth } from '../contexts/AuthContext';
 import { createOrder, uploadPaymentProof, updateOrderStatus, getAppSettings, getUserOrders, type AppPaymentSettings } from '../lib/db-service';
 import { notifyAdminsNewOrder, notifyAdminsPaymentProof } from '../lib/email-service';
-import { initRevenueCat, getCurrentOffering, purchasePackage, isRevenueCatReady } from '../lib/revenuecat';
 import { Button } from '../components/ui/button';
 import { formatCurrency } from '../lib/utils';
 import { PageTransition } from '../components/PageTransition';
 import type { VpnPlan } from '../types';
-import type { Package as RCPackage } from '@revenuecat/purchases-js';
 import toast from 'react-hot-toast';
+
+// ── Lazy-load RevenueCat to prevent module-level crashes ──────────────────────
+// The @revenuecat/purchases-js SDK can throw at import time when the API key
+// is missing or the browser environment isn't supported, which kills the entire
+// checkout page (white screen). By lazy-loading, bank transfer always works.
+type RCPackage = any;
+let rcModule: typeof import('../lib/revenuecat') | null = null;
+
+async function loadRevenueCat() {
+  if (rcModule) return rcModule;
+  try {
+    rcModule = await import('../lib/revenuecat');
+    return rcModule;
+  } catch (err) {
+    console.warn('[Checkout] RevenueCat module failed to load:', err);
+    return null;
+  }
+}
 
 type Step = 'review' | 'payment' | 'proof' | 'done';
 type PaymentMethod = 'bank' | 'card';
@@ -68,12 +84,15 @@ export function CheckoutPage() {
       }
     });
 
-    // Init RevenueCat and load offerings
+    // Init RevenueCat and load offerings (lazy-loaded to prevent crashes)
     if (firebaseUser && rcApiKeySet) {
-      initRevenueCat(firebaseUser.uid);
-      getCurrentOffering().then((offering) => {
-        if (offering) setRcPackages(offering.availablePackages);
-      }).catch((err) => console.warn('[Checkout] RC offerings fetch failed:', err));
+      loadRevenueCat().then((rc) => {
+        if (!rc) return;
+        rc.initRevenueCat(firebaseUser.uid);
+        rc.getCurrentOffering().then((offering: any) => {
+          if (offering) setRcPackages(offering.availablePackages);
+        }).catch((err: any) => console.warn('[Checkout] RC offerings fetch failed:', err));
+      });
     }
 
     // Guard: block if user has pending order OR has active plan (unless upgrading)
@@ -109,7 +128,14 @@ export function CheckoutPage() {
     }
   }, [plan, navigate, firebaseUser, isUpgrade]);
 
-  if (!plan) return null;
+  if (!plan) return (
+    <main className="flex-1 flex items-center justify-center px-4 py-12">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        <p className="text-sm text-gray-500">Loading plan…</p>
+      </div>
+    </main>
+  );
 
   const handleConfirmPlan = async () => {
     if (!firebaseUser) {
@@ -162,7 +188,8 @@ export function CheckoutPage() {
 
   /** RevenueCat card payment: find matching RC package → open checkout */
   const handleCardPayment = useCallback(async (orderIdParam: string) => {
-    if (!isRevenueCatReady()) {
+    const rc = await loadRevenueCat();
+    if (!rc || !rc.isRevenueCatReady()) {
       toast.error('Card payments are not configured yet.');
       return;
     }
@@ -170,11 +197,11 @@ export function CheckoutPage() {
     try {
       // Find the RevenueCat package that matches this plan by identifier or name
       let rcPkg = rcPackages.find(
-        (p) => p.identifier === plan.id || p.identifier === `$rc_${plan.name.toLowerCase()}`,
+        (p: any) => p.identifier === plan.id || p.identifier === `$rc_${plan.name.toLowerCase()}`,
       );
       // Fallback: pick the first package if only one exists, or by product name
       if (!rcPkg && rcPackages.length === 1) rcPkg = rcPackages[0];
-      if (!rcPkg) rcPkg = rcPackages.find((p) => p.webBillingProduct?.title?.toLowerCase().includes(plan.name.toLowerCase()));
+      if (!rcPkg) rcPkg = rcPackages.find((p: any) => p.webBillingProduct?.title?.toLowerCase().includes(plan.name.toLowerCase()));
 
       if (!rcPkg) {
         toast.error('No matching product found. Please contact support.');
@@ -184,7 +211,7 @@ export function CheckoutPage() {
       }
 
       // Open RevenueCat / Stripe checkout — this blocks until purchase is complete or cancelled
-      const customerInfo = await purchasePackage(
+      const customerInfo = await rc.purchasePackage(
         rcPkg,
         firebaseUser?.email || undefined,
       );

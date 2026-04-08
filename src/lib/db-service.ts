@@ -418,6 +418,12 @@ export async function getAppConfig(): Promise<AppConfig> {
     minBuildNumber: d.minBuildNumber ?? 1,
     maintenanceMode: d.maintenanceMode ?? false,
     maintenanceMessage: d.maintenanceMessage ?? '',
+    version: d.version,
+    versionDeployedAt: d.versionDeployedAt,
+    versionMessage: d.versionMessage,
+    versionForceRefresh: d.versionForceRefresh,
+    versionMinimum: d.versionMinimum,
+    versionUpdatedBy: d.versionUpdatedBy,
   };
 }
 
