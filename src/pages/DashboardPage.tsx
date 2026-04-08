@@ -1,13 +1,15 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
   Power, Copy, Check, Wifi, WifiOff, Shield, Zap, Clock,
   ChevronDown, Download, RefreshCw, Activity, ExternalLink,
-  ChevronRight, AlertCircle, ArrowRight,
+  ChevronRight, AlertCircle, ArrowRight, Upload, Image,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserOrders, getUserTrial } from '../lib/db-service';
+import { getUserOrders, getUserTrial, uploadPaymentProof, updateOrderStatus, getAppSettings, type AppPaymentSettings } from '../lib/db-service';
+import { notifyAdminsPaymentProof } from '../lib/email-service';
+import toast from 'react-hot-toast';
 import {
   provisionXuiAccount, getXuiStats, formatBytes, formatExpiry,
   checkVpnServerHealth, runDiagnostics,
@@ -224,6 +226,13 @@ export function DashboardPage() {
   const [trial, setTrial]             = useState<VpnTrial | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
+  // Payment proof upload state (for pending_payment orders)
+  const [proofFile, setProofFile]         = useState<File | null>(null);
+  const [proofUploading, setProofUploading] = useState(false);
+  const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
+  const [paymentSettings, setPaymentSettings] = useState<AppPaymentSettings | null>(null);
+  const proofInputRef = useRef<HTMLInputElement>(null);
+
   const device = useMemo(() => detectDevice(), []);
   const cfg = DEVICE_CONFIG[device];
   const subUrl = firebaseUser?.email ? getSubUrl(firebaseUser.email) : null;
@@ -267,6 +276,63 @@ export function DashboardPage() {
       }
     }).finally(() => setDataLoading(false));
   }, [firebaseUser]);
+
+  // Load payment settings for proof upload flow
+  useEffect(() => {
+    getAppSettings().then(setPaymentSettings).catch(() => {});
+  }, []);
+
+  // Refetch orders after proof upload
+  const refreshOrders = useCallback(() => {
+    if (!firebaseUser) return;
+    getUserOrders(firebaseUser.uid).then(setOrders).catch(() => {});
+  }, [firebaseUser]);
+
+  function handleProofFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File is too large. Maximum size is 10 MB.');
+      return;
+    }
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
+    if (!allowed.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|webp|heic|heif|pdf)$/i)) {
+      toast.error('Please upload an image (JPG, PNG, WEBP) or PDF file.');
+      return;
+    }
+    setProofFile(file);
+  }
+
+  async function handleUploadProof(order: VpnOrder) {
+    if (!proofFile || !firebaseUser) return;
+    setProofUploading(true);
+    setUploadingOrderId(order.id);
+    try {
+      const url = await uploadPaymentProof(order.id, proofFile);
+      await updateOrderStatus(order.id, 'payment_submitted', { paymentProofUrl: url });
+      notifyAdminsPaymentProof({
+        orderId: order.id,
+        userName: profile ? `${profile.firstname} ${profile.lastname}`.trim() : (firebaseUser.displayName || null),
+        userEmail: firebaseUser.email || null,
+        planName: order.planName,
+        planDuration: order.planDuration,
+        amount: order.amount,
+        currency: order.currency,
+        proofUrl: url,
+      }).catch(() => {});
+      toast.success('Payment proof submitted! We\'ll review it shortly.');
+      setProofFile(null);
+      setUploadingOrderId(null);
+      refreshOrders();
+    } catch (err: any) {
+      const msg = err?.code === 'storage/unauthorized'
+        ? 'Upload not authorised. Please sign in again.'
+        : 'Failed to upload proof. Please try again.';
+      toast.error(msg);
+    } finally {
+      setProofUploading(false);
+    }
+  }
 
   const activeOrder  = orders.find((o) => o.status === 'active');
   const pendingOrders = orders.filter((o) => o.status === 'pending_payment' || o.status === 'payment_submitted');
@@ -797,20 +863,102 @@ export function DashboardPage() {
         {pendingOrders.length > 0 && (
           <motion.div variants={card}>
             <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2.5 px-1">Pending</p>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               {pendingOrders.map((o) => (
-                <div key={o.id} className="bg-white rounded-2xl px-5 py-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-black">{o.planName}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{formatDate(o.createdAt)}</p>
+                <div key={o.id} className="bg-white rounded-2xl overflow-hidden">
+                  {/* Order header */}
+                  <div className="px-5 py-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-black">{o.planName}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{formatDate(o.createdAt)}</p>
+                    </div>
+                    {statusBadge(o.status)}
                   </div>
-                  {statusBadge(o.status)}
+
+                  {/* Upload proof section — only for pending_payment (no proof yet) */}
+                  {o.status === 'pending_payment' && (
+                    <div className="border-t border-gray-100 px-5 py-4 space-y-4">
+                      {/* Payment details */}
+                      {paymentSettings && (
+                        <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                          <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Pay here</p>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Amount</span>
+                            <span className="font-bold text-black">{formatCurrency(o.amount, o.currency)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Method</span>
+                            <span className="font-medium">{paymentSettings.depositBankName}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Account</span>
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(paymentSettings.depositAccountNumber); toast.success('Copied!'); }}
+                              className="flex items-center gap-1.5 font-semibold hover:underline"
+                            >
+                              {paymentSettings.depositAccountNumber}
+                              <Copy className="w-3.5 h-3.5 text-gray-400" />
+                            </button>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Name</span>
+                            <span className="font-medium">{paymentSettings.depositAccountName}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <p className="text-xs text-gray-500">After paying, upload a screenshot to confirm your payment.</p>
+
+                      {/* File picker / preview */}
+                      <input
+                        ref={proofInputRef}
+                        type="file"
+                        accept="image/*,.pdf,.heic,.heif"
+                        className="hidden"
+                        onChange={handleProofFileChange}
+                      />
+                      <div
+                        onClick={() => proofInputRef.current?.click()}
+                        className="border-2 border-dashed border-gray-200 rounded-2xl p-6 flex flex-col items-center gap-2 cursor-pointer hover:border-black transition"
+                      >
+                        {proofFile && uploadingOrderId === null && proofFile.type.startsWith('image/') ? (
+                          <img
+                            src={URL.createObjectURL(proofFile)}
+                            alt="Payment proof"
+                            className="max-h-32 rounded-xl object-contain"
+                          />
+                        ) : (
+                          <Upload className="w-6 h-6 text-gray-400" />
+                        )}
+                        <p className="text-xs text-gray-400">
+                          {proofFile ? proofFile.name : 'Tap to upload screenshot'}
+                        </p>
+                      </div>
+
+                      <Button
+                        onClick={() => handleUploadProof(o)}
+                        loading={proofUploading && uploadingOrderId === o.id}
+                        disabled={!proofFile || proofUploading}
+                        className="w-full"
+                        size="sm"
+                      >
+                        <Upload className="w-4 h-4" />
+                        Submit payment proof
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Already submitted — waiting for review */}
+                  {o.status === 'payment_submitted' && (
+                    <div className="border-t border-gray-100 px-5 py-3">
+                      <p className="text-xs text-green-600 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5" />
+                        Proof submitted — we'll activate your service shortly.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
-              <p className="text-xs text-green-600 flex items-start gap-1.5 px-1 leading-relaxed">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                Activated within a few hours after payment review.
-              </p>
             </div>
           </motion.div>
         )}
