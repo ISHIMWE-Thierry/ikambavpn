@@ -43,7 +43,7 @@ const DEVICE_CONFIG: Record<DeviceType, {
 }> = {
   ios: {
     appName: 'Изи VPN',
-    appUrl: 'https://apps.apple.com/app/изи-vpn/id6744428083',
+    appUrl: 'https://apps.apple.com/ru/app/%D0%B8%D0%B7%D0%B8-vpn/id6746414734?l=en-GB',
     appStore: 'App Store',
     steps: ['Open Изи VPN (or V2RayTun / V2App)', 'Tap + → Import from clipboard', 'Tap Connect'],
     disconnectTip: 'Enable On-Demand in VPN settings to stay connected in background.',

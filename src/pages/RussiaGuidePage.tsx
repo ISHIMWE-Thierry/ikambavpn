@@ -11,7 +11,7 @@ const IOS_APPS = [
     name: 'Изи VPN (Easy VPN)',
     badge: 'Recommended',
     desc: 'Best for Russia — available in Russian App Store. Supports VLESS Reality + clipboard import.',
-    url: 'https://apps.apple.com/app/изи-vpn/id6744428083',
+    url: 'https://apps.apple.com/ru/app/%D0%B8%D0%B7%D0%B8-vpn/id6746414734?l=en-GB',
     free: true,
   },
   {
@@ -198,7 +198,7 @@ export function RussiaGuidePage() {
         <div className="mt-4 bg-gray-50 border border-gray-100 rounded-xl p-4">
           <h3 className="text-sm font-semibold mb-2">📱 iPhone step-by-step (Изи VPN)</h3>
           <ol className="text-xs text-gray-700 list-decimal ml-4 flex flex-col gap-1.5">
-            <li>Open the <a href="https://apps.apple.com/app/изи-vpn/id6744428083" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store link</a> → Install <strong>Изи VPN</strong></li>
+            <li>Open the <a href="https://apps.apple.com/ru/app/%D0%B8%D0%B7%D0%B8-vpn/id6746414734?l=en-GB" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store link</a> → Install <strong>Изи VPN</strong></li>
             <li>Go to your <strong>IkambaVPN Dashboard</strong> → tap <strong>"Copy VPN Link"</strong></li>
             <li>Open Изи VPN → tap <strong>+</strong> → <strong>"Import from clipboard"</strong></li>
             <li>Your server appears in the list → tap <strong>Connect</strong></li>
@@ -318,7 +318,7 @@ export function RussiaGuidePage() {
           <div className="text-sm text-gray-700 flex flex-col gap-2">
             <p><strong>Шаг 1:</strong> Скачайте приложение:</p>
             <ul className="list-disc ml-5 text-xs flex flex-col gap-0.5">
-              <li><strong>iPhone:</strong> <a href="https://apps.apple.com/app/изи-vpn/id6744428083" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Изи VPN</a> — рекомендуем, доступен в российском App Store</li>
+              <li><strong>iPhone:</strong> <a href="https://apps.apple.com/ru/app/%D0%B8%D0%B7%D0%B8-vpn/id6746414734?l=en-GB" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Изи VPN</a> — рекомендуем, доступен в российском App Store</li>
               <li><strong>Альтернативы iPhone:</strong> <a href="https://apps.apple.com/app/v2app/id6670790798" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2App</a> • <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2RayTun</a> • <a href="https://apps.apple.com/app/streisand/id6450534064" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Streisand</a></li>
               <li><strong>Android:</strong> V2RayNG из Google Play или скачайте APK с GitHub</li>
               <li><strong>Компьютер:</strong> Hiddify (Windows/macOS/Linux) с GitHub</li>
