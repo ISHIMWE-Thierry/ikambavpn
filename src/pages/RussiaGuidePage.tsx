@@ -15,6 +15,20 @@ const IOS_APPS = [
     free: true,
   },
   {
+    name: 'Изи VPN (Easy VPN)',
+    badge: 'VLESS Reality',
+    desc: 'Lightweight VLESS Reality client — import your own vless:// links. Available on Russian App Store.',
+    url: 'https://apps.apple.com/app/изи-vpn/id6744428083',
+    free: true,
+  },
+  {
+    name: 'V2App',
+    badge: 'Full Protocol',
+    desc: 'Supports VLESS+Reality, XHTTP, Trojan. By Pavali Technology. Available on Russian App Store.',
+    url: 'https://apps.apple.com/app/v2app/id6670790798',
+    free: true,
+  },
+  {
     name: 'Streisand',
     badge: 'Alternative',
     desc: 'Free and open source. Supports Ikamba VPN protocol.',
@@ -193,6 +207,12 @@ export function RussiaGuidePage() {
             <li>Allow VPN configuration when iOS prompts you</li>
             <li>✅ Connected! The VPN icon (🔒) appears in your status bar</li>
           </ol>
+          <div className="bg-amber-50 border border-amber-100 rounded-lg p-2 mt-3 text-xs text-amber-800">
+            <strong>🇷🇺 В России:</strong> Если V2RayTun недоступен в вашем App Store, используйте{' '}
+            <a href="https://apps.apple.com/app/изи-vpn/id6744428083" target="_blank" rel="noopener noreferrer" className="underline font-medium">Изи VPN</a> или{' '}
+            <a href="https://apps.apple.com/app/v2app/id6670790798" target="_blank" rel="noopener noreferrer" className="underline font-medium">V2App</a>{' '}
+            — оба доступны в российском App Store и поддерживают VLESS Reality. Скопируйте ваш vless:// линк и импортируйте в приложение.
+          </div>
         </div>
       </div>
 
@@ -298,6 +318,7 @@ export function RussiaGuidePage() {
             <p><strong>Шаг 1:</strong> Скачайте приложение:</p>
             <ul className="list-disc ml-5 text-xs flex flex-col gap-0.5">
               <li><strong>iPhone / Mac:</strong> <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2RayTun из App Store</a></li>
+              <li><strong>iPhone (Россия):</strong> <a href="https://apps.apple.com/app/изи-vpn/id6744428083" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Изи VPN</a> или <a href="https://apps.apple.com/app/v2app/id6670790798" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2App</a> — доступны в российском App Store</li>
               <li><strong>Android:</strong> V2RayNG из Google Play или скачайте APK с GitHub</li>
               <li><strong>Компьютер:</strong> Hiddify (Windows/macOS/Linux) с GitHub</li>
             </ul>
