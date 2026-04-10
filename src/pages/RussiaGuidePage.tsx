@@ -8,29 +8,29 @@ import { Badge } from '../components/ui/badge';
 
 const IOS_APPS = [
   {
-    name: 'V2RayTun',
-    badge: 'Recommended',
-    desc: 'Best experience on iPhone & Mac. Supports Ikamba VPN and clipboard import.',
-    url: 'https://apps.apple.com/app/id6476628951',
-    free: true,
-  },
-  {
     name: 'Изи VPN (Easy VPN)',
-    badge: 'VLESS Reality',
-    desc: 'Lightweight VLESS Reality client — import your own vless:// links. Available on Russian App Store.',
+    badge: 'Recommended',
+    desc: 'Best for Russia — available in Russian App Store. Supports VLESS Reality + clipboard import.',
     url: 'https://apps.apple.com/app/изи-vpn/id6744428083',
     free: true,
   },
   {
     name: 'V2App',
     badge: 'Full Protocol',
-    desc: 'Supports VLESS+Reality, XHTTP, Trojan. By Pavali Technology. Available on Russian App Store.',
+    desc: 'Supports VLESS+Reality, XHTTP, Trojan. Available on Russian App Store.',
     url: 'https://apps.apple.com/app/v2app/id6670790798',
     free: true,
   },
   {
+    name: 'V2RayTun',
+    badge: 'International',
+    desc: 'Great app for iPhone & Mac. May not be available in Russian App Store.',
+    url: 'https://apps.apple.com/app/id6476628951',
+    free: true,
+  },
+  {
     name: 'Streisand',
-    badge: 'Alternative',
+    badge: 'Open Source',
     desc: 'Free and open source. Supports Ikamba VPN protocol.',
     url: 'https://apps.apple.com/app/streisand/id6450534064',
     free: true,
@@ -160,18 +160,18 @@ export function RussiaGuidePage() {
           <div className="flex flex-col gap-4">
             <Step
               num={1}
-              title="Install V2RayTun"
-              desc="Download V2RayTun from the App Store (iPhone/Mac) or V2RayNG from Google Play (Android)."
+              title="Install Изи VPN"
+              desc="Download Изи VPN from the App Store (iPhone) or V2RayNG from Google Play (Android). Alternatives: V2App, V2RayTun, Streisand."
             />
             <Step
               num={2}
-              title="Activate Ikamba VPN"
-              desc="Go to your Dashboard → Ikamba VPN tab → tap 'Activate Ikamba VPN'. Copy the link that appears."
+              title="Copy your VPN link"
+              desc="Go to your Dashboard → tap 'Copy VPN Link'. Your personal subscription link is copied."
             />
             <Step
               num={3}
               title="Paste & connect!"
-              desc="In V2RayTun, tap + → 'Import from clipboard' → tap Connect. Done!"
+              desc="In Изи VPN, tap + → 'Import from clipboard' → tap Connect. Done!"
             />
           </div>
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-4 text-xs text-blue-700">
@@ -196,22 +196,23 @@ export function RussiaGuidePage() {
 
         {/* iOS specific instructions */}
         <div className="mt-4 bg-gray-50 border border-gray-100 rounded-xl p-4">
-          <h3 className="text-sm font-semibold mb-2">📱 iPhone step-by-step (V2RayTun)</h3>
+          <h3 className="text-sm font-semibold mb-2">📱 iPhone step-by-step (Изи VPN)</h3>
           <ol className="text-xs text-gray-700 list-decimal ml-4 flex flex-col gap-1.5">
-            <li>Open the <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store link</a> → Install <strong>V2RayTun</strong></li>
-            <li>Go to your <strong>IkambaVPN Dashboard</strong> → tap the <strong>⚡ Ikamba VPN</strong> tab</li>
-            <li>Tap <strong>"Start free trial"</strong> to get your connection link</li>
-            <li>Tap <strong>"Copy link"</strong></li>
-            <li>Open V2RayTun → tap <strong>+</strong> → <strong>"Import from clipboard"</strong></li>
+            <li>Open the <a href="https://apps.apple.com/app/изи-vpn/id6744428083" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">App Store link</a> → Install <strong>Изи VPN</strong></li>
+            <li>Go to your <strong>IkambaVPN Dashboard</strong> → tap <strong>"Copy VPN Link"</strong></li>
+            <li>Open Изи VPN → tap <strong>+</strong> → <strong>"Import from clipboard"</strong></li>
             <li>Your server appears in the list → tap <strong>Connect</strong></li>
             <li>Allow VPN configuration when iOS prompts you</li>
             <li>✅ Connected! The VPN icon (🔒) appears in your status bar</li>
           </ol>
-          <div className="bg-amber-50 border border-amber-100 rounded-lg p-2 mt-3 text-xs text-amber-800">
-            <strong>🇷🇺 В России:</strong> Если V2RayTun недоступен в вашем App Store, используйте{' '}
-            <a href="https://apps.apple.com/app/изи-vpn/id6744428083" target="_blank" rel="noopener noreferrer" className="underline font-medium">Изи VPN</a> или{' '}
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 mt-3 text-xs text-blue-800">
+            <strong>💡 Alternatives:</strong>{' '}
             <a href="https://apps.apple.com/app/v2app/id6670790798" target="_blank" rel="noopener noreferrer" className="underline font-medium">V2App</a>{' '}
-            — оба доступны в российском App Store и поддерживают VLESS Reality. Скопируйте ваш vless:// линк и импортируйте в приложение.
+            (Full Protocol) •{' '}
+            <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline font-medium">V2RayTun</a>{' '}
+            (International) •{' '}
+            <a href="https://apps.apple.com/app/streisand/id6450534064" target="_blank" rel="noopener noreferrer" className="underline font-medium">Streisand</a>{' '}
+            (Open Source) — all support VLESS Reality and clipboard import.
           </div>
         </div>
       </div>
@@ -317,13 +318,13 @@ export function RussiaGuidePage() {
           <div className="text-sm text-gray-700 flex flex-col gap-2">
             <p><strong>Шаг 1:</strong> Скачайте приложение:</p>
             <ul className="list-disc ml-5 text-xs flex flex-col gap-0.5">
-              <li><strong>iPhone / Mac:</strong> <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2RayTun из App Store</a></li>
-              <li><strong>iPhone (Россия):</strong> <a href="https://apps.apple.com/app/изи-vpn/id6744428083" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Изи VPN</a> или <a href="https://apps.apple.com/app/v2app/id6670790798" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2App</a> — доступны в российском App Store</li>
+              <li><strong>iPhone:</strong> <a href="https://apps.apple.com/app/изи-vpn/id6744428083" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Изи VPN</a> — рекомендуем, доступен в российском App Store</li>
+              <li><strong>Альтернативы iPhone:</strong> <a href="https://apps.apple.com/app/v2app/id6670790798" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2App</a> • <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2RayTun</a> • <a href="https://apps.apple.com/app/streisand/id6450534064" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Streisand</a></li>
               <li><strong>Android:</strong> V2RayNG из Google Play или скачайте APK с GitHub</li>
               <li><strong>Компьютер:</strong> Hiddify (Windows/macOS/Linux) с GitHub</li>
             </ul>
-            <p><strong>Шаг 2:</strong> Перейдите в <strong>Панель управления</strong> → вкладка <strong>⚡ Ikamba VPN</strong> → нажмите <strong>«Activate Ikamba VPN»</strong></p>
-            <p><strong>Шаг 3:</strong> Скопируйте ссылку → откройте V2RayTun → <strong>+</strong> → <strong>«Import from clipboard»</strong></p>
+            <p><strong>Шаг 2:</strong> Перейдите в <strong>Панель управления</strong> → нажмите <strong>«Copy VPN Link»</strong></p>
+            <p><strong>Шаг 3:</strong> Откройте Изи VPN → <strong>+</strong> → <strong>«Import from clipboard»</strong></p>
             <p><strong>Шаг 4:</strong> Нажмите <strong>«Подключиться»</strong> → готово! ✅</p>
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 mt-1 text-xs text-blue-700">
               💬 Если нужна помощь, напишите нам в Telegram: <a href="https://t.me/ikambavpn" target="_blank" rel="noopener noreferrer" className="underline font-medium">@ikambavpn</a>

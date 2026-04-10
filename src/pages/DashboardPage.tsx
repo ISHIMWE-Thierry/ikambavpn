@@ -34,16 +34,74 @@ function detectDevice(): DeviceType {
   return 'unknown';
 }
 
+interface AltApp { name: string; url: string; badge?: string }
+
 const DEVICE_CONFIG: Record<DeviceType, {
   appName: string; appUrl: string; appStore: string;
   steps: string[]; disconnectTip?: string; routingTip?: string; persistTip?: string;
+  altApps?: AltApp[];
 }> = {
-  ios:     { appName: 'V2RayTun', appUrl: 'https://apps.apple.com/app/id6476628951',                              appStore: 'App Store',   steps: ['Open V2RayTun (or Изи VPN / V2App for Russian App Store)', 'Tap + → Import from clipboard', 'Tap Connect'],             disconnectTip: 'Enable On-Demand in V2RayTun Settings to stay connected in background.', routingTip: 'Tap config → Routing → Global.',          persistTip: 'iPhone Settings → VPN → tap V2RayTun → enable "Connect On Demand". VPN will auto-reconnect whenever you have internet.' },
-  android: { appName: 'V2RayNG',  appUrl: 'https://play.google.com/store/apps/details?id=com.v2ray.ang',         appStore: 'Google Play', steps: ['Open V2RayNG', 'Tap + → Import config from clipboard', 'Tap play'],           disconnectTip: 'Disable battery optimisation for V2RayNG in Android Settings.',           routingTip: '⋮ → Settings → Routing → Global.',       persistTip: 'Android Settings → Network → VPN → V2RayNG → enable "Always-on VPN". Then disable battery optimization for V2RayNG in Battery settings.' },
-  mac:     { appName: 'V2RayTun', appUrl: 'https://apps.apple.com/app/id6476628951',                              appStore: 'App Store',   steps: ['Open V2RayTun', 'Click + → Import from clipboard', 'Click Connect'],          routingTip: 'Click config → Routing → Global.',        persistTip: 'V2RayTun menu bar → Preferences → General → enable "Launch at Login" and "Auto-connect on startup".' },
-  windows: { appName: 'Hiddify',  appUrl: 'https://github.com/hiddify/hiddify-app/releases',                     appStore: 'Download',    steps: ['Open Hiddify', 'Click + → Add from clipboard', 'Click Connect'],              routingTip: 'Settings → Routing → Block None.',        persistTip: 'Hiddify → Settings → General → enable "Auto-connect" and "Start on boot". VPN reconnects automatically after any interruption.' },
-  linux:   { appName: 'Hiddify',  appUrl: 'https://github.com/hiddify/hiddify-app/releases',                     appStore: 'Download',    steps: ['Open Hiddify', 'Click + → Add from clipboard', 'Click Connect'],              routingTip: 'Settings → Routing → Block None.',        persistTip: 'Hiddify → Settings → General → enable "Auto-connect". Add Hiddify to your session autostart apps for startup persistence.' },
-  unknown: { appName: 'Hiddify',  appUrl: 'https://github.com/hiddify/hiddify-app/releases',                     appStore: 'Download',    steps: ['Open VPN app', 'Import from clipboard', 'Connect'],                                                                                  persistTip: 'Enable "Always-on VPN" or "Auto-connect" in your VPN app settings to reconnect automatically.' },
+  ios: {
+    appName: 'Изи VPN',
+    appUrl: 'https://apps.apple.com/app/изи-vpn/id6744428083',
+    appStore: 'App Store',
+    steps: ['Open Изи VPN (or V2RayTun / V2App)', 'Tap + → Import from clipboard', 'Tap Connect'],
+    disconnectTip: 'Enable On-Demand in VPN settings to stay connected in background.',
+    routingTip: 'Tap config → Routing → Global.',
+    persistTip: 'iPhone Settings → VPN → enable "Connect On Demand". VPN will auto-reconnect whenever you have internet.',
+    altApps: [
+      { name: 'V2RayTun', url: 'https://apps.apple.com/app/id6476628951', badge: 'International' },
+      { name: 'V2App', url: 'https://apps.apple.com/app/v2app/id6670790798', badge: 'Full Protocol' },
+      { name: 'Streisand', url: 'https://apps.apple.com/app/streisand/id6450534064', badge: 'Open Source' },
+    ],
+  },
+  android: {
+    appName: 'V2RayNG',
+    appUrl: 'https://play.google.com/store/apps/details?id=com.v2ray.ang',
+    appStore: 'Google Play',
+    steps: ['Open V2RayNG', 'Tap + → Import config from clipboard', 'Tap play'],
+    disconnectTip: 'Disable battery optimisation for V2RayNG in Android Settings.',
+    routingTip: '⋮ → Settings → Routing → Global.',
+    persistTip: 'Android Settings → Network → VPN → V2RayNG → enable "Always-on VPN". Then disable battery optimization for V2RayNG in Battery settings.',
+    altApps: [
+      { name: 'Hiddify', url: 'https://play.google.com/store/apps/details?id=app.hiddify.com', badge: 'Great UI' },
+      { name: 'NekoBox', url: 'https://github.com/MatsuriDayo/NekoBoxForAndroid/releases', badge: 'Advanced' },
+    ],
+  },
+  mac: {
+    appName: 'V2RayTun',
+    appUrl: 'https://apps.apple.com/app/id6476628951',
+    appStore: 'App Store',
+    steps: ['Open V2RayTun', 'Click + → Import from clipboard', 'Click Connect'],
+    routingTip: 'Click config → Routing → Global.',
+    persistTip: 'V2RayTun menu bar → Preferences → General → enable "Launch at Login" and "Auto-connect on startup".',
+    altApps: [
+      { name: 'Hiddify', url: 'https://github.com/hiddify/hiddify-app/releases', badge: 'Cross-platform' },
+    ],
+  },
+  windows: {
+    appName: 'Hiddify',
+    appUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    appStore: 'Download',
+    steps: ['Open Hiddify', 'Click + → Add from clipboard', 'Click Connect'],
+    routingTip: 'Settings → Routing → Block None.',
+    persistTip: 'Hiddify → Settings → General → enable "Auto-connect" and "Start on boot". VPN reconnects automatically after any interruption.',
+  },
+  linux: {
+    appName: 'Hiddify',
+    appUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    appStore: 'Download',
+    steps: ['Open Hiddify', 'Click + → Add from clipboard', 'Click Connect'],
+    routingTip: 'Settings → Routing → Block None.',
+    persistTip: 'Hiddify → Settings → General → enable "Auto-connect". Add Hiddify to your session autostart apps for startup persistence.',
+  },
+  unknown: {
+    appName: 'Hiddify',
+    appUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    appStore: 'Download',
+    steps: ['Open VPN app', 'Import from clipboard', 'Connect'],
+    persistTip: 'Enable "Always-on VPN" or "Auto-connect" in your VPN app settings to reconnect automatically.',
+  },
 };
 
 function getSubUrl(email: string) {
@@ -559,47 +617,42 @@ export function DashboardPage() {
                       <span className="text-[10px] opacity-60 mb-0.5">
                         {cfg.appStore === 'App Store' ? 'Download on the' : cfg.appStore === 'Google Play' ? 'Get it on' : 'Download free on'}
                       </span>
-                      <span className="text-sm font-semibold">{cfg.appStore === 'Download' ? 'GitHub (Hiddify)' : cfg.appStore}</span>
+                      <span className="text-sm font-semibold">{cfg.appName} — {cfg.appStore === 'Download' ? 'GitHub' : cfg.appStore}</span>
                     </div>
                     <ExternalLink className="w-4 h-4 ml-auto opacity-40" />
                   </a>
 
-                  {/* Secondary app if on iOS/Mac — also offer Android option as info */}
-                  {(device === 'ios' || device === 'mac') && (
-                    <motion.a
+                  {/* Alternative apps with direct links */}
+                  {cfg.altApps && cfg.altApps.length > 0 && (
+                    <motion.div
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.12 }}
-                      href="https://play.google.com/store/apps/details?id=com.v2ray.ang"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 border border-gray-100 bg-gray-50 text-gray-700
-                        rounded-2xl px-5 py-3 hover:bg-gray-100 active:scale-[0.97] transition-all duration-150"
+                      className="bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3"
                     >
-                      <svg className="w-5 h-5 shrink-0 text-gray-500" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M3.18 23.76A2 2 0 0 1 2 22V2a2 2 0 0 1 1.18-1.76l11.51 11.76zM16.9 8.12l-2.6 2.66L5.06.34l11.84 7.78zM21.14 10.4a2 2 0 0 1 0 3.2l-2.72 1.79-2.93-3L18.42 9.6zM5.06 23.66l9.24-10.1 2.6 2.66L5.06 23.66z"/>
-                      </svg>
-                      <span className="text-xs text-gray-500">Also on Android — V2RayNG on Google Play</span>
-                      <ExternalLink className="w-3.5 h-3.5 ml-auto opacity-30" />
-                    </motion.a>
-                  )}
-                  {device === 'android' && (
-                    <motion.a
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.12 }}
-                      href="https://apps.apple.com/app/id6476628951"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 border border-gray-100 bg-gray-50 text-gray-700
-                        rounded-2xl px-5 py-3 hover:bg-gray-100 active:scale-[0.97] transition-all duration-150"
-                    >
-                      <svg className="w-5 h-5 shrink-0 text-gray-500" viewBox="0 0 814 1000" fill="currentColor">
-                        <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-43.3-150.3-113c-52.4-77.7-96.2-196.9-96.2-311.2 0-205.5 132.4-314.1 261.8-314.1 65.2 0 119.2 43.3 159.8 43.3 38.7 0 99.7-46.5 169.2-46.5 24.2-.2 80.3 4.4 126.7 51.5zM451.3 126.5c-25.2 29.9-67.7 52.1-108.2 52.1-1.3 0-2.6 0-3.9-.2 0-38.7 19.2-76.7 43.3-101.6 29.2-31.5 76.5-55.9 115-57.2 1 41.5-17.5 82.9-46.2 106.9z"/>
-                      </svg>
-                      <span className="text-xs text-gray-500">Also on iPhone/Mac — V2RayTun on App Store</span>
-                      <ExternalLink className="w-3.5 h-3.5 ml-auto opacity-30" />
-                    </motion.a>
+                      <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider mb-2">
+                        Also works with Ikamba VPN
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        {cfg.altApps.map((alt) => (
+                          <a
+                            key={alt.name}
+                            href={alt.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 py-1.5 hover:bg-gray-100 rounded-lg px-1.5 -mx-1.5 transition-colors"
+                          >
+                            <span className="text-xs font-medium text-gray-800">{alt.name}</span>
+                            {alt.badge && (
+                              <span className="text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
+                                {alt.badge}
+                              </span>
+                            )}
+                            <ExternalLink className="w-3 h-3 text-gray-300 ml-auto shrink-0" />
+                          </a>
+                        ))}
+                      </div>
+                    </motion.div>
                   )}
                 </div>
               </motion.div>
@@ -1172,28 +1225,41 @@ export function DashboardPage() {
                         <div className="flex-1 pt-0.5">
                           <p className="text-sm font-semibold">{title}</p>
                           {n === '2' ? (
-                            <a href={cfg.appUrl} target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 mt-2 bg-black text-white
-                                rounded-xl px-3 py-2 hover:bg-gray-800 active:scale-95
-                                transition-all duration-150 select-none">
-                              {cfg.appStore === 'App Store' ? (
-                                <svg className="w-4 h-4 shrink-0" viewBox="0 0 814 1000" fill="currentColor">
-                                  <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-43.3-150.3-113c-52.4-77.7-96.2-196.9-96.2-311.2 0-205.5 132.4-314.1 261.8-314.1 65.2 0 119.2 43.3 159.8 43.3 38.7 0 99.7-46.5 169.2-46.5 24.2-.2 80.3 4.4 126.7 51.5z M451.3 126.5c-25.2 29.9-67.7 52.1-108.2 52.1-1.3 0-2.6 0-3.9-.2 0-38.7 19.2-76.7 43.3-101.6 29.2-31.5 76.5-55.9 115-57.2 1 41.5-17.5 82.9-46.2 106.9z"/>
-                                </svg>
-                              ) : cfg.appStore === 'Google Play' ? (
-                                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                  <path d="M3.18 23.76A2 2 0 0 1 2 22V2a2 2 0 0 1 1.18-1.76l11.51 11.76zM16.9 8.12l-2.6 2.66L5.06.34l11.84 7.78zM21.14 10.4a2 2 0 0 1 0 3.2l-2.72 1.79-2.93-3L18.42 9.6zM5.06 23.66l9.24-10.1 2.6 2.66L5.06 23.66z"/>
-                                </svg>
-                              ) : (
-                                <Download className="w-4 h-4 shrink-0" />
+                            <div className="mt-2 space-y-2">
+                              <a href={cfg.appUrl} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 bg-black text-white
+                                  rounded-xl px-3 py-2 hover:bg-gray-800 active:scale-95
+                                  transition-all duration-150 select-none">
+                                {cfg.appStore === 'App Store' ? (
+                                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 814 1000" fill="currentColor">
+                                    <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-43.3-150.3-113c-52.4-77.7-96.2-196.9-96.2-311.2 0-205.5 132.4-314.1 261.8-314.1 65.2 0 119.2 43.3 159.8 43.3 38.7 0 99.7-46.5 169.2-46.5 24.2-.2 80.3 4.4 126.7 51.5z M451.3 126.5c-25.2 29.9-67.7 52.1-108.2 52.1-1.3 0-2.6 0-3.9-.2 0-38.7 19.2-76.7 43.3-101.6 29.2-31.5 76.5-55.9 115-57.2 1 41.5-17.5 82.9-46.2 106.9z"/>
+                                  </svg>
+                                ) : cfg.appStore === 'Google Play' ? (
+                                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M3.18 23.76A2 2 0 0 1 2 22V2a2 2 0 0 1 1.18-1.76l11.51 11.76zM16.9 8.12l-2.6 2.66L5.06.34l11.84 7.78zM21.14 10.4a2 2 0 0 1 0 3.2l-2.72 1.79-2.93-3L18.42 9.6zM5.06 23.66l9.24-10.1 2.6 2.66L5.06 23.66z"/>
+                                  </svg>
+                                ) : (
+                                  <Download className="w-4 h-4 shrink-0" />
+                                )}
+                                <div className="flex flex-col leading-none">
+                                  <span className="text-[9px] opacity-70 mb-0.5">
+                                    {cfg.appStore === 'App Store' ? 'Download on the' : cfg.appStore === 'Google Play' ? 'Get it on' : 'Download free on'}
+                                  </span>
+                                  <span className="text-xs font-semibold">{cfg.appName} — {cfg.appStore}</span>
+                                </div>
+                              </a>
+                              {cfg.altApps && cfg.altApps.length > 0 && (
+                                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                  <span className="text-[10px] text-gray-400 w-full">Alternatives:</span>
+                                  {cfg.altApps.map((alt) => (
+                                    <a key={alt.name} href={alt.url} target="_blank" rel="noopener noreferrer"
+                                      className="text-[11px] text-blue-600 hover:text-blue-800 underline underline-offset-2">
+                                      {alt.name}
+                                    </a>
+                                  ))}
+                                </div>
                               )}
-                              <div className="flex flex-col leading-none">
-                                <span className="text-[9px] opacity-70 mb-0.5">
-                                  {cfg.appStore === 'App Store' ? 'Download on the' : cfg.appStore === 'Google Play' ? 'Get it on' : 'Download free on'}
-                                </span>
-                                <span className="text-xs font-semibold">{cfg.appStore}</span>
-                              </div>
-                            </a>
+                            </div>
                           ) : n === '4' && sub ? (
                             <p className="text-xs text-blue-600 mt-1 leading-relaxed">{sub}</p>
                           ) : sub ? (
