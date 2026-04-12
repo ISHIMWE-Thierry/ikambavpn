@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Shield, Globe, Smartphone, Monitor, ArrowLeft, ExternalLink, Check } from 'lucide-react';
+import { Shield, Globe, Smartphone, Monitor, ArrowLeft, ExternalLink, Check, Landmark, AlertTriangle } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -274,6 +274,98 @@ export function RussiaGuidePage() {
         </div>
       </div>
 
+      {/* ── Russian Banks & Split Routing ── */}
+      <Card className="mb-6 border-amber-200 bg-amber-50/30">
+        <CardHeader>
+          <h2 className="font-semibold flex items-center gap-2">
+            <Landmark className="w-5 h-5 text-amber-600" />
+            🏦 Доступ к российским банкам и .ru сайтам
+          </h2>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm text-gray-700 flex flex-col gap-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900 text-xs">
+              <strong>⚠️ Проблема:</strong> Когда VPN включён, весь ваш трафик идёт через финский сервер.
+              Российские банки (Сбербанк, Тинькофф, ВТБ и др.) и сайты .ru <strong>блокируют иностранные IP-адреса</strong>.
+              Поэтому с включённым VPN вы не можете открыть сбербанк или другие российские сервисы.
+            </div>
+            <p>
+              <strong>Решение:</strong> Переключите VPN-приложение в режим <strong>«Правила» (Rule mode)</strong>.
+              В этом режиме российские сайты и банки идут <em>напрямую</em> через ваш обычный интернет,
+              а всё остальное — через VPN.
+            </p>
+
+            {/* V2RayNG (Android) */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <h3 className="text-sm font-semibold mb-2">📱 V2RayNG (Android)</h3>
+              <ol className="text-xs text-gray-700 list-decimal ml-4 flex flex-col gap-1.5">
+                <li>Откройте V2RayNG</li>
+                <li>В нижней панели нажмите на текущий режим (обычно написано <strong>«Global»</strong> или <strong>«Глобальный»</strong>)</li>
+                <li>Выберите <strong>«Rule» / «Правила»</strong></li>
+                <li>Перейдите в <strong>Settings → Routing Settings</strong></li>
+                <li>Выберите <strong>«Bypass mainland China and Russia»</strong> или <strong>«Russia direct»</strong></li>
+                <li>Если такой опции нет — выберите <strong>«Custom rules»</strong> и добавьте в поле <strong>«Direct Domain or IP»</strong>:
+                  <div className="bg-gray-100 rounded-lg p-2 mt-1 font-mono text-[10px] leading-relaxed select-all">
+                    geosite:category-ru<br/>
+                    geoip:ru<br/>
+                    domain:sberbank.ru<br/>
+                    domain:tinkoff.ru<br/>
+                    domain:vtb.ru<br/>
+                    domain:alfabank.ru<br/>
+                    domain:gosuslugi.ru
+                  </div>
+                </li>
+                <li>Нажмите <strong>✓ / Сохранить</strong></li>
+              </ol>
+            </div>
+
+            {/* Hiddify (Android/iOS/Desktop) */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <h3 className="text-sm font-semibold mb-2">📱 Hiddify (Android / iOS / Desktop)</h3>
+              <ol className="text-xs text-gray-700 list-decimal ml-4 flex flex-col gap-1.5">
+                <li>Откройте Hiddify</li>
+                <li>Нажмите на режим подключения (обычно <strong>«TUN»</strong> или <strong>«System Proxy»</strong>)</li>
+                <li>Перейдите в <strong>Settings → Routing</strong></li>
+                <li>Переключите режим с <strong>«All»</strong> на <strong>«Exclude»</strong> или <strong>«Rule-based»</strong></li>
+                <li>В списке исключений добавьте:
+                  <div className="bg-gray-100 rounded-lg p-2 mt-1 font-mono text-[10px] select-all">
+                    *.ru, *.рф, sberbank.ru, tinkoff.ru, vtb.ru, alfabank.ru, gosuslugi.ru
+                  </div>
+                </li>
+                <li>Сохраните настройки и переподключитесь</li>
+              </ol>
+            </div>
+
+            {/* V2RayTun / Изи VPN / Streisand (iOS) */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <h3 className="text-sm font-semibold mb-2">📱 V2RayTun / Изи VPN / V2App (iOS)</h3>
+              <ol className="text-xs text-gray-700 list-decimal ml-4 flex flex-col gap-1.5">
+                <li>Откройте приложение</li>
+                <li>Перейдите в <strong>Настройки → Routing / Маршрутизация</strong></li>
+                <li>Переключите режим с <strong>«Global Proxy»</strong> на <strong>«Rule»</strong> или <strong>«Bypass LAN and China/RU»</strong></li>
+                <li>Если доступны пользовательские правила — добавьте <strong>geosite:category-ru</strong> и <strong>geoip:ru</strong> в <strong>Direct</strong></li>
+                <li>Переподключитесь к VPN</li>
+              </ol>
+              <p className="text-xs text-gray-500 mt-2">
+                <strong>💡 Простой способ:</strong> Если ваше приложение не поддерживает правила маршрутизации,
+                просто <strong>выключите VPN</strong> когда пользуетесь Сбербанком или другими российскими сервисами,
+                а потом включите обратно.
+              </p>
+            </div>
+
+            {/* Quick workaround */}
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+              <h3 className="text-xs font-semibold text-green-800 mb-1">✅ Самый простой способ</h3>
+              <p className="text-xs text-green-700">
+                Если настройка правил кажется сложной — просто <strong>отключайте VPN</strong> когда открываете
+                Сбербанк, Тинькофф, Госуслуги или другие .ru сайты. Потом включите VPN обратно.
+                Это самый надёжный способ.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* ── Troubleshooting ── */}
       <Card className="mb-6">
         <CardHeader>
@@ -281,6 +373,14 @@ export function RussiaGuidePage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-3 text-sm">
+            <FAQ
+              q="I can't open Sberbank / Tinkoff / VTB / other Russian banks"
+              a="Russian banks block foreign IP addresses. When VPN is on, they see a Finnish IP and refuse. Solution: Switch your VPN app to 'Rule' mode (see the '🏦 Russian Banks' section above) — this sends Russian traffic directly without VPN. Or simply turn off VPN when using Russian banking apps."
+            />
+            <FAQ
+              q=".ru websites don't load with VPN on"
+              a="Some .ru sites restrict access from foreign IPs. Use 'Rule' mode in your VPN app to bypass Russian domains, or temporarily disable VPN for .ru sites."
+            />
             <FAQ
               q="I imported the subscription but can't connect"
               a="Try updating the subscription (pull-to-refresh in V2RayTun, or tap the refresh icon in V2RayNG). If the server IP was recently blocked, the subscription will provide a new server."
@@ -326,6 +426,7 @@ export function RussiaGuidePage() {
             <p><strong>Шаг 2:</strong> Перейдите в <strong>Панель управления</strong> → нажмите <strong>«Copy VPN Link»</strong></p>
             <p><strong>Шаг 3:</strong> Откройте Изи VPN → <strong>+</strong> → <strong>«Import from clipboard»</strong></p>
             <p><strong>Шаг 4:</strong> Нажмите <strong>«Подключиться»</strong> → готово! ✅</p>
+            <p className="mt-2"><strong>⚠️ Сбербанк / Тинькофф / банки:</strong> Если не открываются банки — переключите режим VPN на <strong>«Правила» (Rule)</strong>. Подробная инструкция выше в разделе «🏦 Доступ к российским банкам».</p>
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 mt-1 text-xs text-blue-700">
               💬 Если нужна помощь, напишите нам в Telegram: <a href="https://t.me/ikambavpn" target="_blank" rel="noopener noreferrer" className="underline font-medium">@ikambavpn</a>
             </div>

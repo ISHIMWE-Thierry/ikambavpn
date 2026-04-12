@@ -840,6 +840,18 @@ export function DashboardPage() {
                   </div>
                 </div>
 
+                {/* Bank access tip */}
+                <Link to="/russia-guide" className="block mb-4">
+                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200
+                    hover:bg-amber-100 transition-colors">
+                    <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                    <div className="text-xs leading-relaxed text-amber-800">
+                      <span className="font-semibold">Сбербанк / .ru не открывается?</span>{' '}
+                      Переключите VPN в режим «Правила». Нажмите для инструкции →
+                    </div>
+                  </div>
+                </Link>
+
                 {activeOrder.expiresAt && (
                   <CountdownDisplay
                     targetEpochMs={new Date(activeOrder.expiresAt).getTime()}
