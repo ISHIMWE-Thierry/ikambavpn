@@ -4,7 +4,7 @@ import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
   Power, Copy, Check, Wifi, WifiOff, Shield, Zap, Clock,
   ChevronDown, Download, RefreshCw, Activity, ExternalLink,
-  ChevronRight, AlertCircle, ArrowRight, Upload, Image,
+  ChevronRight, AlertCircle, ArrowRight, Upload, Image, RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserOrders, getUserTrial, uploadPaymentProof, updateOrderStatus, getAppSettings, getPlans, type AppPaymentSettings } from '../lib/db-service';
@@ -265,7 +265,7 @@ export function DashboardPage() {
   const [activated, setActivated]     = useState(false);
   const [copied, setCopied]           = useState(false);
   const [hasEverCopied, setHasEverCopied] = useState(false);
-  const [copiedBackup, setCopiedBackup] = useState(false);
+  const [updatingApp, setUpdatingApp] = useState(false);
   const [activateError, setActivateError] = useState<string | null>(null);
   const [upgradePopup, setUpgradePopup] = useState<VpnPlan | null>(null);
   const [stats, setStats]             = useState<XuiClientStat | null>(null);
@@ -487,17 +487,29 @@ export function DashboardPage() {
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
 
-  async function copyBackup() {
-    if (!firebaseUser?.email || !canCopyLink) return;
-    const base = import.meta.env.DEV ? 'http://localhost:4000' : 'https://ikambavpn.duckdns.org:4443';
+  async function updateApp() {
+    setUpdatingApp(true);
     try {
-      const res = await fetch(`${base}/xui-public/xhttp-link/${encodeURIComponent(firebaseUser.email)}`);
-      const data = await res.json();
-      if (data.ok && data.link) {
-        await navigator.clipboard.writeText(data.link);
-        setCopiedBackup(true); setTimeout(() => setCopiedBackup(false), 3000);
+      // Clear all caches (Cache API)
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map(n => caches.delete(n)));
       }
-    } catch {}
+      // Unregister service workers
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+      // Clear localStorage/sessionStorage app cache
+      try { localStorage.clear(); } catch {}
+      try { sessionStorage.clear(); } catch {}
+      toast.success('Cache cleared! Reloading with latest version…');
+      // Hard reload — bypass browser cache
+      setTimeout(() => window.location.replace(window.location.origin), 800);
+    } catch {
+      toast.error('Update failed. Try clearing your browser data manually.');
+      setUpdatingApp(false);
+    }
   }
 
   async function runDiag() {
@@ -1333,27 +1345,25 @@ export function DashboardPage() {
                   className="overflow-hidden"
                 >
                   <div className="px-6 pb-6 border-t border-gray-100 pt-5 space-y-4">
-                    {/* Backup link */}
+                    {/* Update App */}
                     <div>
-                      <p className="text-sm font-semibold mb-1">Blocked by your ISP?</p>
+                      <p className="text-sm font-semibold mb-1">Update App</p>
                       <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-                        Copy a backup link using a different transport that bypasses most ISP blocks.
+                        Clear the IkambaVPN cache and reload with the latest deployment available.
                       </p>
                       <button
-                        onClick={copyBackup}
-                        disabled={!canCopyLink}
+                        onClick={updateApp}
+                        disabled={updatingApp}
                         className={`w-full rounded-full h-10 flex items-center justify-center gap-2
                           text-sm font-semibold transition-all duration-150 ${
-                          !canCopyLink
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : copiedBackup
-                            ? 'bg-green-500 text-white'
+                          updatingApp
+                            ? 'bg-blue-500 text-white cursor-wait'
                             : 'bg-black text-white hover:bg-gray-800'
                         }`}
                       >
-                        {copiedBackup
-                          ? <><Check className="w-4 h-4" /> Copied</>
-                          : <><Copy className="w-4 h-4" /> Copy backup link</>
+                        {updatingApp
+                          ? <><RefreshCw className="w-4 h-4 animate-spin" /> Updating…</>
+                          : <><RotateCcw className="w-4 h-4" /> Update App</>
                         }
                       </button>
                     </div>
