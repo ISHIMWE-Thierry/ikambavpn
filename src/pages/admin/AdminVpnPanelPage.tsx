@@ -1035,14 +1035,14 @@ function LiveActivityPanel({
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[10px] text-green-600 font-medium">● Connected</span>
+                            {user.onlineServer && (
+                              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">
+                                📍 {user.onlineServer}
+                              </span>
+                            )}
                             {user.sourceIps.length > 0 && (
                               <span className="text-[10px] text-green-500">
                                 · {user.sourceIps[0]}
-                              </span>
-                            )}
-                            {user.inboundsUsed.length > 0 && (
-                              <span className="text-[10px] text-green-500">
-                                · {user.inboundsUsed.join(', ')}
                               </span>
                             )}
                           </div>

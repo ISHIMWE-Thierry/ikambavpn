@@ -355,6 +355,7 @@ export async function getAdminOnlines(): Promise<string[]> {
 export interface UserActivitySummary {
   email: string;
   isOnline: boolean;
+  onlineServer: string | null; // which server(s) user is connected to
   lastSeen: string | null;
   lastSeenAgo: string | null;
   sourceIps: string[];

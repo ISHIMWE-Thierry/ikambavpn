@@ -30,7 +30,7 @@ import {
   resetClientTraffic,
   getCachedSubscription,
   clearSubCache,
-  getOnlineClients,
+  getAllOnlineClients,
   getRecentConnections,
   getUserActivitySummaries,
   isNoiseDest,
@@ -714,7 +714,7 @@ xuiRouter.get(
         return res.status(403).json({ ok: false, error: "Admin only" });
       }
 
-      const onlines = await getOnlineClients();
+      const onlines = await getAllOnlineClients();
       return res.json({ ok: true, data: onlines });
     } catch (err: any) {
       return res.status(500).json({ ok: false, error: err.message });

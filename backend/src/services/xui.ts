@@ -61,6 +61,10 @@ export interface ServerConfig {
   wsPort?: number;         // default: 2083
   wsPath?: string;         // default: /ws-tunnel
   wsHost?: string;         // default: dl.google.com
+  // Panel credentials for querying this server's 3X-UI API (online status, etc.)
+  panelUrl?: string;       // e.g. "https://187.77.71.106:2053/ikamba-panel"
+  panelUser?: string;
+  panelPass?: string;
 }
 
 /** This server's config (built from env vars) */
@@ -93,6 +97,9 @@ function parseSecondaryServers(): ServerConfig[] {
       wsPort: s.wsPort || WS_PORT,
       wsPath: s.wsPath || WS_PATH,
       wsHost: s.wsHost || WS_HOST,
+      panelUrl: s.panelUrl || "",
+      panelUser: s.panelUser || "",
+      panelPass: s.panelPass || "",
     }));
   } catch (err) {
     console.error("[multi-server] Failed to parse SECONDARY_SERVERS env var:", err);
@@ -357,6 +364,92 @@ export async function getOnlineClients(): Promise<string[]> {
   }
 }
 
+// ── Remote Panel Session Cache ────────────────────────────────────────────────
+// Each secondary server has its own 3X-UI panel session cookie.
+
+const remoteSessions = new Map<string, { cookie: string; expiresAt: number }>();
+
+async function loginRemotePanel(server: ServerConfig): Promise<string> {
+  if (!server.panelUrl || !server.panelUser || !server.panelPass) return "";
+
+  const key = server.ip;
+  const cached = remoteSessions.get(key);
+  if (cached && cached.expiresAt > Date.now() + 300_000) return cached.cookie;
+
+  try {
+    const res = await fetch(`${server.panelUrl}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `username=${encodeURIComponent(server.panelUser)}&password=${encodeURIComponent(server.panelPass)}`,
+      redirect: "manual",
+    });
+
+    if (!res.ok && res.status !== 302) return "";
+
+    const cookies = res.headers.getSetCookie?.() ?? [];
+    const sessionCookie = cookies.find((c) => c.startsWith("3x-ui=") || c.startsWith("session="));
+    const cookie = sessionCookie?.split(";")[0] ?? "";
+    remoteSessions.set(key, { cookie, expiresAt: Date.now() + 3600_000 });
+    return cookie;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Get online clients from a REMOTE 3X-UI panel.
+ */
+async function getRemoteOnlineClients(server: ServerConfig): Promise<string[]> {
+  if (!server.panelUrl) return [];
+  try {
+    const cookie = await loginRemotePanel(server);
+    if (!cookie) return [];
+
+    const res = await fetch(`${server.panelUrl}/panel/api/inbounds/onlines`, {
+      method: "POST",
+      headers: { Cookie: cookie, Accept: "application/json" },
+    });
+    if (!res.ok) return [];
+
+    const data = (await res.json()) as { success: boolean; obj?: string[] };
+    return data.success && data.obj ? data.obj : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get online clients from ALL servers (local + secondary panels).
+ * Returns deduplicated email list with server labels.
+ */
+export async function getAllOnlineClients(): Promise<{ email: string; server: string }[]> {
+  // Query local panel + all secondary panels in parallel
+  const localPromise = getOnlineClients().then((emails) =>
+    emails.map((e) => ({ email: e, server: PRIMARY_SERVER.label }))
+  );
+
+  const remotePromises = SECONDARY_SERVERS.map((server) =>
+    getRemoteOnlineClients(server).then((emails) =>
+      emails.map((e) => ({ email: e, server: server.label }))
+    )
+  );
+
+  const results = await Promise.all([localPromise, ...remotePromises]);
+  const all = results.flat();
+
+  // Deduplicate — if same email is on multiple servers, list all servers
+  const byEmail = new Map<string, Set<string>>();
+  for (const { email, server } of all) {
+    if (!byEmail.has(email)) byEmail.set(email, new Set());
+    byEmail.get(email)!.add(server);
+  }
+
+  return [...byEmail.entries()].map(([email, servers]) => ({
+    email,
+    server: [...servers].join(", "),
+  }));
+}
+
 /**
  * Connection log entry parsed from Xray access log.
  */
@@ -423,6 +516,7 @@ export async function getRecentConnections(maxLines: number = 500): Promise<Conn
 export interface UserActivitySummary {
   email: string;
   isOnline: boolean;
+  onlineServer: string | null; // which server(s) user is connected to
   lastSeen: string | null;
   lastSeenAgo: string | null;
   sourceIps: string[];
@@ -465,12 +559,16 @@ export function isNoiseDest(dest: string, port: string): boolean {
  * Build an activity summary for all users from access logs + online status.
  */
 export async function getUserActivitySummaries(): Promise<UserActivitySummary[]> {
-  const [onlineEmails, connections] = await Promise.all([
-    getOnlineClients(),
+  const [onlineList, connections] = await Promise.all([
+    getAllOnlineClients(),
     getRecentConnections(2000),
   ]);
 
-  const onlineSet = new Set(onlineEmails);
+  // Build online lookup: email -> server label(s)
+  const onlineMap = new Map<string, string>();
+  for (const entry of onlineList) {
+    onlineMap.set(entry.email, entry.server);
+  }
 
   // Group connections by email — filter out internal API calls (no email)
   const byUser = new Map<string, ConnectionLogEntry[]>();
@@ -483,7 +581,7 @@ export async function getUserActivitySummaries(): Promise<UserActivitySummary[]>
   const summaries: UserActivitySummary[] = [];
 
   // Include ALL emails — both those in logs AND those currently online
-  const allEmails = new Set([...byUser.keys(), ...onlineEmails]);
+  const allEmails = new Set([...byUser.keys(), ...onlineMap.keys()]);
 
   for (const email of allEmails) {
     const conns = byUser.get(email) || [];
@@ -537,9 +635,10 @@ export async function getUserActivitySummaries(): Promise<UserActivitySummary[]>
 
     summaries.push({
       email,
-      isOnline: onlineSet.has(email),
+      isOnline: onlineMap.has(email),
+      onlineServer: onlineMap.get(email) || null,
       lastSeen,
-      lastSeenAgo: onlineSet.has(email) ? "now" : lastSeenAgo,
+      lastSeenAgo: onlineMap.has(email) ? "now" : lastSeenAgo,
       sourceIps,
       connectionCount: realConns.length, // meaningful connections only
       topDomains,
