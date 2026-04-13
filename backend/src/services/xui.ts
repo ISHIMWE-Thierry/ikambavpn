@@ -527,31 +527,78 @@ export interface UserActivitySummary {
 }
 
 /**
- * Check if a destination is "noise" — DNS queries, raw IPs, internal API, etc.
- * These pollute the activity logs and aren't real user-visited sites.
+ * Check if a destination is "noise" — DNS, OS telemetry, push services, system
+ * background traffic, etc. These are automated connections from the user's device,
+ * NOT real websites the user intentionally visited.
+ *
+ * We keep: social media, streaming, messaging apps, real websites, email servers.
+ * We filter: DNS, push services, telemetry, system updates, our own VPN infra.
  */
 export function isNoiseDest(dest: string, port: string): boolean {
+  // ── Always noise ──
   // DNS resolvers (port 53)
   if (port === "53") return true;
-  // Raw IP addresses (no domain name)
+  // SSDP / multicast / mDNS
+  if (port === "1900" || port === "5353") return true;
+  // Raw IP addresses (no domain name — not a real website)
   if (/^\d+\.\d+\.\d+\.\d+$/.test(dest)) return true;
   // Localhost / internal API
   if (dest === "127.0.0.1" || dest === "localhost") return true;
-  // Common DNS-over-HTTPS / resolver noise
-  const dnsNoise = [
-    "dns.google",
-    "chrome.cloudflare-dns.com",
-    "cloudflare-dns.com",
-    "1.1.1.1",
-    "8.8.8.8",
-    "8.8.4.4",
-    "77.88.8.8",
-    "77.88.8.1",
-    "dns.adguard.com",
-    "dns.quad9.net",
-    "doh.opendns.com",
-  ];
-  if (dnsNoise.includes(dest.toLowerCase())) return true;
+
+  const d = dest.toLowerCase();
+
+  // ── Our own VPN infrastructure ──
+  if (d.includes("ikambavpn") || d.includes("duckdns.org")) return true;
+
+  // ── DNS-over-HTTPS / resolver services ──
+  if (
+    d === "dns.google" ||
+    d === "one.one.one.one" ||
+    d.includes("cloudflare-dns.com") ||
+    d === "dns.adguard.com" ||
+    d === "dns.quad9.net" ||
+    d === "doh.opendns.com"
+  ) return true;
+
+  // ── OS push / keep-alive services (not user-initiated) ──
+  if (d === "mtalk.google.com") return true;               // Android push
+  if (d === "courier.push.apple.com") return true;          // Apple push (APNs)
+  if (d.endsWith(".push.apple.com")) return true;           // Other APNs endpoints
+  if (d === "gs-loc.apple.com") return true;                // Apple location services
+  if (d === "tether.edge.apple") return true;               // Apple tethering probe
+  if (d === "bag.itunes.apple.com") return true;            // Apple config bag
+  if (d === "gateway.icloud.com") return true;              // iCloud gateway keep-alive
+  if (d === "gsa.apple.com") return true;                   // Apple auth services
+
+  // ── Windows / Microsoft telemetry & delivery optimization ──
+  if (d.includes("self.events.data.microsoft.com")) return true;
+  if (d.includes(".prod.do.dsp.mp.microsoft.com")) return true;  // Delivery optimization
+  if (d.includes("settings-win.data.microsoft.com")) return true;
+  if (d.includes("v10.events.data.microsoft.com")) return true;
+  if (d.includes("watson.telemetry.microsoft.com")) return true;
+  if (d.includes("vortex.data.microsoft.com")) return true;
+
+  // ── Google system / auth services (not user-browsed) ──
+  if (d === "oauthaccountmanager.googleapis.com") return true;
+  if (d === "identitytoolkit.googleapis.com") return true;
+  if (d === "securetoken.googleapis.com") return true;
+  if (d === "firebasestorage.googleapis.com") return true;
+  if (d === "firebaselogging-pa.googleapis.com") return true;
+  if (d === "firebaseinstallations.googleapis.com") return true;
+  if (d.includes("update.googleapis.com")) return true;
+  if (d.includes("xgapromomanager-pa.googleapis.com")) return true;
+
+  // ── IDE / dev tool telemetry (background) ──
+  if (d.includes("telemetry.individual.githubcopilot.com")) return true;
+  if (d.includes("vscode-sync.trafficmanager.net")) return true;
+  if (d.includes("otel.gitkraken.com")) return true;
+
+  // ── Antivirus / security software background ──
+  if (d.includes("360safe.com")) return true;
+  if (d.includes("kaspersky")) return true;
+  if (d.includes("avast")) return true;
+
+  // Not noise — this is real traffic
   return false;
 }
 
