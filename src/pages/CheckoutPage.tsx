@@ -1,32 +1,15 @@
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Upload, CheckCircle, Copy, CreditCard, Building2, Loader2 } from 'lucide-react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Upload, CheckCircle, Copy, CreditCard, Building2, Loader2, ExternalLink } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { createOrder, uploadPaymentProof, updateOrderStatus, getAppSettings, getUserOrders, type AppPaymentSettings } from '../lib/db-service';
+import { createYooKassaPayment, checkPaymentStatus } from '../lib/xui-api';
 import { notifyAdminsNewOrder, notifyAdminsPaymentProof } from '../lib/email-service';
 import { Button } from '../components/ui/button';
 import { formatCurrency } from '../lib/utils';
 import { PageTransition } from '../components/PageTransition';
 import type { VpnPlan } from '../types';
 import toast from 'react-hot-toast';
-
-// ── Lazy-load RevenueCat to prevent module-level crashes ──────────────────────
-// The @revenuecat/purchases-js SDK can throw at import time when the API key
-// is missing or the browser environment isn't supported, which kills the entire
-// checkout page (white screen). By lazy-loading, bank transfer always works.
-type RCPackage = any;
-let rcModule: typeof import('../lib/revenuecat') | null = null;
-
-async function loadRevenueCat() {
-  if (rcModule) return rcModule;
-  try {
-    rcModule = await import('../lib/revenuecat');
-    return rcModule;
-  } catch (err) {
-    console.warn('[Checkout] RevenueCat module failed to load:', err);
-    return null;
-  }
-}
 
 type Step = 'review' | 'payment' | 'proof' | 'done';
 type PaymentMethod = 'bank' | 'card';
@@ -41,13 +24,14 @@ const STEP_LABELS: Record<Step, string> = {
 export function CheckoutPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { firebaseUser, profile } = useAuth();
 
   const plan = (location.state as { plan?: VpnPlan })?.plan;
   const isUpgrade = (location.state as { isUpgrade?: boolean })?.isUpgrade ?? false;
 
   const [step, setStep] = useState<Step>('review');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card');
   const [paymentSettings, setPaymentSettings] = useState<AppPaymentSettings | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -55,14 +39,12 @@ export function CheckoutPage() {
   const [creatingOrder, setCreatingOrder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // RevenueCat card payment state
+  // YooKassa card payment state
   const [cardProcessing, setCardProcessing] = useState(false);
-  const [rcPackages, setRcPackages] = useState<RCPackage[]>([]);
+  const [pollingPayment, setPollingPayment] = useState(false);
 
-  // Whether RevenueCat card option is available
-  // Card payments are disabled until the API key is active AND admin enables it
-  const rcApiKeySet = !!import.meta.env.VITE_REVENUECAT_API_KEY;
-  const cardAvailable = rcApiKeySet && (paymentSettings?.paygateEnabled ?? false);
+  // Card payments always available via YooKassa (backend checks config)
+  const cardAvailable = true;
 
   // Compute USD equivalent using admin rate
   const rubRate = paymentSettings?.rubToUsdRate || 0;
@@ -78,22 +60,7 @@ export function CheckoutPage() {
     // Load payment account details from shared appdata (same doc as Blink-1)
     getAppSettings().then((settings) => {
       setPaymentSettings(settings);
-      // If card payments were disabled by admin, force-switch to bank
-      if (!settings.paygateEnabled && paymentMethod === 'card') {
-        setPaymentMethod('bank');
-      }
     });
-
-    // Init RevenueCat and load offerings (lazy-loaded to prevent crashes)
-    if (firebaseUser && rcApiKeySet) {
-      loadRevenueCat().then((rc) => {
-        if (!rc) return;
-        rc.initRevenueCat(firebaseUser.uid);
-        rc.getCurrentOffering().then((offering: any) => {
-          if (offering) setRcPackages(offering.availablePackages);
-        }).catch((err: any) => console.warn('[Checkout] RC offerings fetch failed:', err));
-      });
-    }
 
     // Guard: block if user has pending order OR has active plan (unless upgrading)
     if (firebaseUser) {
@@ -173,7 +140,7 @@ export function CheckoutPage() {
       }).catch(() => {});
 
       if (paymentMethod === 'card') {
-        // RevenueCat flow: open Stripe checkout via RC SDK
+        // YooKassa flow: create payment → redirect to YooKassa hosted page
         await handleCardPayment(id);
       } else {
         setStep('payment');
@@ -186,63 +153,41 @@ export function CheckoutPage() {
     }
   };
 
-  /** RevenueCat card payment: find matching RC package → open checkout */
+  /** YooKassa card payment: create payment → redirect to hosted checkout */
   const handleCardPayment = useCallback(async (orderIdParam: string) => {
-    const rc = await loadRevenueCat();
-    if (!rc || !rc.isRevenueCatReady()) {
-      toast.error('Card payments are not configured yet.');
-      return;
-    }
     setCardProcessing(true);
     try {
-      // Find the RevenueCat package that matches this plan by identifier or name
-      let rcPkg = rcPackages.find(
-        (p: any) => p.identifier === plan.id || p.identifier === `$rc_${plan.name.toLowerCase()}`,
-      );
-      // Fallback: pick the first package if only one exists, or by product name
-      if (!rcPkg && rcPackages.length === 1) rcPkg = rcPackages[0];
-      if (!rcPkg) rcPkg = rcPackages.find((p: any) => p.webBillingProduct?.title?.toLowerCase().includes(plan.name.toLowerCase()));
+      const result = await createYooKassaPayment({
+        orderId: orderIdParam,
+        planId: plan.id,
+        planName: plan.name,
+        amount: plan.price,
+        currency: plan.currency,
+      });
 
-      if (!rcPkg) {
-        toast.error('No matching product found. Please contact support.');
+      if (!result.confirmationUrl) {
+        toast.error('Payment service unavailable. Try bank transfer.');
         setPaymentMethod('bank');
         setStep('payment');
         return;
       }
 
-      // Open RevenueCat / Stripe checkout — this blocks until purchase is complete or cancelled
-      const customerInfo = await rc.purchasePackage(
-        rcPkg,
-        firebaseUser?.email || undefined,
-      );
-
-      // Purchase succeeded — update order status
-      const hasEntitlement = Object.keys(customerInfo.entitlements.active).length > 0;
-      if (hasEntitlement) {
-        await updateOrderStatus(orderIdParam, 'payment_submitted', {
-          rcPurchaseComplete: true,
-        });
-        toast.success('Payment received! 🎉');
-        setStep('done');
-      } else {
-        // Payment went through but no entitlement yet — still mark as submitted
-        await updateOrderStatus(orderIdParam, 'payment_submitted');
-        setStep('done');
-      }
+      // Redirect user to YooKassa hosted payment page
+      toast.success('Redirecting to payment page…');
+      window.location.href = result.confirmationUrl;
     } catch (err: any) {
-      console.error('[Checkout] RevenueCat card payment error:', err);
-      // User may have closed the checkout — don't show error for cancellation
-      if (err?.message?.includes('cancelled') || err?.message?.includes('closed')) {
-        toast('Payment cancelled. You can retry or switch to bank transfer.', { icon: '↩️' });
+      console.error('[Checkout] YooKassa payment error:', err);
+      if (err?.message?.includes('not available')) {
+        toast.error('Online payments are not available yet. Use bank transfer.');
       } else {
-        toast.error('Card payment failed. Try bank transfer instead.');
+        toast.error(err?.message || 'Card payment failed. Try bank transfer instead.');
       }
       setPaymentMethod('bank');
       setStep('payment');
     } finally {
       setCardProcessing(false);
     }
-  }, [rcPackages, plan, firebaseUser]);
+  }, [plan, firebaseUser]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -389,8 +334,8 @@ export function CheckoutPage() {
                     <CreditCard className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-black">Pay with card</p>
-                    <p className="text-xs text-gray-400">Visa, Mastercard, Apple Pay, Google Pay</p>
+                  <p className="text-sm font-semibold text-black">Pay online</p>
+                  <p className="text-xs text-gray-400">Card, SBP, YooMoney, Mir</p>
                   </div>
                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0
                     ${paymentMethod === 'card' ? 'border-black' : 'border-gray-300'}`}
@@ -404,7 +349,7 @@ export function CheckoutPage() {
 
           <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600">
             {paymentMethod === 'card'
-              ? 'You will be redirected to a secure payment page to complete your purchase.'
+              ? 'You will be redirected to a secure YooKassa page. Your VPN will activate automatically after payment.'
               : 'You will receive payment instructions on the next step. After paying, upload a screenshot to confirm.'}
           </div>
 
@@ -414,7 +359,7 @@ export function CheckoutPage() {
         </div>
       )}
 
-      {/* Step 2: Payment instructions (card via RevenueCat) */}
+      {/* Step 2: Payment instructions (card via YooKassa) */}
       {step === 'payment' && paymentMethod === 'card' && (
         <div className="flex flex-col gap-6">
           <h1 className="text-2xl font-bold">Complete card payment</h1>
@@ -433,32 +378,32 @@ export function CheckoutPage() {
             <div className="border-t border-gray-100 pt-4">
               <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
                 <CreditCard className="w-4 h-4" />
-                <span>Visa, Mastercard, Apple Pay, Google Pay</span>
+                <span>Visa, Mastercard, Mir, SBP, YooMoney</span>
               </div>
 
               {cardProcessing ? (
                 <div className="flex flex-col items-center gap-3 py-4">
                   <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                  <p className="text-sm text-gray-500">Opening secure checkout…</p>
+                  <p className="text-sm text-gray-500">Creating payment…</p>
                 </div>
               ) : (
                 <button
                   onClick={() => orderId && handleCardPayment(orderId)}
-                  disabled={!orderId || rcPackages.length === 0}
+                  disabled={!orderId}
                   className="flex items-center justify-center gap-2 w-full h-12 bg-black text-white
                     rounded-xl text-sm font-semibold hover:bg-gray-800 active:scale-[0.98]
                     transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <CreditCard className="w-4 h-4" />
-                  Pay with card
+                  <ExternalLink className="w-4 h-4" />
+                  Pay with YooKassa
                 </button>
               )}
             </div>
           </div>
 
           <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600 leading-relaxed">
-            Click the button above to open the secure checkout. You'll be able to pay with your card,
-            Apple Pay, or Google Pay. Your order will be confirmed automatically.
+            You'll be redirected to a secure YooKassa payment page. After payment,
+            your VPN will be activated automatically within a minute.
           </div>
 
           <p className="text-xs text-gray-400 text-center">
@@ -582,10 +527,13 @@ export function CheckoutPage() {
       {step === 'done' && (
         <div className="flex flex-col items-center gap-6 text-center py-8">
           <CheckCircle className="w-16 h-16 text-black" />
-          <h1 className="text-2xl font-bold">Payment submitted!</h1>
+          <h1 className="text-2xl font-bold">
+            {paymentMethod === 'card' ? 'Payment complete!' : 'Payment submitted!'}
+          </h1>
           <p className="text-gray-500 max-w-sm">
-            Your payment proof has been received. Our team will review it and activate your VPN service within a few hours.
-            You'll be notified by email when it's ready.
+            {paymentMethod === 'card'
+              ? 'Your payment has been processed. Your VPN service will be activated automatically within a minute.'
+              : 'Your payment proof has been received. Our team will review it and activate your VPN service within a few hours. You\'ll be notified by email when it\'s ready.'}
           </p>
           <Button onClick={() => navigate('/dashboard')} className="w-full max-w-xs">
             Go to dashboard

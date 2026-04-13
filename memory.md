@@ -179,3 +179,91 @@ Users are getting auto-disconnected from the VPN.
 - **Bug fix:** `activeOrder` variable was used in a `useEffect` before its declaration. Fixed by computing `hasActiveOrder` from `orders` array above the useEffect and using that as the dependency instead.
 - **Lesson:** In React components, `useEffect` dependencies must reference variables declared ABOVE the hook — derived `const` values computed later in the component body cause "used before declaration" errors. Either compute them earlier or use the source data (`orders`) as the dependency.
 - **Files changed:** `DashboardPage.tsx`, `PremiumBadge.tsx`
+
+---
+
+# Ikamba Remit (Blink-1) — Session April 2026
+
+## Project
+- **Repo:** `ISHIMWE-Thierry/blink`, branch `main`
+- **Path:** `/Users/ishimwethierry/Downloads/Ikamba Remit./blink-1/`
+- **Stack:** Vite + React + TypeScript + Tailwind/Shadcn UI + Firebase (Firestore/Auth/Storage/Functions)
+- **Firebase project:** `ikamba-1c669` (shared with IkambaVPN and Hpersona)
+- **Domains:**
+  - `ikambaventures.com` — Cloudflare **Pro**, zone ID `8ff08edf3914c895890f2f9e306aa0bc` — ✅ works in Russia
+  - `ikambaremit.com` — Cloudflare **Free**, zone ID `54387fc2f594c956a6d6114fe5e5dc1a` — ❌ blocked in Russia (shared IPs)
+  - Both point to **Railway** as hosting backend
+- **Firebase API key:** `AIzaSyDQaB0pa-264W5TrjykZ9nbWSvWOh9-smY`
+
+## Problem: Firebase Blocked in Russia
+- Firebase domains (`*.googleapis.com`, `*.firebaseio.com`) are blocked/throttled in Russia
+- Users had to use VPN to access the app — bad UX
+- `ikambaventures.com` (Cloudflare Pro) is NOT blocked in Russia
+
+## Solution: Cloudflare Worker Proxy
+
+### Cloudflare Worker (`ikamba-firebase-proxy`)
+- **Worker:** `ikamba-firebase-proxy` deployed at `ikamba-firebase-proxy.thierry-ru-net.workers.dev`
+- **File:** `cloudflare-proxy/worker.js` + `cloudflare-proxy/wrangler.toml`
+- **Route ID:** `598efe5925b84ebeb740b07cea65c9c6` (`ikambaventures.com/fb/*`)
+- **Wrangler OAuth:** stored at `/Users/ishimwethierry/Library/Preferences/.wrangler/config/default.toml`
+- **Proxy routes:**
+  - `/fb/firestore/` → `firestore.googleapis.com`
+  - `/fb/auth/` → `identitytoolkit.googleapis.com`
+  - `/fb/token/` → `securetoken.googleapis.com`
+  - `/fb/storage/` → `firebasestorage.googleapis.com`
+  - `/api/fn/` → `us-central1-ikamba-1c669.cloudfunctions.net`
+  - `/fb/health` → health check endpoint
+- **CORS:** Allows `ikambaventures.com`, `ikambaremit.com`, `localhost:5173`
+- **Status:** All endpoints tested and working ✅
+
+### Frontend Proxy Helper (`src/lib/firebase-proxy.ts`)
+- **Auto-detection:** `bootFirebaseProxy()` sends HEAD request to `firestore.googleapis.com` with 2s timeout
+- **SessionStorage cache:** `fb_blocked` key — `'0'` or `'1'` — returning visitors get 0ms overhead
+- **Fetch/XHR patching:** `installFetchProxy()` + `installXHRProxy()` rewrite Firebase domains to proxy paths
+- **Domain rewrites:**
+  - `firestore.googleapis.com` → `ikambaventures.com/fb/firestore`
+  - `identitytoolkit.googleapis.com` → `ikambaventures.com/fb/auth`
+  - `securetoken.googleapis.com` → `ikambaventures.com/fb/token`
+  - `firebasestorage.googleapis.com` → `ikambaventures.com/fb/storage`
+- **Control:** `isProxyActive()`, `forceEnableProxy()`, `forceDisableProxy()`
+
+### Firebase Integration (`src/lib/firebase.ts`)
+- Added `import { isProxyActive } from './firebase-proxy'`
+- Firestore init: `experimentalForceLongPolling: true` when `isProxyActive()` (WebSocket bypass)
+
+### App Boot (`src/main.tsx`)
+- `bootFirebaseProxy()` called before Firebase module imports
+- `proxyReady` wrapped in `.catch(() => false)` — proxy failure never kills boot
+- `APP_INIT_TIMEOUT_MS = 15000` (was 45s)
+
+### Environment Variables
+- `.env.production`: `VITE_FUNCTIONS_PROXY_URL=https://ikambaventures.com/api/fn`
+- `.env.production`: `VITE_CUSTOM_AUTH_DOMAIN=ikambaventures.com`
+
+## App Boot Reliability Fixes (Commit `0bd63d2`)
+- **Proxy detection non-fatal:** `proxyReady` wrapped in `.catch(() => false)`
+- **Faster timeout:** `APP_INIT_TIMEOUT` reduced from 45s → 15s
+- **Skeleton timeouts:** Warning at 8s (was 20s), reload button at 15s (was 45s)
+- **Auto-cache-clear:** Tracks `boot_fail_count` in sessionStorage — 2nd consecutive failure auto-clears all caches (SW + CacheAPI + localStorage) then reloads
+- **Better error UI:** Shows actual error message on 1st failure
+- **Clear Cache button:** Now also unregisters all service workers
+
+## Key Architecture Notes
+- **Railway domains (`*.up.railway.app`)** — NOT blocked in Russia (not a targeted service)
+- **Cloudflare Free IPs** — blocked in Russia due to shared IP ranges caught in broad blocking
+- **Cloudflare Pro IPs** — dedicated, NOT blocked
+- **Redirect ikambaremit→ikambaventures** — NOT possible for Russian users (can't reach ikambaremit.com at all)
+- **Railway doesn't provide nameservers** — can't move DNS there, Cloudflare is the DNS provider
+- **Solution for Russian users:** Just use `ikambaventures.com` directly
+
+## Wallets Overview Improvements (Earlier in session)
+- IndexedDB cache for wallets data
+- NEW badges on cardholders
+- Sort cardholders by latest transaction
+
+## Cloudflare API Token
+- **Token:** `6Pzb4JGBk4JKjo5b-Wx2MVRlWSIftXtbM7uBk3JaFMA.1tmi6l6UWSmAb3wWsNToPW4y2-bj-BYGX-S0MqhE6-M`
+- **Permissions:** Zone read, DNS edit, Workers routes edit
+- **Zones accessible:** `ikambaventures.com` (Pro), `ikambaremit.com` (Free)
+

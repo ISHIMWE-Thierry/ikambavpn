@@ -37,6 +37,12 @@ import {
 } from "../services/xui";
 import { getFirestore } from "../services/firebase";
 import { getHistory } from "../services/vpn-analytics";
+import {
+  createPayment,
+  getPayment,
+  verifyWebhookPayment,
+  isYooKassaConfigured,
+} from "../services/yookassa";
 
 export const xuiRouter = Router();
 
@@ -800,3 +806,251 @@ xuiRouter.get(
     }
   }
 );
+
+// ── YooKassa Payment Routes ───────────────────────────────────────────────────
+
+/**
+ * POST /xui/payment/create
+ * Create a YooKassa payment for the authenticated user.
+ * Returns a confirmation_url the frontend redirects to.
+ *
+ * Body: {
+ *   orderId: string,     // Firestore order ID (already created by frontend)
+ *   planId: string,      // plan identifier
+ *   planName: string,     // plan display name
+ *   amount: number,       // price in RUB
+ *   currency?: string     // default "RUB"
+ * }
+ */
+xuiRouter.post("/payment/create", async (req: AuthedRequest, res: Response) => {
+  try {
+    if (!isYooKassaConfigured()) {
+      return res.status(503).json({ ok: false, error: "Online payments are not available yet" });
+    }
+
+    const user = req.user as any;
+    const { orderId, planId, planName, amount, currency } = req.body;
+
+    if (!orderId || !amount) {
+      return res.status(400).json({ ok: false, error: "orderId and amount are required" });
+    }
+
+    // Verify the order exists and belongs to this user
+    const db = getFirestore();
+    const orderDoc = await db.collection("vpn_orders").doc(orderId).get();
+    if (!orderDoc.exists) {
+      return res.status(404).json({ ok: false, error: "Order not found" });
+    }
+    const orderData = orderDoc.data()!;
+    if (orderData.userId !== user.uid) {
+      return res.status(403).json({ ok: false, error: "Order does not belong to you" });
+    }
+    if (orderData.status !== "pending_payment") {
+      return res.status(400).json({ ok: false, error: `Order already has status: ${orderData.status}` });
+    }
+
+    // Create payment on YooKassa
+    const payment = await createPayment({
+      amount: amount,
+      currency: currency || "RUB",
+      description: `IkambaVPN — ${planName || "VPN subscription"}`,
+      orderId: orderId,
+      planId: planId,
+      userEmail: user.email || orderData.userEmail,
+    });
+
+    // Save YooKassa payment ID on the order for later lookup
+    await db.collection("vpn_orders").doc(orderId).update({
+      yookassaPaymentId: payment.id,
+      yookassaStatus: payment.status,
+      paymentMethod: "YooKassa",
+      updatedAt: new Date().toISOString(),
+    });
+
+    return res.json({
+      ok: true,
+      data: {
+        paymentId: payment.id,
+        confirmationUrl: payment.confirmation?.confirmation_url,
+        status: payment.status,
+      },
+    });
+  } catch (err: any) {
+    console.error("[yookassa] Payment creation error:", err.message);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * GET /xui/payment/status/:orderId
+ * Check payment status for an order (authenticated).
+ * Used when user returns from YooKassa to verify payment went through.
+ */
+xuiRouter.get("/payment/status/:orderId", async (req: AuthedRequest, res: Response) => {
+  try {
+    const user = req.user as any;
+    const db = getFirestore();
+    const orderDoc = await db.collection("vpn_orders").doc(req.params.orderId).get();
+
+    if (!orderDoc.exists) {
+      return res.status(404).json({ ok: false, error: "Order not found" });
+    }
+
+    const order = orderDoc.data()!;
+    if (order.userId !== user.uid) {
+      return res.status(403).json({ ok: false, error: "Not your order" });
+    }
+
+    // If we have a YooKassa payment ID, re-check status from YooKassa
+    if (order.yookassaPaymentId && order.status === "pending_payment") {
+      try {
+        const ykPayment = await getPayment(order.yookassaPaymentId);
+        if (ykPayment.status === "succeeded" && !order.yookassaActivated) {
+          // Payment succeeded but webhook hasn't processed yet — process now
+          await activateOrderAfterPayment(db, req.params.orderId, order);
+          return res.json({
+            ok: true,
+            data: { status: "active", yookassaStatus: "succeeded" },
+          });
+        }
+        return res.json({
+          ok: true,
+          data: { status: order.status, yookassaStatus: ykPayment.status },
+        });
+      } catch {
+        // YooKassa API error — return what we have
+      }
+    }
+
+    return res.json({
+      ok: true,
+      data: { status: order.status, yookassaStatus: order.yookassaStatus || null },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * POST /xui-public/yookassa-webhook
+ * YooKassa sends payment notifications here (no auth — public endpoint).
+ * We verify by re-fetching payment from YooKassa API.
+ *
+ * Event types:
+ *  - payment.succeeded — auto-activate VPN
+ *  - payment.canceled — mark order as cancelled
+ */
+xuiPublicRouter.post("/yookassa-webhook", async (req: Request, res: Response) => {
+  try {
+    const event = req.body;
+    console.log(`[yookassa-webhook] Received event: ${event?.event}`, JSON.stringify(event?.object?.id));
+
+    if (!event?.object?.id) {
+      return res.status(400).json({ error: "Invalid webhook payload" });
+    }
+
+    const paymentId = event.object.id;
+    const eventType = event.event;
+
+    // Always verify with YooKassa API — never trust the webhook body alone
+    const payment = await verifyWebhookPayment(paymentId);
+    console.log(`[yookassa-webhook] Verified payment ${paymentId}: status=${payment.status}`);
+
+    const orderId = payment.metadata?.order_id;
+    if (!orderId) {
+      console.warn(`[yookassa-webhook] Payment ${paymentId} has no order_id in metadata`);
+      return res.json({ ok: true }); // ACK to YooKassa anyway
+    }
+
+    const db = getFirestore();
+    const orderRef = db.collection("vpn_orders").doc(orderId);
+    const orderDoc = await orderRef.get();
+
+    if (!orderDoc.exists) {
+      console.warn(`[yookassa-webhook] Order ${orderId} not found in Firestore`);
+      return res.json({ ok: true });
+    }
+
+    const order = orderDoc.data()!;
+
+    if (eventType === "payment.succeeded" && payment.status === "succeeded") {
+      if (order.status === "active") {
+        console.log(`[yookassa-webhook] Order ${orderId} already active — skipping`);
+        return res.json({ ok: true });
+      }
+
+      await activateOrderAfterPayment(db, orderId, order);
+      console.log(`[yookassa-webhook] ✅ Order ${orderId} activated successfully`);
+    } else if (eventType === "payment.canceled" || payment.status === "canceled") {
+      await orderRef.update({
+        status: "cancelled",
+        yookassaStatus: "canceled",
+        updatedAt: new Date().toISOString(),
+      });
+      console.log(`[yookassa-webhook] ❌ Order ${orderId} cancelled`);
+    } else {
+      // Update status for other events
+      await orderRef.update({
+        yookassaStatus: payment.status,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    // Always return 200 — YooKassa retries on non-2xx
+    return res.json({ ok: true });
+  } catch (err: any) {
+    console.error("[yookassa-webhook] Error:", err.message);
+    // Still return 200 to prevent infinite retries
+    return res.status(200).json({ ok: true, error: err.message });
+  }
+});
+
+/**
+ * Auto-activate a VPN subscription after successful payment.
+ * Provisions the 3X-UI account and updates the Firestore order.
+ */
+async function activateOrderAfterPayment(
+  db: FirebaseFirestore.Firestore,
+  orderId: string,
+  order: FirebaseFirestore.DocumentData
+): Promise<void> {
+  const email = order.userEmail;
+  if (!email) throw new Error("Order has no userEmail");
+
+  // Determine max connections from plan
+  // Basic = 1 device, Popular = 3, Premium = 5 (fallback: 3)
+  let maxConnections = 3;
+  const planName = (order.planName || "").toLowerCase();
+  if (planName.includes("basic")) maxConnections = 1;
+  else if (planName.includes("premium")) maxConnections = 5;
+
+  // Provision VLESS+REALITY account on 3X-UI
+  const result = await provisionUser(email, {
+    trafficLimitGB: 0, // Unlimited traffic for paid plans
+    expiryDays: 30,     // 1 month
+    maxConnections,
+  });
+
+  // Update order in Firestore
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+  await db.collection("vpn_orders").doc(orderId).update({
+    status: "active",
+    yookassaStatus: "succeeded",
+    yookassaActivated: true,
+    activatedAt: now.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    credentials: {
+      xuiClientId: result.clientId,
+      xuiSubId: result.subId,
+      xuiSubscriptionUrl: result.subscriptionUrl,
+      xuiV2raytunLink: result.v2raytunLink,
+      xuiV2rayngLink: result.v2rayngLink,
+      xuiHiddifyLink: result.hiddifyLink,
+    },
+    updatedAt: now.toISOString(),
+  });
+
+  console.log(`[yookassa] Auto-provisioned VPN for ${email}: clientId=${result.clientId}`);
+}

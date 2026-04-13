@@ -427,6 +427,44 @@ export async function getAdminHistory(days: number = 7, date?: string): Promise<
   return xuiRequest<HistoryResponse>(`/admin/history?${params}`);
 }
 
+// ── YooKassa Payment ──────────────────────────────────────────────────────────
+
+export interface YooKassaPaymentResult {
+  paymentId: string;
+  confirmationUrl: string;
+  status: string;
+}
+
+export interface PaymentStatusResult {
+  status: string;
+  yookassaStatus: string | null;
+}
+
+/**
+ * Create a YooKassa payment for an existing order.
+ * Returns { paymentId, confirmationUrl } — redirect user to confirmationUrl.
+ */
+export async function createYooKassaPayment(params: {
+  orderId: string;
+  planId: string;
+  planName: string;
+  amount: number;
+  currency?: string;
+}): Promise<YooKassaPaymentResult> {
+  return xuiRequest<YooKassaPaymentResult>('/payment/create', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+/**
+ * Check payment status for an order.
+ * Called when user returns from YooKassa to see if payment went through.
+ */
+export async function checkPaymentStatus(orderId: string): Promise<PaymentStatusResult> {
+  return xuiRequest<PaymentStatusResult>(`/payment/status/${orderId}`);
+}
+
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 /** Format bytes to human-readable string */

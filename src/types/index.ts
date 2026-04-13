@@ -55,6 +55,10 @@ export interface VpnOrder {
   paygateAmountReceived?: string;
   // RevenueCat card payment fields
   rcPurchaseComplete?: boolean;
+  // YooKassa payment fields
+  yookassaPaymentId?: string;
+  yookassaStatus?: string;
+  yookassaActivated?: boolean;
 }
 
 export interface VpnCredentials {

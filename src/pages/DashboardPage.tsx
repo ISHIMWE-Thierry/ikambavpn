@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo, type ChangeEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
   Power, Copy, Check, Wifi, WifiOff, Shield, Zap, Clock,
@@ -12,7 +12,7 @@ import { notifyAdminsPaymentProof } from '../lib/email-service';
 import toast from 'react-hot-toast';
 import {
   provisionXuiAccount, getXuiStats, formatBytes, formatExpiry,
-  checkVpnServerHealth, runDiagnostics,
+  checkVpnServerHealth, runDiagnostics, checkPaymentStatus,
 } from '../lib/xui-api';
 import type { XuiClientStat, DiagnosticResult } from '../lib/xui-api';
 import { PremiumBadge } from '../components/PremiumBadge';
@@ -294,6 +294,7 @@ export function DashboardPage() {
   const tierScrollRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const device = useMemo(() => detectDevice(), []);
   const cfg = DEVICE_CONFIG[device];
@@ -343,6 +344,48 @@ export function DashboardPage() {
   useEffect(() => {
     getAppSettings().then(setPaymentSettings).catch(() => {});
   }, []);
+
+  // Handle return from YooKassa payment — poll order status
+  useEffect(() => {
+    if (searchParams.get('payment') !== 'success') return;
+    // Clear the query param so it doesn't re-trigger
+    setSearchParams({}, { replace: true });
+
+    // Find the most recent pending order to check
+    const pendingOrder = orders.find(
+      (o) => o.status === 'pending_payment' && o.yookassaPaymentId,
+    );
+    if (!pendingOrder) {
+      // May have already been activated by webhook — just show success
+      toast.success('Payment processed! Your VPN is being activated.');
+      return;
+    }
+
+    // Poll payment status
+    const pollId = setInterval(async () => {
+      try {
+        const status = await checkPaymentStatus(pendingOrder.id);
+        if (status.status === 'active') {
+          clearInterval(pollId);
+          toast.success('Payment confirmed! Your VPN is now active. 🎉');
+          // Reload orders
+          if (firebaseUser) {
+            getUserOrders(firebaseUser.uid).then(setOrders).catch(() => {});
+          }
+        } else if (status.yookassaStatus === 'canceled') {
+          clearInterval(pollId);
+          toast.error('Payment was cancelled.');
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 3000);
+
+    // Stop polling after 2 minutes
+    setTimeout(() => clearInterval(pollId), 120_000);
+
+    return () => clearInterval(pollId);
+  }, [searchParams, orders, firebaseUser]);
 
   // Load plans when tier picker is opened OR user has active plan (for upgrade cards)
   const hasActiveOrder = orders.some((o) => o.status === 'active' && !!o.expiresAt && !isExpired(o.expiresAt));
