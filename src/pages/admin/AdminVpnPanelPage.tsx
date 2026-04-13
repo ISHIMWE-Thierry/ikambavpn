@@ -4,7 +4,7 @@ import {
   ToggleLeft, ToggleRight, Trash2, RotateCcw, Server, Wifi,
   HardDrive, Cpu, Users, Shield, Link2, Globe, Pencil, Calendar, Zap,
   Database, Eye, Activity, Clock, MapPin, Radio, ArrowLeft, ExternalLink,
-  Signal, AlertTriangle, Search,
+  Signal, AlertTriangle, Search, BarChart3, TrendingUp,
 } from 'lucide-react';
 import {
   getAdminClients,
@@ -19,8 +19,9 @@ import {
   formatExpiry,
   getAdminActivity,
   getAdminUserConnections,
+  getAdminHistory,
 } from '../../lib/xui-api';
-import type { XuiAdminClient, XuiSystemStatus, UserActivitySummary, ConnectionLogEntry } from '../../lib/xui-api';
+import type { XuiAdminClient, XuiSystemStatus, UserActivitySummary, ConnectionLogEntry, DailyAggregate, UserDailyStats, HistoryResponse } from '../../lib/xui-api';
 import {
   syncVpnClientToFirestore,
   bulkSyncVpnClientsToFirestore,
@@ -1150,9 +1151,14 @@ export function AdminVpnPanelPage() {
   const [activity, setActivity] = useState<UserActivitySummary[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [viewingUser, setViewingUser] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'clients' | 'monitor'>('monitor');
+  const [activeTab, setActiveTab] = useState<'clients' | 'monitor' | 'history'>('monitor');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── History state ──
+  const [historyData, setHistoryData] = useState<HistoryResponse | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyDays, setHistoryDays] = useState(7);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1181,6 +1187,18 @@ export function AdminVpnPanelPage() {
       setActivityLoading(false);
     }
   }, []);
+
+  const loadHistory = useCallback(async (days?: number) => {
+    setHistoryLoading(true);
+    try {
+      const data = await getAdminHistory(days || historyDays);
+      setHistoryData(data);
+    } catch {
+      toast.error('Failed to load history');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyDays]);
 
   /** Bulk-sync all 3X-UI clients to Firestore (for old entries that weren't saved) */
   const handleSyncAllToDb = async () => {
@@ -1303,6 +1321,15 @@ export function AdminVpnPanelPage() {
             <Users className="w-4 h-4" />
             Client Manager
           </button>
+          <button
+            onClick={() => { setActiveTab('history'); if (!historyData) loadHistory(); }}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition ${
+              activeTab === 'history' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-black'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            History
+          </button>
         </div>
 
         {/* Server status — always visible */}
@@ -1399,8 +1426,256 @@ export function AdminVpnPanelPage() {
             )}
           </>
         )}
+
+        {/* ── History Tab ── */}
+        {activeTab === 'history' && (
+          <HistoryPanel
+            data={historyData}
+            loading={historyLoading}
+            days={historyDays}
+            onChangeDays={(d) => { setHistoryDays(d); loadHistory(d); }}
+            onRefresh={() => loadHistory()}
+          />
+        )}
       </main>
     </>
+  );
+}
+
+// ── History Panel ─────────────────────────────────────────────────────────────
+
+function HistoryPanel({
+  data,
+  loading,
+  days,
+  onChangeDays,
+  onRefresh,
+}: {
+  data: HistoryResponse | null;
+  loading: boolean;
+  days: number;
+  onChangeDays: (d: number) => void;
+  onRefresh: () => void;
+}) {
+  const dayAggs = data?.days || [];
+  const userHistory = data?.userHistory || [];
+  const maxConnections = Math.max(...dayAggs.map((d) => d.totalConnections), 1);
+
+  return (
+    <div className="space-y-6">
+      {/* Controls */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {[7, 14, 30].map((d) => (
+            <button
+              key={d}
+              onClick={() => onChangeDays(d)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
+                days === d
+                  ? 'border-black bg-black text-white'
+                  : 'border-gray-200 text-gray-500 hover:border-gray-400'
+              }`}
+            >
+              {d}d
+            </button>
+          ))}
+        </div>
+        <button onClick={onRefresh} className="p-2 hover:bg-gray-50 rounded-xl transition" title="Refresh history">
+          <RefreshCw className={`w-4 h-4 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      {loading && !data ? (
+        <div className="flex justify-center py-16">
+          <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : dayAggs.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-gray-400">
+            <BarChart3 className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+            <p>No historical data yet.</p>
+            <p className="text-xs mt-1">Data starts collecting automatically — check back in 30 minutes.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <MiniStat
+              icon={TrendingUp}
+              label="Peak online"
+              value={Math.max(...dayAggs.map((d) => d.peakOnlineCount))}
+              highlight="green"
+            />
+            <MiniStat
+              icon={Users}
+              label="Unique users (today)"
+              value={dayAggs[dayAggs.length - 1]?.totalUniqueUsers || 0}
+            />
+            <MiniStat
+              icon={Activity}
+              label="Connections (today)"
+              value={dayAggs[dayAggs.length - 1]?.totalConnections || 0}
+            />
+            <MiniStat
+              icon={Calendar}
+              label="Days tracked"
+              value={dayAggs.length}
+            />
+          </div>
+
+          {/* Bar chart — connections per day */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-blue-500" />
+                <h3 className="font-semibold text-sm">Daily Connections</h3>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-end gap-1 h-40">
+                {dayAggs.map((day) => {
+                  const height = Math.max((day.totalConnections / maxConnections) * 100, 4);
+                  const isToday = day.date === new Date().toISOString().slice(0, 10);
+                  return (
+                    <div key={day.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                      <span className="text-[9px] text-gray-400 font-medium">{day.totalConnections}</span>
+                      <div
+                        className={`w-full rounded-t-md transition-all ${
+                          isToday ? 'bg-blue-500' : 'bg-blue-200'
+                        }`}
+                        style={{ height: `${height}%` }}
+                        title={`${day.date}: ${day.totalConnections} connections, ${day.peakOnlineCount} peak online`}
+                      />
+                      <span className="text-[9px] text-gray-400 truncate w-full text-center">
+                        {day.date.slice(5)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Peak online per day */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Signal className="w-4 h-4 text-green-500" />
+                <h3 className="font-semibold text-sm">Peak Online Users</h3>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-end gap-1 h-28">
+                {dayAggs.map((day) => {
+                  const maxPeak = Math.max(...dayAggs.map((d) => d.peakOnlineCount), 1);
+                  const height = Math.max((day.peakOnlineCount / maxPeak) * 100, 4);
+                  const isToday = day.date === new Date().toISOString().slice(0, 10);
+                  return (
+                    <div key={day.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                      <span className="text-[9px] text-gray-400 font-medium">{day.peakOnlineCount}</span>
+                      <div
+                        className={`w-full rounded-t-md ${isToday ? 'bg-green-500' : 'bg-green-200'}`}
+                        style={{ height: `${height}%` }}
+                      />
+                      <span className="text-[9px] text-gray-400 truncate w-full text-center">
+                        {day.date.slice(5)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Top global domains (today) */}
+          {dayAggs.length > 0 && (dayAggs[dayAggs.length - 1]?.topDomains?.length ?? 0) > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-purple-500" />
+                  <h3 className="font-semibold text-sm">Top Domains Today</h3>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {(dayAggs[dayAggs.length - 1]?.topDomains || []).slice(0, 15).map((d, i) => {
+                    const cat = categorizeDomain(d.domain);
+                    const maxCount = dayAggs[dayAggs.length - 1].topDomains[0]?.count || 1;
+                    const width = Math.max((d.count / maxCount) * 100, 8);
+                    return (
+                      <div key={d.domain} className="flex items-center gap-3">
+                        <span className="text-[10px] text-gray-400 w-4 text-right">{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${cat.color}`}>
+                              {cat.label}
+                            </span>
+                            <span className="text-xs text-gray-700 truncate">{d.domain}</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-purple-400 rounded-full" style={{ width: `${width}%` }} />
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-gray-400 font-medium shrink-0">{d.count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Per-user stats (today) */}
+          {userHistory.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-orange-500" />
+                  <h3 className="font-semibold text-sm">User Activity Today</h3>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="divide-y divide-gray-50">
+                  {userHistory.map((user) => (
+                    <div key={user.email} className="flex items-center justify-between py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{user.email.split('@')[0]}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {user.peakOnline && (
+                            <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">
+                              was online
+                            </span>
+                          )}
+                          <span className="text-[10px] text-gray-400">
+                            {user.totalConnections} connections
+                          </span>
+                          {user.sourceIps.length > 0 && (
+                            <span className="text-[10px] text-gray-300">
+                              · {user.sourceIps[0]}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 ml-3">
+                        {user.topDomains.slice(0, 3).map((d) => {
+                          const cat = categorizeDomain(d.domain);
+                          return cat.label !== 'Other' ? (
+                            <span key={d.domain} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${cat.color}`}>
+                              {cat.label}
+                            </span>
+                          ) : null;
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

@@ -36,6 +36,7 @@ import {
   isNoiseDest,
 } from "../services/xui";
 import { getFirestore } from "../services/firebase";
+import { getHistory } from "../services/vpn-analytics";
 
 export const xuiRouter = Router();
 
@@ -766,6 +767,34 @@ xuiRouter.get(
         .slice(-200); // last 200 meaningful connections
 
       return res.json({ ok: true, data: userConnections });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err.message });
+    }
+  }
+);
+
+/**
+ * GET /xui/admin/history?days=7&date=2026-04-14
+ * Historical activity data from Firestore.
+ * - days: number of days of aggregate data (default 7, max 30)
+ * - date: specific date to get per-user detail for (default today)
+ *
+ * Reads: ~7-30 aggregate docs + ~25 user docs = ~55 reads per call
+ */
+xuiRouter.get(
+  "/admin/history",
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const isAdmin = await checkIsAdmin(req.user);
+      if (!isAdmin) {
+        return res.status(403).json({ ok: false, error: "Admin only" });
+      }
+
+      const days = Math.min(Number(req.query.days) || 7, 30);
+      const date = (req.query.date as string) || undefined;
+
+      const history = await getHistory(days, date);
+      return res.json({ ok: true, data: history });
     } catch (err: any) {
       return res.status(500).json({ ok: false, error: err.message });
     }

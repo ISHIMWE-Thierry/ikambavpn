@@ -13,6 +13,7 @@ import { xuiRouter, xuiPublicRouter } from "./routes/xui";
 import { initFirebase } from "./services/firebase";
 import { authMiddleware } from "./middleware/auth";
 import { startWatchdog } from "./services/watchdog";
+import { startAnalyticsScheduler } from "./services/vpn-analytics";
 
 dotenv.config();
 
@@ -40,6 +41,9 @@ app.listen(port, () => {
 
   // Start VPN watchdog — re-enables disabled clients, fixes limitIp, restarts Xray
   startWatchdog();
+
+  // Start analytics scheduler — snapshots online status + daily activity to Firestore
+  startAnalyticsScheduler();
 
   // Startup health check — verify 3X-UI panel is reachable
   const panelUrl = process.env.XPANEL_URL || "";

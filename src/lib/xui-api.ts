@@ -388,6 +388,45 @@ export async function getAdminUserConnections(email: string): Promise<Connection
   return xuiRequest<ConnectionLogEntry[]>(`/admin/connections/${encodeURIComponent(email)}`);
 }
 
+// ── Historical Analytics (Firestore-backed) ───────────────────────────────────
+
+/** Daily aggregate stats */
+export interface DailyAggregate {
+  date: string;
+  peakOnlineCount: number;
+  totalUniqueUsers: number;
+  totalConnections: number;
+  topDomains: { domain: string; count: number }[];
+  updatedAt: string;
+}
+
+/** Per-user daily stats */
+export interface UserDailyStats {
+  email: string;
+  date: string;
+  totalConnections: number;
+  topDomains: { domain: string; count: number }[];
+  peakOnline: boolean;
+  lastSeen: string | null;
+  sourceIps: string[];
+  inboundsUsed: string[];
+  blockedCount: number;
+  updatedAt: string;
+}
+
+/** History response from backend */
+export interface HistoryResponse {
+  days: DailyAggregate[];
+  userHistory: UserDailyStats[];
+}
+
+/** Get historical activity data (admin) — days of aggregates + per-user detail */
+export async function getAdminHistory(days: number = 7, date?: string): Promise<HistoryResponse> {
+  const params = new URLSearchParams({ days: String(days) });
+  if (date) params.set('date', date);
+  return xuiRequest<HistoryResponse>(`/admin/history?${params}`);
+}
+
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 /** Format bytes to human-readable string */
