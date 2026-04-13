@@ -433,6 +433,35 @@ export interface UserActivitySummary {
 }
 
 /**
+ * Check if a destination is "noise" — DNS queries, raw IPs, internal API, etc.
+ * These pollute the activity logs and aren't real user-visited sites.
+ */
+export function isNoiseDest(dest: string, port: string): boolean {
+  // DNS resolvers (port 53)
+  if (port === "53") return true;
+  // Raw IP addresses (no domain name)
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(dest)) return true;
+  // Localhost / internal API
+  if (dest === "127.0.0.1" || dest === "localhost") return true;
+  // Common DNS-over-HTTPS / resolver noise
+  const dnsNoise = [
+    "dns.google",
+    "chrome.cloudflare-dns.com",
+    "cloudflare-dns.com",
+    "1.1.1.1",
+    "8.8.8.8",
+    "8.8.4.4",
+    "77.88.8.8",
+    "77.88.8.1",
+    "dns.adguard.com",
+    "dns.quad9.net",
+    "doh.opendns.com",
+  ];
+  if (dnsNoise.includes(dest.toLowerCase())) return true;
+  return false;
+}
+
+/**
  * Build an activity summary for all users from access logs + online status.
  */
 export async function getUserActivitySummaries(): Promise<UserActivitySummary[]> {
@@ -443,7 +472,7 @@ export async function getUserActivitySummaries(): Promise<UserActivitySummary[]>
 
   const onlineSet = new Set(onlineEmails);
 
-  // Group connections by email
+  // Group connections by email — filter out internal API calls (no email)
   const byUser = new Map<string, ConnectionLogEntry[]>();
   for (const conn of connections) {
     if (!byUser.has(conn.email)) byUser.set(conn.email, []);
@@ -459,8 +488,16 @@ export async function getUserActivitySummaries(): Promise<UserActivitySummary[]>
   for (const email of allEmails) {
     const conns = byUser.get(email) || [];
 
-    // Last seen
-    const lastConn = conns.length > 0 ? conns[conns.length - 1] : null;
+    // Last seen — use the most recent REAL connection (not DNS noise)
+    const realConns = conns.filter(
+      (c) => !isNoiseDest(c.destination, c.destinationPort)
+    );
+    const lastConn =
+      realConns.length > 0
+        ? realConns[realConns.length - 1]
+        : conns.length > 0
+        ? conns[conns.length - 1]
+        : null;
     let lastSeen: string | null = null;
     let lastSeenAgo: string | null = null;
     if (lastConn) {
@@ -477,7 +514,7 @@ export async function getUserActivitySummaries(): Promise<UserActivitySummary[]>
     // Unique source IPs
     const sourceIps = [...new Set(conns.map((c) => c.sourceIp))];
 
-    // Top domains (exclude blocked, group by domain, sort by count)
+    // Top domains — exclude blocked, DNS noise, raw IPs
     const domainCounts = new Map<string, number>();
     let blockedCount = 0;
     for (const c of conns) {
@@ -485,7 +522,8 @@ export async function getUserActivitySummaries(): Promise<UserActivitySummary[]>
         blockedCount++;
         continue;
       }
-      // Clean domain — remove port-like suffixes and IP addresses
+      // Skip noise
+      if (isNoiseDest(c.destination, c.destinationPort)) continue;
       const domain = c.destination;
       domainCounts.set(domain, (domainCounts.get(domain) || 0) + 1);
     }
@@ -503,7 +541,7 @@ export async function getUserActivitySummaries(): Promise<UserActivitySummary[]>
       lastSeen,
       lastSeenAgo: onlineSet.has(email) ? "now" : lastSeenAgo,
       sourceIps,
-      connectionCount: conns.length,
+      connectionCount: realConns.length, // meaningful connections only
       topDomains,
       inboundsUsed,
       blockedCount,

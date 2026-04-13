@@ -33,6 +33,7 @@ import {
   getOnlineClients,
   getRecentConnections,
   getUserActivitySummaries,
+  isNoiseDest,
 } from "../services/xui";
 import { getFirestore } from "../services/firebase";
 
@@ -761,7 +762,8 @@ xuiRouter.get(
       const allConnections = await getRecentConnections(3000);
       const userConnections = allConnections
         .filter((c) => c.email === email)
-        .slice(-200); // last 200
+        .filter((c) => !isNoiseDest(c.destination, c.destinationPort))
+        .slice(-200); // last 200 meaningful connections
 
       return res.json({ ok: true, data: userConnections });
     } catch (err: any) {

@@ -720,42 +720,82 @@ function StatusItem({ icon: Icon, label, value, sub }: { icon: React.ElementType
 
 function categorizeDomain(domain: string): { label: string; color: string; icon: React.ElementType } {
   const d = domain.toLowerCase();
+  // ── Video & Streaming ──
   if (d.includes('youtube') || d.includes('googlevideo') || d.includes('ytimg'))
     return { label: 'YouTube', color: 'bg-red-100 text-red-700', icon: Globe };
-  if (d.includes('instagram') || d.includes('cdninstagram') || d.includes('fbcdn'))
+  if (d.includes('netflix'))
+    return { label: 'Netflix', color: 'bg-red-100 text-red-800', icon: Globe };
+  if (d.includes('spotify') || d.includes('spclient'))
+    return { label: 'Spotify', color: 'bg-green-100 text-green-800', icon: Globe };
+  if (d.includes('twitch'))
+    return { label: 'Twitch', color: 'bg-purple-100 text-purple-700', icon: Globe };
+  // ── Social Media ──
+  if (d.includes('instagram') || d.includes('cdninstagram'))
     return { label: 'Instagram', color: 'bg-pink-100 text-pink-700', icon: Globe };
   if (d.includes('tiktok') || d.includes('tiktokcdn') || d.includes('musical.ly'))
     return { label: 'TikTok', color: 'bg-gray-800 text-white', icon: Globe };
-  if (d.includes('whatsapp'))
-    return { label: 'WhatsApp', color: 'bg-green-100 text-green-700', icon: Globe };
-  if (d.includes('telegram') || d.includes('t.me'))
-    return { label: 'Telegram', color: 'bg-blue-100 text-blue-700', icon: Globe };
   if (d.includes('snapchat') || d.includes('sc-cdn') || d.includes('snap'))
     return { label: 'Snapchat', color: 'bg-yellow-100 text-yellow-700', icon: Globe };
   if (d.includes('facebook') || d.includes('fb.com') || d.includes('fbcdn'))
     return { label: 'Facebook', color: 'bg-blue-100 text-blue-800', icon: Globe };
   if (d.includes('twitter') || d.includes('twimg') || d.includes('x.com'))
     return { label: 'X/Twitter', color: 'bg-gray-100 text-gray-800', icon: Globe };
-  if (d.includes('netflix'))
-    return { label: 'Netflix', color: 'bg-red-100 text-red-800', icon: Globe };
-  if (d.includes('spotify'))
-    return { label: 'Spotify', color: 'bg-green-100 text-green-800', icon: Globe };
-  if (d.includes('google') || d.includes('gstatic') || d.includes('googleapis'))
-    return { label: 'Google', color: 'bg-blue-50 text-blue-600', icon: Globe };
-  if (d.includes('apple') || d.includes('icloud') || d.includes('mzstatic'))
-    return { label: 'Apple', color: 'bg-gray-100 text-gray-700', icon: Globe };
-  if (d.includes('microsoft') || d.includes('azure') || d.includes('msn') || d.includes('live.com'))
-    return { label: 'Microsoft', color: 'bg-blue-50 text-blue-700', icon: Globe };
-  if (d.includes('amazon') || d.includes('aws'))
-    return { label: 'Amazon/AWS', color: 'bg-orange-100 text-orange-700', icon: Globe };
+  // ── Messaging ──
+  if (d.includes('whatsapp'))
+    return { label: 'WhatsApp', color: 'bg-green-100 text-green-700', icon: Globe };
+  if (d.includes('telegram') || d.includes('t.me'))
+    return { label: 'Telegram', color: 'bg-blue-100 text-blue-700', icon: Globe };
   if (d.includes('discord'))
     return { label: 'Discord', color: 'bg-indigo-100 text-indigo-700', icon: Globe };
-  if (d.includes('twitch'))
-    return { label: 'Twitch', color: 'bg-purple-100 text-purple-700', icon: Globe };
+  // ── Dev Tools ──
+  if (d.includes('github') || d.includes('githubassets') || d.includes('githubcopilot'))
+    return { label: 'GitHub', color: 'bg-gray-900 text-white', icon: Globe };
+  if (d.includes('gitkraken'))
+    return { label: 'GitKraken', color: 'bg-teal-100 text-teal-700', icon: Globe };
+  if (d.includes('vscode') || d.includes('visualstudio'))
+    return { label: 'VS Code', color: 'bg-blue-100 text-blue-700', icon: Globe };
+  if (d.includes('deepseek'))
+    return { label: 'DeepSeek', color: 'bg-blue-100 text-blue-800', icon: Globe };
+  // ── Microsoft / Office ──
+  if (d.includes('sharepoint') || d.includes('officeclient') || d.includes('office365') || d.includes('office.com') || d.includes('office.net'))
+    return { label: 'Office 365', color: 'bg-orange-100 text-orange-700', icon: Globe };
+  if (d.includes('microsoft') || d.includes('azure') || d.includes('msn') || d.includes('live.com') || d.includes('.ms/'))
+    return { label: 'Microsoft', color: 'bg-blue-50 text-blue-700', icon: Globe };
+  // ── Yandex / Russian services ──
+  if (d.includes('yandex') || d.includes('ya.ru'))
+    return { label: 'Yandex', color: 'bg-red-50 text-red-600', icon: Globe };
+  if (d.includes('vk.com') || d.includes('vkontakte') || d.includes('userapi.com'))
+    return { label: 'VK', color: 'bg-blue-100 text-blue-800', icon: Globe };
+  if (d.includes('mail.ru') || d.includes('mxc.mail'))
+    return { label: 'Mail.ru', color: 'bg-blue-50 text-blue-600', icon: Globe };
+  if (d.includes('aliexpress'))
+    return { label: 'AliExpress', color: 'bg-red-100 text-red-600', icon: Globe };
+  // ── Browsers ──
+  if (d.includes('opera'))
+    return { label: 'Opera', color: 'bg-red-50 text-red-700', icon: Globe };
+  if (d.includes('chrome') && !d.includes('cloudflare'))
+    return { label: 'Chrome', color: 'bg-green-50 text-green-700', icon: Globe };
+  // ── Google ──
+  if (d.includes('google') || d.includes('gstatic') || d.includes('googleapis') || d.includes('gvt2') || d.includes('gvt1'))
+    return { label: 'Google', color: 'bg-blue-50 text-blue-600', icon: Globe };
+  // ── Apple ──
+  if (d.includes('apple') || d.includes('icloud') || d.includes('mzstatic'))
+    return { label: 'Apple', color: 'bg-gray-100 text-gray-700', icon: Globe };
+  // ── Other Tech ──
+  if (d.includes('amazon') || d.includes('aws'))
+    return { label: 'Amazon/AWS', color: 'bg-orange-100 text-orange-700', icon: Globe };
+  if (d.includes('firebase'))
+    return { label: 'Firebase', color: 'bg-amber-100 text-amber-700', icon: Globe };
+  if (d.includes('cloudflare'))
+    return { label: 'Cloudflare', color: 'bg-orange-50 text-orange-600', icon: Globe };
+  // ── Gaming ──
   if (d.includes('steam') || d.includes('valve'))
     return { label: 'Steam', color: 'bg-gray-800 text-white', icon: Globe };
   if (d.includes('unity') || d.includes('unityads'))
     return { label: 'Gaming', color: 'bg-gray-100 text-gray-700', icon: Globe };
+  // ── Email ──
+  if (d.includes('imap.') || d.includes('smtp.') || d.includes('pop.') || d.includes('mail.'))
+    return { label: 'Email', color: 'bg-gray-100 text-gray-600', icon: Globe };
   return { label: 'Other', color: 'bg-gray-50 text-gray-500', icon: Globe };
 }
 
@@ -968,68 +1008,127 @@ function LiveActivityPanel({
             </div>
           )}
 
-          {/* User activity rows */}
+          {/* User activity rows — online users first with highlight */}
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">User activity</p>
-            <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50">
-              {activity.length === 0 && !loading ? (
-                <p className="text-sm text-gray-400 text-center py-6">No activity data yet</p>
-              ) : (
-                activity.map((user) => (
-                  <button
-                    key={user.email}
-                    onClick={() => onViewUser(user.email)}
-                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition text-left"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Online indicator */}
-                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${user.isOnline ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]' : 'bg-gray-300'}`} />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {user.email.split('@')[0]}
-                          <span className="text-gray-300 font-normal">@{user.email.split('@')[1]}</span>
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] text-gray-400">
-                            {user.isOnline ? (
-                              <span className="text-green-600 font-medium">● Connected now</span>
-                            ) : user.lastSeenAgo ? (
-                              <>Last seen {user.lastSeenAgo}</>
-                            ) : (
-                              'Never connected'
+            {/* Online users section */}
+            {activity.filter(u => u.isOnline).length > 0 && (
+              <>
+                <p className="text-xs font-medium text-green-600 mb-2 flex items-center gap-1.5">
+                  <Signal className="w-3 h-3" /> Online now
+                </p>
+                <div className="border-2 border-green-200 bg-green-50/50 rounded-xl overflow-hidden divide-y divide-green-100 mb-4">
+                  {activity.filter(u => u.isOnline).map((user) => (
+                    <button
+                      key={user.email}
+                      onClick={() => onViewUser(user.email)}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-green-50 transition text-left"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="relative shrink-0">
+                          <div className="w-3 h-3 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                          <div className="absolute inset-0 w-3 h-3 rounded-full bg-green-400 animate-ping opacity-40" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-green-800 truncate">
+                            {user.email.split('@')[0]}
+                            <span className="text-green-400 font-normal">@{user.email.split('@')[1]}</span>
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-green-600 font-medium">● Connected</span>
+                            {user.sourceIps.length > 0 && (
+                              <span className="text-[10px] text-green-500">
+                                · {user.sourceIps[0]}
+                              </span>
                             )}
-                          </span>
-                          {user.sourceIps.length > 0 && (
-                            <span className="text-[10px] text-gray-300">
-                              · {user.sourceIps[0]}{user.sourceIps.length > 1 ? ` +${user.sourceIps.length - 1}` : ''}
-                            </span>
-                          )}
+                            {user.inboundsUsed.length > 0 && (
+                              <span className="text-[10px] text-green-500">
+                                · {user.inboundsUsed.join(', ')}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0 ml-3">
-                      {/* Top domains mini-badges */}
-                      <div className="hidden sm:flex items-center gap-1">
-                        {user.topDomains.slice(0, 3).map(d => {
-                          const cat = categorizeDomain(d.domain);
-                          return cat.label !== 'Other' ? (
-                            <span key={d.domain} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${cat.color}`}>
-                              {cat.label}
-                            </span>
-                          ) : null;
-                        })}
+                      <div className="flex items-center gap-2 shrink-0 ml-3">
+                        <div className="hidden sm:flex items-center gap-1">
+                          {user.topDomains.slice(0, 3).map(d => {
+                            const cat = categorizeDomain(d.domain);
+                            return cat.label !== 'Other' ? (
+                              <span key={d.domain} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${cat.color}`}>
+                                {cat.label}
+                              </span>
+                            ) : null;
+                          })}
+                        </div>
+                        {user.connectionCount > 0 && (
+                          <span className="text-[10px] text-green-600 bg-green-100 px-1.5 py-0.5 rounded font-medium">
+                            {user.connectionCount} sites
+                          </span>
+                        )}
+                        <Eye className="w-3.5 h-3.5 text-green-400" />
                       </div>
-                      {user.connectionCount > 0 && (
-                        <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                          {user.connectionCount} conn
-                        </span>
-                      )}
-                      <Eye className="w-3.5 h-3.5 text-gray-300" />
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Offline / recent users */}
+            {activity.filter(u => !u.isOnline).length > 0 && (
+              <>
+                <p className="text-xs font-medium text-gray-500 mb-2">Recent users</p>
+                <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50">
+                  {activity.filter(u => !u.isOnline).map((user) => (
+                    <button
+                      key={user.email}
+                      onClick={() => onViewUser(user.email)}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition text-left"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-2.5 h-2.5 rounded-full bg-gray-300 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {user.email.split('@')[0]}
+                            <span className="text-gray-300 font-normal">@{user.email.split('@')[1]}</span>
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-gray-400">
+                              {user.lastSeenAgo ? `Last seen ${user.lastSeenAgo}` : 'Never connected'}
+                            </span>
+                            {user.sourceIps.length > 0 && (
+                              <span className="text-[10px] text-gray-300">
+                                · {user.sourceIps[0]}{user.sourceIps.length > 1 ? ` +${user.sourceIps.length - 1}` : ''}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-3">
+                        <div className="hidden sm:flex items-center gap-1">
+                          {user.topDomains.slice(0, 3).map(d => {
+                            const cat = categorizeDomain(d.domain);
+                            return cat.label !== 'Other' ? (
+                              <span key={d.domain} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${cat.color}`}>
+                                {cat.label}
+                              </span>
+                            ) : null;
+                          })}
+                        </div>
+                        {user.connectionCount > 0 && (
+                          <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                            {user.connectionCount} sites
+                          </span>
+                        )}
+                        <Eye className="w-3.5 h-3.5 text-gray-300" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {activity.length === 0 && !loading && (
+              <p className="text-sm text-gray-400 text-center py-6">No activity data yet</p>
+            )}
           </div>
         </div>
       </CardContent>
