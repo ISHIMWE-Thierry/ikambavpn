@@ -30,6 +30,9 @@ import {
   resetClientTraffic,
   getCachedSubscription,
   clearSubCache,
+  getOnlineClients,
+  getRecentConnections,
+  getUserActivitySummaries,
 } from "../services/xui";
 import { getFirestore } from "../services/firebase";
 
@@ -689,6 +692,78 @@ xuiRouter.get(
 
       const status = await getSystemStatus();
       return res.json({ ok: true, data: status });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err.message });
+    }
+  }
+);
+
+// ── Admin Monitoring Endpoints ────────────────────────────────────────────────
+
+/**
+ * GET /xui/admin/onlines
+ * Get list of currently online (connected) client emails.
+ */
+xuiRouter.get(
+  "/admin/onlines",
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const isAdmin = await checkIsAdmin(req.user);
+      if (!isAdmin) {
+        return res.status(403).json({ ok: false, error: "Admin only" });
+      }
+
+      const onlines = await getOnlineClients();
+      return res.json({ ok: true, data: onlines });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err.message });
+    }
+  }
+);
+
+/**
+ * GET /xui/admin/activity
+ * Full user activity summary — online status, last seen, top domains, IPs, etc.
+ * This is the main endpoint for the monitoring dashboard.
+ */
+xuiRouter.get(
+  "/admin/activity",
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const isAdmin = await checkIsAdmin(req.user);
+      if (!isAdmin) {
+        return res.status(403).json({ ok: false, error: "Admin only" });
+      }
+
+      const summaries = await getUserActivitySummaries();
+      return res.json({ ok: true, data: summaries });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err.message });
+    }
+  }
+);
+
+/**
+ * GET /xui/admin/connections/:email
+ * Get recent connection log entries for a specific user.
+ * Returns the last 200 connections with destinations, timestamps, IPs.
+ */
+xuiRouter.get(
+  "/admin/connections/:email",
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const isAdmin = await checkIsAdmin(req.user);
+      if (!isAdmin) {
+        return res.status(403).json({ ok: false, error: "Admin only" });
+      }
+
+      const email = decodeURIComponent(req.params.email);
+      const allConnections = await getRecentConnections(3000);
+      const userConnections = allConnections
+        .filter((c) => c.email === email)
+        .slice(-200); // last 200
+
+      return res.json({ ok: true, data: userConnections });
     } catch (err: any) {
       return res.status(500).json({ ok: false, error: err.message });
     }

@@ -44,6 +44,69 @@ const XHTTP_PORT = 8443;
 const XHTTP_PATH = "/ikamba";
 const XHTTP_INBOUND_ID = 2;
 
+// ── Multi-Server Configuration ────────────────────────────────────────────────
+// Each backend instance serves subscription links for ALL servers so users get
+// Helsinki + Frankfurt (and future locations) in their VPN app.
+//
+// SECONDARY_SERVERS env var is a JSON array of server objects:
+// [{"ip":"187.77.71.106","label":"Frankfurt","realityPubKey":"HVv7...","realityShortId":"bf08..."}]
+
+export interface ServerConfig {
+  ip: string;
+  label: string;           // Location label (e.g. "Helsinki", "Frankfurt")
+  realityPubKey: string;
+  realityShortId: string;
+  realitySni?: string;     // default: www.microsoft.com
+  vlessPort?: number;      // default: 443
+  wsPort?: number;         // default: 2083
+  wsPath?: string;         // default: /ws-tunnel
+  wsHost?: string;         // default: dl.google.com
+}
+
+/** This server's config (built from env vars) */
+const PRIMARY_SERVER: ServerConfig = {
+  ip: VPS_IP,
+  label: process.env.XPANEL_SERVER_LABEL || "Helsinki",
+  realityPubKey: REALITY_PUBLIC_KEY,
+  realityShortId: REALITY_SHORT_ID,
+  realitySni: REALITY_SNI,
+  vlessPort: VLESS_PORT,
+  wsPort: WS_PORT,
+  wsPath: WS_PATH,
+  wsHost: WS_HOST,
+};
+
+/** Parse secondary servers from env var */
+function parseSecondaryServers(): ServerConfig[] {
+  const raw = process.env.SECONDARY_SERVERS;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((s: any) => ({
+      ip: s.ip,
+      label: s.label || "Server",
+      realityPubKey: s.realityPubKey || "",
+      realityShortId: s.realityShortId || "",
+      realitySni: s.realitySni || REALITY_SNI,
+      vlessPort: s.vlessPort || VLESS_PORT,
+      wsPort: s.wsPort || WS_PORT,
+      wsPath: s.wsPath || WS_PATH,
+      wsHost: s.wsHost || WS_HOST,
+    }));
+  } catch (err) {
+    console.error("[multi-server] Failed to parse SECONDARY_SERVERS env var:", err);
+    return [];
+  }
+}
+
+const SECONDARY_SERVERS = parseSecondaryServers();
+
+/** All servers: primary first, then secondaries */
+export function getAllServers(): ServerConfig[] {
+  return [PRIMARY_SERVER, ...SECONDARY_SERVERS];
+}
+
 // HTTPS agent that tolerates IP-based or short-lived certs
 const tlsAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -172,13 +235,12 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
     if (!clientId) return null;
 
     const remark = `IkambaVPN-${email.split("@")[0]}`;
-    const wsLink = buildWsLink(clientId, remark);
-    const tcpLink = buildVlessLink(clientId, remark);
-    const xhttpLink = buildXhttpLink(clientId, remark);
-    // WS first (default) — multiplexes over 1 TCP conn, defeats connection-count DPI.
-    // TCP second — faster for light browsing but ISP kills it on YouTube bursts.
-    // XHTTP third — fallback.
-    const vlessLink = `${wsLink}\n${tcpLink}\n${xhttpLink}`;
+
+    // ── Multi-server subscription ─────────────────────────────────────────────
+    // Generate links for ALL servers (primary + secondary) so users see
+    // Helsinki, Frankfurt, etc. in their VPN app. Each server gets WS + REALITY.
+    const allLinks = buildAllServerLinks(clientId, remark);
+    const vlessLink = allLinks.join("\n");
 
     // Build user info
     let userInfo = "upload=0; download=0; total=0; expire=0";
@@ -276,6 +338,185 @@ async function apiRequest<T = any>(
   }
 
   return data.obj as T;
+}
+
+// ── Online Status & Activity Tracking ─────────────────────────────────────────
+
+/**
+ * Get list of currently online client emails from 3X-UI panel.
+ * Uses POST /panel/api/inbounds/onlines — returns email[] of connected users.
+ */
+export async function getOnlineClients(): Promise<string[]> {
+  try {
+    const result = await apiRequest<string[]>("/panel/api/inbounds/onlines", {
+      method: "POST",
+    });
+    return result || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Connection log entry parsed from Xray access log.
+ */
+export interface ConnectionLogEntry {
+  timestamp: string;
+  sourceIp: string;
+  sourcePort: string;
+  protocol: string; // tcp or udp
+  destination: string;
+  destinationPort: string;
+  inbound: string;
+  route: string;
+  email: string;
+}
+
+/**
+ * Parse the last N lines of Xray access log.
+ * Returns structured connection entries.
+ */
+export async function getRecentConnections(maxLines: number = 500): Promise<ConnectionLogEntry[]> {
+  const { execSync } = await import("child_process");
+  const logPath = "/var/log/xray/access.log";
+
+  try {
+    const raw = execSync(`tail -${maxLines} ${logPath} 2>/dev/null`, {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+
+    const entries: ConnectionLogEntry[] = [];
+    for (const line of raw.split("\n")) {
+      if (!line.trim() || !line.includes("email:")) continue;
+
+      // Format: 2026/04/13 14:45:39.272260 from 31.173.84.33:23817 accepted tcp:cf-st.sc-cdn.net:443 [inbound-2083 >> fragment] email: user@email.com
+      const match = line.match(
+        /^(\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\.\d+\s+from\s+(?:tcp:|udp:)?(\d+\.\d+\.\d+\.\d+):(\d+)\s+accepted\s+(tcp|udp):(.+?):(\d+)\s+\[(.+?)\]\s+email:\s+(.+)$/
+      );
+      if (match) {
+        const [, timestamp, srcIp, srcPort, proto, dest, destPort, routeInfo, email] = match;
+        const [inbound, route] = routeInfo.split(/\s+>>\s+|\s+->\s+/);
+        entries.push({
+          timestamp,
+          sourceIp: srcIp,
+          sourcePort: srcPort,
+          protocol: proto,
+          destination: dest,
+          destinationPort: destPort,
+          inbound: inbound.trim(),
+          route: route?.trim() || "direct",
+          email: email.trim(),
+        });
+      }
+    }
+
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * User activity summary — aggregated from access logs.
+ */
+export interface UserActivitySummary {
+  email: string;
+  isOnline: boolean;
+  lastSeen: string | null;
+  lastSeenAgo: string | null;
+  sourceIps: string[];
+  connectionCount: number;
+  topDomains: { domain: string; count: number }[];
+  inboundsUsed: string[];
+  blockedCount: number;
+}
+
+/**
+ * Build an activity summary for all users from access logs + online status.
+ */
+export async function getUserActivitySummaries(): Promise<UserActivitySummary[]> {
+  const [onlineEmails, connections] = await Promise.all([
+    getOnlineClients(),
+    getRecentConnections(2000),
+  ]);
+
+  const onlineSet = new Set(onlineEmails);
+
+  // Group connections by email
+  const byUser = new Map<string, ConnectionLogEntry[]>();
+  for (const conn of connections) {
+    if (!byUser.has(conn.email)) byUser.set(conn.email, []);
+    byUser.get(conn.email)!.push(conn);
+  }
+
+  // Build summaries
+  const summaries: UserActivitySummary[] = [];
+
+  // Include ALL emails — both those in logs AND those currently online
+  const allEmails = new Set([...byUser.keys(), ...onlineEmails]);
+
+  for (const email of allEmails) {
+    const conns = byUser.get(email) || [];
+
+    // Last seen
+    const lastConn = conns.length > 0 ? conns[conns.length - 1] : null;
+    let lastSeen: string | null = null;
+    let lastSeenAgo: string | null = null;
+    if (lastConn) {
+      lastSeen = lastConn.timestamp;
+      // Calculate "ago" string
+      const logDate = new Date(lastConn.timestamp.replace(/\//g, "-"));
+      const diffMs = Date.now() - logDate.getTime();
+      if (diffMs < 60_000) lastSeenAgo = "just now";
+      else if (diffMs < 3600_000) lastSeenAgo = `${Math.floor(diffMs / 60_000)}m ago`;
+      else if (diffMs < 86400_000) lastSeenAgo = `${Math.floor(diffMs / 3600_000)}h ago`;
+      else lastSeenAgo = `${Math.floor(diffMs / 86400_000)}d ago`;
+    }
+
+    // Unique source IPs
+    const sourceIps = [...new Set(conns.map((c) => c.sourceIp))];
+
+    // Top domains (exclude blocked, group by domain, sort by count)
+    const domainCounts = new Map<string, number>();
+    let blockedCount = 0;
+    for (const c of conns) {
+      if (c.route === "blocked") {
+        blockedCount++;
+        continue;
+      }
+      // Clean domain — remove port-like suffixes and IP addresses
+      const domain = c.destination;
+      domainCounts.set(domain, (domainCounts.get(domain) || 0) + 1);
+    }
+    const topDomains = [...domainCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([domain, count]) => ({ domain, count }));
+
+    // Inbounds used
+    const inboundsUsed = [...new Set(conns.map((c) => c.inbound))];
+
+    summaries.push({
+      email,
+      isOnline: onlineSet.has(email),
+      lastSeen,
+      lastSeenAgo: onlineSet.has(email) ? "now" : lastSeenAgo,
+      sourceIps,
+      connectionCount: conns.length,
+      topDomains,
+      inboundsUsed,
+      blockedCount,
+    });
+  }
+
+  // Sort: online first, then by connection count
+  summaries.sort((a, b) => {
+    if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+    return b.connectionCount - a.connectionCount;
+  });
+
+  return summaries;
 }
 
 // ── Inbound Operations ────────────────────────────────────────────────────────
@@ -527,6 +768,69 @@ export function buildWsLink(clientId: string, remark: string): string {
   ].join("&");
 
   return `vless://${clientId}@${VPS_IP}:${WS_PORT}?${query}#${encodeURIComponent(remark + "-WS")}`;
+}
+
+// ── Multi-Server Link Builders ────────────────────────────────────────────────
+// These variants accept a ServerConfig so we can generate links for any server,
+// not just the one this backend instance is running on.
+
+/**
+ * Build a VLESS+REALITY link for a specific server.
+ * The remark includes the server location so users see e.g. "IkambaVPN-user-Helsinki"
+ */
+export function buildVlessLinkForServer(clientId: string, remark: string, server: ServerConfig): string {
+  const query = [
+    `type=tcp`,
+    `security=reality`,
+    `pbk=${server.realityPubKey}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=${server.realitySni || REALITY_SNI}`,
+    `sid=${server.realityShortId}`,
+    `spx=/`,
+    `flow=xtls-rprx-vision`,
+  ].join("&");
+
+  const port = server.vlessPort || VLESS_PORT;
+  return `vless://${clientId}@${server.ip}:${port}?${query}#${encodeURIComponent(remark + "-" + server.label)}`;
+}
+
+/**
+ * Build a VLESS+WebSocket link for a specific server.
+ * WS is the primary transport — defeats connection-count DPI.
+ */
+export function buildWsLinkForServer(clientId: string, remark: string, server: ServerConfig): string {
+  const wsPath = server.wsPath || WS_PATH;
+  const wsHost = server.wsHost || WS_HOST;
+  const wsPort = server.wsPort || WS_PORT;
+
+  const query = [
+    `type=ws`,
+    `security=none`,
+    `path=${wsPath}`,
+    `host=${wsHost}`,
+  ].join("&");
+
+  return `vless://${clientId}@${server.ip}:${wsPort}?${query}#${encodeURIComponent(remark + "-WS-" + server.label)}`;
+}
+
+/**
+ * Generate ALL VLESS links for a client across ALL servers.
+ * Returns an array of link strings — WS first per server, then REALITY TCP.
+ * Order: [WS-Server1, REALITY-Server1, WS-Server2, REALITY-Server2, ...]
+ */
+export function buildAllServerLinks(clientId: string, remark: string): string[] {
+  const servers = getAllServers();
+  const links: string[] = [];
+
+  for (const server of servers) {
+    // WS first (primary), then REALITY TCP (backup) for each server
+    links.push(buildWsLinkForServer(clientId, remark, server));
+    if (server.realityPubKey && server.realityShortId) {
+      links.push(buildVlessLinkForServer(clientId, remark, server));
+    }
+  }
+
+  return links;
 }
 
 /**

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Plus, RefreshCw, ChevronDown, ChevronUp, X, Copy, Check,
   ToggleLeft, ToggleRight, Trash2, RotateCcw, Server, Wifi,
   HardDrive, Cpu, Users, Shield, Link2, Globe, Pencil, Calendar, Zap,
-  Database,
+  Database, Eye, Activity, Clock, MapPin, Radio, ArrowLeft, ExternalLink,
+  Signal, AlertTriangle, Search,
 } from 'lucide-react';
 import {
   getAdminClients,
@@ -16,8 +17,10 @@ import {
   updateAdminClient,
   formatBytes,
   formatExpiry,
+  getAdminActivity,
+  getAdminUserConnections,
 } from '../../lib/xui-api';
-import type { XuiAdminClient, XuiSystemStatus } from '../../lib/xui-api';
+import type { XuiAdminClient, XuiSystemStatus, UserActivitySummary, ConnectionLogEntry } from '../../lib/xui-api';
 import {
   syncVpnClientToFirestore,
   bulkSyncVpnClientsToFirestore,
@@ -416,7 +419,12 @@ function EditClientModal({ client, onClose, onSaved, extendMode }: {
 
 // ── Client Row ────────────────────────────────────────────────────────────────
 
-function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: () => void }) {
+function ClientRow({ client, onRefresh, isOnline, onViewActivity }: {
+  client: XuiAdminClient;
+  onRefresh: () => void;
+  isOnline?: boolean;
+  onViewActivity?: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -519,15 +527,20 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition text-left"
       >
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium truncate">{client.email}</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {formatBytes(traffic)} used
-            {client.total > 0 ? ` / ${formatBytes(client.total)}` : ' (unlimited)'}
-            {' · '}
-            Expires: {formatExpiry(client.expiryTime)}
-            {isExpired && ' · Expired'}
-          </p>
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {/* Online dot */}
+          <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isOnline ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]' : 'bg-gray-300'}`} />
+          <div className="min-w-0">
+            <p className="text-sm font-medium truncate">{client.email}</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {isOnline && <span className="text-green-600 font-medium">● Online · </span>}
+              {formatBytes(traffic)} used
+              {client.total > 0 ? ` / ${formatBytes(client.total)}` : ' (unlimited)'}
+              {' · '}
+              Expires: {formatExpiry(client.expiryTime)}
+              {isExpired && ' · Expired'}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-3">
           {isTrial && <Badge variant="default" className="bg-blue-100 text-blue-700 border-0">Trial</Badge>}
@@ -567,6 +580,16 @@ function ClientRow({ client, onRefresh }: { client: XuiAdminClient; onRefresh: (
 
             {/* Actions */}
             <div className="flex flex-wrap gap-2 pt-1">
+              {onViewActivity && (
+                <button
+                  onClick={onViewActivity}
+                  className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-black px-3 py-1.5 rounded-lg border border-purple-200 bg-purple-50 hover:border-purple-400 transition"
+                >
+                  <Activity className="w-4 h-4 text-purple-500" />
+                  View Activity
+                </button>
+              )}
+
               <button
                 onClick={() => setShowEdit(true)}
                 className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-black px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 hover:border-blue-400 transition"
@@ -693,6 +716,327 @@ function StatusItem({ icon: Icon, label, value, sub }: { icon: React.ElementType
   );
 }
 
+// ── Domain Category Helper ─────────────────────────────────────────────────────
+
+function categorizeDomain(domain: string): { label: string; color: string; icon: React.ElementType } {
+  const d = domain.toLowerCase();
+  if (d.includes('youtube') || d.includes('googlevideo') || d.includes('ytimg'))
+    return { label: 'YouTube', color: 'bg-red-100 text-red-700', icon: Globe };
+  if (d.includes('instagram') || d.includes('cdninstagram') || d.includes('fbcdn'))
+    return { label: 'Instagram', color: 'bg-pink-100 text-pink-700', icon: Globe };
+  if (d.includes('tiktok') || d.includes('tiktokcdn') || d.includes('musical.ly'))
+    return { label: 'TikTok', color: 'bg-gray-800 text-white', icon: Globe };
+  if (d.includes('whatsapp'))
+    return { label: 'WhatsApp', color: 'bg-green-100 text-green-700', icon: Globe };
+  if (d.includes('telegram') || d.includes('t.me'))
+    return { label: 'Telegram', color: 'bg-blue-100 text-blue-700', icon: Globe };
+  if (d.includes('snapchat') || d.includes('sc-cdn') || d.includes('snap'))
+    return { label: 'Snapchat', color: 'bg-yellow-100 text-yellow-700', icon: Globe };
+  if (d.includes('facebook') || d.includes('fb.com') || d.includes('fbcdn'))
+    return { label: 'Facebook', color: 'bg-blue-100 text-blue-800', icon: Globe };
+  if (d.includes('twitter') || d.includes('twimg') || d.includes('x.com'))
+    return { label: 'X/Twitter', color: 'bg-gray-100 text-gray-800', icon: Globe };
+  if (d.includes('netflix'))
+    return { label: 'Netflix', color: 'bg-red-100 text-red-800', icon: Globe };
+  if (d.includes('spotify'))
+    return { label: 'Spotify', color: 'bg-green-100 text-green-800', icon: Globe };
+  if (d.includes('google') || d.includes('gstatic') || d.includes('googleapis'))
+    return { label: 'Google', color: 'bg-blue-50 text-blue-600', icon: Globe };
+  if (d.includes('apple') || d.includes('icloud') || d.includes('mzstatic'))
+    return { label: 'Apple', color: 'bg-gray-100 text-gray-700', icon: Globe };
+  if (d.includes('microsoft') || d.includes('azure') || d.includes('msn') || d.includes('live.com'))
+    return { label: 'Microsoft', color: 'bg-blue-50 text-blue-700', icon: Globe };
+  if (d.includes('amazon') || d.includes('aws'))
+    return { label: 'Amazon/AWS', color: 'bg-orange-100 text-orange-700', icon: Globe };
+  if (d.includes('discord'))
+    return { label: 'Discord', color: 'bg-indigo-100 text-indigo-700', icon: Globe };
+  if (d.includes('twitch'))
+    return { label: 'Twitch', color: 'bg-purple-100 text-purple-700', icon: Globe };
+  if (d.includes('steam') || d.includes('valve'))
+    return { label: 'Steam', color: 'bg-gray-800 text-white', icon: Globe };
+  if (d.includes('unity') || d.includes('unityads'))
+    return { label: 'Gaming', color: 'bg-gray-100 text-gray-700', icon: Globe };
+  return { label: 'Other', color: 'bg-gray-50 text-gray-500', icon: Globe };
+}
+
+// ── User Connection Detail Modal ──────────────────────────────────────────────
+
+function UserConnectionModal({
+  email, onClose
+}: { email: string; onClose: () => void }) {
+  const [connections, setConnections] = useState<ConnectionLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    getAdminUserConnections(email)
+      .then(setConnections)
+      .catch(() => toast.error('Failed to load connections'))
+      .finally(() => setLoading(false));
+  }, [email]);
+
+  // Group by domain for summary
+  const domainCounts = new Map<string, number>();
+  for (const c of connections) {
+    if (c.route !== 'blocked') {
+      domainCounts.set(c.destination, (domainCounts.get(c.destination) || 0) + 1);
+    }
+  }
+  const sortedDomains = [...domainCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 30);
+
+  const blockedCount = connections.filter(c => c.route === 'blocked').length;
+  const uniqueIps = [...new Set(connections.map(c => c.sourceIp))];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+          <div>
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-blue-600" />
+              <h2 className="font-semibold text-lg">Connection History</h2>
+            </div>
+            <p className="text-xs text-gray-400 mt-0.5">{email}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-black">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex justify-center py-16">
+              <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : connections.length === 0 ? (
+            <p className="text-center text-gray-400 py-10">No connection history found in recent logs.</p>
+          ) : (
+            <div className="flex flex-col gap-6">
+              {/* Summary stats */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="border border-gray-100 rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xl font-bold">{connections.length}</p>
+                  <p className="text-[10px] text-gray-400">Connections</p>
+                </div>
+                <div className="border border-gray-100 rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xl font-bold">{domainCounts.size}</p>
+                  <p className="text-[10px] text-gray-400">Unique sites</p>
+                </div>
+                <div className="border border-gray-100 rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xl font-bold text-red-500">{blockedCount}</p>
+                  <p className="text-[10px] text-gray-400">Blocked</p>
+                </div>
+              </div>
+
+              {/* Source IPs */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1.5">
+                  <MapPin className="w-3 h-3" /> Connecting from
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {uniqueIps.map(ip => (
+                    <span key={ip} className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-lg text-xs font-mono">
+                      {ip}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Top domains */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1.5">
+                  <Globe className="w-3 h-3" /> Top sites visited
+                </p>
+                <div className="flex flex-col gap-1">
+                  {sortedDomains.map(([domain, count]) => {
+                    const cat = categorizeDomain(domain);
+                    return (
+                      <div key={domain} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-medium ${cat.color}`}>
+                            {cat.label}
+                          </span>
+                          <span className="text-sm text-gray-700 truncate font-mono">{domain}</span>
+                        </div>
+                        <span className="text-xs text-gray-400 shrink-0 ml-2">{count}×</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recent connections log */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1.5">
+                  <Clock className="w-3 h-3" /> Recent connections (newest first)
+                </p>
+                <div className="border border-gray-100 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                  {connections.slice().reverse().slice(0, 50).map((c, i) => (
+                    <div key={i} className={`px-3 py-2 text-xs flex items-center gap-3 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <span className="text-gray-300 font-mono shrink-0 w-14">{c.timestamp.split(' ')[1]?.slice(0, 8)}</span>
+                      <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-medium ${c.route === 'blocked' ? 'bg-red-100 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                        {c.protocol.toUpperCase()}
+                      </span>
+                      <span className="text-gray-700 truncate font-mono">{c.destination}:{c.destinationPort}</span>
+                      <span className="text-gray-300 shrink-0 text-[10px]">{c.inbound}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Live Activity Panel ───────────────────────────────────────────────────────
+
+function LiveActivityPanel({
+  activity,
+  loading,
+  onViewUser,
+}: {
+  activity: UserActivitySummary[];
+  loading: boolean;
+  onViewUser: (email: string) => void;
+}) {
+  const onlineCount = activity.filter(u => u.isOnline).length;
+  const totalConnections = activity.reduce((s, u) => s + u.connectionCount, 0);
+
+  // Aggregate top domains across all users
+  const globalDomains = new Map<string, number>();
+  for (const u of activity) {
+    for (const d of u.topDomains) {
+      globalDomains.set(d.domain, (globalDomains.get(d.domain) || 0) + d.count);
+    }
+  }
+  const topGlobalDomains = [...globalDomains.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-green-500" />
+            <h2 className="font-semibold">Live Activity Monitor</h2>
+            <Badge variant="success" className="animate-pulse">{onlineCount} online</Badge>
+          </div>
+          {loading && <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-5">
+          {/* Online/offline summary */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="border border-green-100 bg-green-50 rounded-xl px-4 py-3 text-center">
+              <p className="text-2xl font-bold text-green-700">{onlineCount}</p>
+              <p className="text-[10px] text-green-600 font-medium">Online now</p>
+            </div>
+            <div className="border border-gray-100 rounded-xl px-4 py-3 text-center">
+              <p className="text-2xl font-bold">{activity.length - onlineCount}</p>
+              <p className="text-[10px] text-gray-400">Offline</p>
+            </div>
+            <div className="border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 text-center">
+              <p className="text-2xl font-bold text-blue-700">{totalConnections}</p>
+              <p className="text-[10px] text-blue-600 font-medium">Recent connections</p>
+            </div>
+          </div>
+
+          {/* Top domains globally */}
+          {topGlobalDomains.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">🔥 Most visited across all users</p>
+              <div className="flex flex-wrap gap-1.5">
+                {topGlobalDomains.map(([domain, count]) => {
+                  const cat = categorizeDomain(domain);
+                  return (
+                    <span key={domain} className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium ${cat.color}`}>
+                      {cat.label !== 'Other' ? cat.label : domain.length > 25 ? domain.slice(0, 22) + '…' : domain}
+                      <span className="opacity-60">{count}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* User activity rows */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">User activity</p>
+            <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50">
+              {activity.length === 0 && !loading ? (
+                <p className="text-sm text-gray-400 text-center py-6">No activity data yet</p>
+              ) : (
+                activity.map((user) => (
+                  <button
+                    key={user.email}
+                    onClick={() => onViewUser(user.email)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition text-left"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Online indicator */}
+                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${user.isOnline ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]' : 'bg-gray-300'}`} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {user.email.split('@')[0]}
+                          <span className="text-gray-300 font-normal">@{user.email.split('@')[1]}</span>
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-gray-400">
+                            {user.isOnline ? (
+                              <span className="text-green-600 font-medium">● Connected now</span>
+                            ) : user.lastSeenAgo ? (
+                              <>Last seen {user.lastSeenAgo}</>
+                            ) : (
+                              'Never connected'
+                            )}
+                          </span>
+                          {user.sourceIps.length > 0 && (
+                            <span className="text-[10px] text-gray-300">
+                              · {user.sourceIps[0]}{user.sourceIps.length > 1 ? ` +${user.sourceIps.length - 1}` : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-3">
+                      {/* Top domains mini-badges */}
+                      <div className="hidden sm:flex items-center gap-1">
+                        {user.topDomains.slice(0, 3).map(d => {
+                          const cat = categorizeDomain(d.domain);
+                          return cat.label !== 'Other' ? (
+                            <span key={d.domain} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${cat.color}`}>
+                              {cat.label}
+                            </span>
+                          ) : null;
+                        })}
+                      </div>
+                      {user.connectionCount > 0 && (
+                        <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                          {user.connectionCount} conn
+                        </span>
+                      )}
+                      <Eye className="w-3.5 h-3.5 text-gray-300" />
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function AdminVpnPanelPage() {
@@ -703,7 +1047,15 @@ export function AdminVpnPanelPage() {
   const [search, setSearch] = useState('');
   const [syncing, setSyncing] = useState(false);
 
-  const load = async () => {
+  // ── Activity monitoring state ──
+  const [activity, setActivity] = useState<UserActivitySummary[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [viewingUser, setViewingUser] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'clients' | 'monitor'>('monitor');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [c, s] = await Promise.all([
@@ -717,7 +1069,19 @@ export function AdminVpnPanelPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const loadActivity = useCallback(async () => {
+    setActivityLoading(true);
+    try {
+      const data = await getAdminActivity();
+      setActivity(data);
+    } catch {
+      // Silently fail on auto-refresh — don't spam toast
+    } finally {
+      setActivityLoading(false);
+    }
+  }, []);
 
   /** Bulk-sync all 3X-UI clients to Firestore (for old entries that weren't saved) */
   const handleSyncAllToDb = async () => {
@@ -741,7 +1105,23 @@ export function AdminVpnPanelPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // Initial load
+  useEffect(() => {
+    load();
+    loadActivity();
+  }, [load, loadActivity]);
+
+  // Auto-refresh activity every 15 seconds
+  useEffect(() => {
+    if (autoRefresh && activeTab === 'monitor') {
+      intervalRef.current = setInterval(() => {
+        loadActivity();
+      }, 15_000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [autoRefresh, activeTab, loadActivity]);
 
   const filtered = search
     ? clients.filter((c) => c.email.toLowerCase().includes(search.toLowerCase()))
@@ -749,12 +1129,18 @@ export function AdminVpnPanelPage() {
 
   const activeCount = clients.filter((c) => c.enable).length;
   const totalTraffic = clients.reduce((sum, c) => sum + c.up + c.down, 0);
+  const onlineCount = activity.filter((u) => u.isOnline).length;
+
+  // Merge online status into client list
+  const onlineEmails = new Set(activity.filter(u => u.isOnline).map(u => u.email));
 
   return (
     <>
       {showModal && <AddClientModal onClose={() => setShowModal(false)} onCreated={load} />}
+      {viewingUser && <UserConnectionModal email={viewingUser} onClose={() => setViewingUser(null)} />}
 
       <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 py-10">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="flex items-center gap-2">
@@ -763,13 +1149,19 @@ export function AdminVpnPanelPage() {
             </div>
             {!loading && (
               <p className="text-sm text-gray-400 mt-0.5">
-                {clients.length} clients · {activeCount} active · {formatBytes(totalTraffic)} total traffic
+                {clients.length} clients · {activeCount} active ·{' '}
+                <span className="text-green-600 font-medium">{onlineCount} online</span>
+                {' · '}{formatBytes(totalTraffic)} total traffic
               </p>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={load} className="p-2 hover:bg-gray-50 rounded-xl transition" title="Refresh">
-              <RefreshCw className="w-5 h-5 text-gray-400" />
+            <button
+              onClick={() => { load(); loadActivity(); }}
+              className="p-2 hover:bg-gray-50 rounded-xl transition"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-5 h-5 text-gray-400 ${loading || activityLoading ? 'animate-spin' : ''}`} />
             </button>
             <Button
               onClick={handleSyncAllToDb}
@@ -787,63 +1179,149 @@ export function AdminVpnPanelPage() {
           </div>
         </div>
 
-        {/* Server status */}
-        <ServerStatusCard status={serverStatus} />
-
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <MiniStat icon={Users} label="Total clients" value={clients.length} />
-          <MiniStat icon={Globe} label="Active" value={activeCount} />
-          <MiniStat icon={Wifi} label="Total upload" value={formatBytes(clients.reduce((s, c) => s + c.up, 0))} />
-          <MiniStat icon={Link2} label="Total download" value={formatBytes(clients.reduce((s, c) => s + c.down, 0))} />
+        {/* Tab switcher */}
+        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit">
+          <button
+            onClick={() => setActiveTab('monitor')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition ${
+              activeTab === 'monitor' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-black'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            Live Monitor
+            {onlineCount > 0 && (
+              <span className="bg-green-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                {onlineCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('clients')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition ${
+              activeTab === 'clients' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-black'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Client Manager
+          </button>
         </div>
 
-        {/* Search */}
-        {clients.length > 3 && (
-          <div className="mb-4">
-            <input
-              type="text" value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by email..."
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-black"
+        {/* Server status — always visible */}
+        <ServerStatusCard status={serverStatus} />
+
+        {/* ── Monitor Tab ── */}
+        {activeTab === 'monitor' && (
+          <>
+            {/* Auto-refresh toggle */}
+            <div className="flex items-center justify-end gap-2 mb-4">
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition ${
+                  autoRefresh
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-400'
+                }`}
+              >
+                <Radio className={`w-3 h-3 ${autoRefresh ? 'animate-pulse' : ''}`} />
+                {autoRefresh ? 'Live · 15s' : 'Auto-refresh off'}
+              </button>
+            </div>
+
+            {/* Summary cards with online count */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+              <MiniStat icon={Signal} label="Online now" value={onlineCount} highlight="green" />
+              <MiniStat icon={Users} label="Total clients" value={clients.length} />
+              <MiniStat icon={Wifi} label="Total upload" value={formatBytes(clients.reduce((s, c) => s + c.up, 0))} />
+              <MiniStat icon={Link2} label="Total download" value={formatBytes(clients.reduce((s, c) => s + c.down, 0))} />
+            </div>
+
+            {/* Live activity panel */}
+            <LiveActivityPanel
+              activity={activity}
+              loading={activityLoading}
+              onViewUser={setViewingUser}
             />
-          </div>
+          </>
         )}
 
-        {/* Client list */}
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <Card>
-            <CardContent className="py-10 text-center text-sm text-gray-400">
-              {search ? 'No clients matching search.' : 'No VPN clients yet. Add the first one above.'}
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <div className="divide-y divide-gray-50">
-              {filtered.map((client) => (
-                <ClientRow key={client.email} client={client} onRefresh={load} />
-              ))}
+        {/* ── Clients Tab ── */}
+        {activeTab === 'clients' && (
+          <>
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+              <MiniStat icon={Users} label="Total clients" value={clients.length} />
+              <MiniStat icon={Globe} label="Active" value={activeCount} />
+              <MiniStat icon={Wifi} label="Total upload" value={formatBytes(clients.reduce((s, c) => s + c.up, 0))} />
+              <MiniStat icon={Link2} label="Total download" value={formatBytes(clients.reduce((s, c) => s + c.down, 0))} />
             </div>
-          </Card>
+
+            {/* Search */}
+            {clients.length > 3 && (
+              <div className="mb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text" value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search by email..."
+                    className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-black"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Client list */}
+            {loading ? (
+              <div className="flex justify-center py-16">
+                <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-gray-400">
+                  {search ? 'No clients matching search.' : 'No VPN clients yet. Add the first one above.'}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <div className="divide-y divide-gray-50">
+                  {filtered.map((client) => (
+                    <ClientRow
+                      key={client.email}
+                      client={client}
+                      onRefresh={load}
+                      isOnline={onlineEmails.has(client.email)}
+                      onViewActivity={() => {
+                        setViewingUser(client.email);
+                      }}
+                    />
+                  ))}
+                </div>
+              </Card>
+            )}
+          </>
         )}
       </main>
     </>
   );
 }
 
-function MiniStat({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string | number }) {
+function MiniStat({
+  icon: Icon, label, value, highlight,
+}: {
+  icon: React.ElementType; label: string; value: string | number; highlight?: 'green';
+}) {
   return (
-    <div className="border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-3">
-      <div className="w-8 h-8 bg-gray-100 rounded-xl flex items-center justify-center shrink-0">
-        <Icon className="w-4 h-4 text-black" />
+    <div className={`border rounded-2xl px-4 py-3 flex items-center gap-3 ${
+      highlight === 'green' ? 'border-green-200 bg-green-50' : 'border-gray-100'
+    }`}>
+      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+        highlight === 'green' ? 'bg-green-100' : 'bg-gray-100'
+      }`}>
+        <Icon className={`w-4 h-4 ${highlight === 'green' ? 'text-green-600' : 'text-black'}`} />
       </div>
       <div>
-        <p className="text-lg font-bold leading-none">{value}</p>
-        <p className="text-[10px] text-gray-400 mt-0.5">{label}</p>
+        <p className={`text-lg font-bold leading-none ${highlight === 'green' ? 'text-green-700' : ''}`}>{value}</p>
+        <p className={`text-[10px] mt-0.5 ${highlight === 'green' ? 'text-green-600' : 'text-gray-400'}`}>{label}</p>
       </div>
     </div>
   );

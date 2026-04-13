@@ -344,6 +344,49 @@ export async function getAdminClientLinks(email: string): Promise<XuiClientLinks
   return xuiRequest<XuiClientLinks>(`/links/${encodeURIComponent(email)}`);
 }
 
+// ── Admin Monitoring ──────────────────────────────────────────────────────────
+
+/** Get list of currently online client emails (admin) */
+export async function getAdminOnlines(): Promise<string[]> {
+  return xuiRequest<string[]>('/admin/onlines');
+}
+
+/** User activity summary from backend */
+export interface UserActivitySummary {
+  email: string;
+  isOnline: boolean;
+  lastSeen: string | null;
+  lastSeenAgo: string | null;
+  sourceIps: string[];
+  connectionCount: number;
+  topDomains: { domain: string; count: number }[];
+  inboundsUsed: string[];
+  blockedCount: number;
+}
+
+/** Get activity summaries for all users — online status, last seen, domains (admin) */
+export async function getAdminActivity(): Promise<UserActivitySummary[]> {
+  return xuiRequest<UserActivitySummary[]>('/admin/activity');
+}
+
+/** Connection log entry */
+export interface ConnectionLogEntry {
+  timestamp: string;
+  sourceIp: string;
+  sourcePort: string;
+  protocol: string;
+  destination: string;
+  destinationPort: string;
+  inbound: string;
+  route: string;
+  email: string;
+}
+
+/** Get recent connection history for a specific user (admin) */
+export async function getAdminUserConnections(email: string): Promise<ConnectionLogEntry[]> {
+  return xuiRequest<ConnectionLogEntry[]>(`/admin/connections/${encodeURIComponent(email)}`);
+}
+
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 /** Format bytes to human-readable string */
