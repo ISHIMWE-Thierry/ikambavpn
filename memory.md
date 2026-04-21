@@ -1,14 +1,31 @@
 # IkambaVPN VPS Session Memory
 
-## VPS Access
-- **IP:** 194.76.217.4
-- **SSH Port:** 29418
-- **User:** vpnadmin
-- **Password:** ikamba2026
-- **OS:** Ubuntu 24.04 (Hetzner Helsinki)
-- **Panel:** 3X-UI on port 2053, path `/x7kQ9m/`, user: ikamba
-- **Subscription:** port 2096, path `/sub/`, TLS with certs at `/root/cert/ip/`
-- **Protocol:** VLESS+REALITY on port 443
+## VPS Access — PRIMARY (Aeza SWE-2, Stockholm) — since April 21, 2026
+- **IP:** 138.124.24.164
+- **Tailscale:** `ssh root@100.68.68.33` (hostname `ikamba-swe2`, DPI-proof — works from Russia)
+- **Root password:** LU5WZFhHTxp9 · **vpnadmin password:** SodcS96bkKrml3sMm88uIfY
+- **SSH direct port:** 29418 — ⚠️ blocked by Russian ISP DPI. Use Tailscale.
+- **OS:** Ubuntu 24.04 — Aeza dedicated AMD Ryzen 9 7950X3D, 4 GB, 60 GB NVMe, 1 Gbps
+- **Cost:** €14.15/month · Expires 2026-05-21
+- **Panel:** port **39182**, path `/x7kQ9m/`, user `ikamba`, pass `Ts7vAOl921zLOMCWfJVIKySm`
+- **Subscription:** port **8443**, path `/sub/`, HTTP only (TODO: add DuckDNS+Caddy for HTTPS)
+- **Inbound id=1 `SWE-VLESS`:** VLESS+REALITY on port 443, SNI `www.microsoft.com`
+  - REALITY public key: `Hyr1QIN4U7tY3GYqe2FA0gv05IdTXn0hnAso7YhffCY`
+  - REALITY private key: `8JzeuCswlP9crai-TkitkUiwEofhs7vhmyBkilsXfnA`
+  - shortId: `175eaf9cc461b3ad` · default UUID: `62a5c558-6fe2-439c-a8fd-cf44cb56c819`
+
+## Key Lessons from Aeza Setup (April 21, 2026)
+1. **Russian ISP DPI drops SSH banner on ALL ports** — `nc` TCP connect succeeds, but `SSH-2.0-...` banner triggers RST. Affects AWS, Aeza, and any bare-metal VPS.
+2. **Fix:** Tailscale (`curl -fsSL https://tailscale.com/install.sh | sh && tailscale up --ssh`). Install on Mac via `brew install --cask tailscale`. WireGuard on UDP:41641 is invisible to DPI.
+3. **`vps-setup.sh` has a silent failure:** `x-ui setting -port` doesn't work because the wrapper script's menu doesn't delegate `setting` — must call `/usr/local/x-ui/x-ui setting -port N` directly. Our installer's `|| true` hides it. Always verify with `x-ui settings` after.
+4. **3X-UI stores settings sparsely** — only non-default values go in `settings` table. `webPort`, `subPort`, etc. are absent until overridden.
+5. **`webCertFile` / `subCertFile` get pre-populated** pointing to `/root/cert/ip/fullchain.pem` even without a cert — panel fails over HTTPS. Either provision certs or `DELETE FROM settings WHERE key LIKE '%CertFile' OR key LIKE '%KeyFile'`.
+
+## VPS Access — PREVIOUS (Hetzner HELs-2, Finland) — still holds existing paid users
+- **IP:** 194.76.217.4 · SSH: `ssh -p 29418 vpnadmin@194.76.217.4` · pass `ikamba2026`
+- **Panel:** port 2053, path `/x7kQ9m/`, user `ikamba`
+- **Subscription:** port 2096, TLS with certs at `/root/cert/ip/`
+- **Protocol:** VLESS+REALITY on port 443 · Migration to Aeza = future task
 
 ## Problem
 Users are getting auto-disconnected from the VPN.
