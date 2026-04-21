@@ -99,6 +99,7 @@ ufw allow 22/tcp            comment 'SSH-old'
 ufw allow "$SSH_PORT/tcp"   comment 'SSH'
 ufw allow 80/tcp            comment 'HTTP (cert validation)'
 ufw allow 443/tcp           comment 'VLESS+REALITY'
+ufw allow 2083/tcp          comment 'VLESS WS anti-DPI'
 ufw allow "$PANEL_PORT/tcp" comment '3X-UI panel'
 ufw allow "$SUB_PORT/tcp"   comment 'Subscription port'
 
