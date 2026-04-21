@@ -140,13 +140,24 @@ export function AdminDashboardPage() {
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </Link>
               <a
+                href="http://138.124.24.164:39182/x7kQ9m/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition"
+              >
+                <span className="text-sm font-medium flex items-center gap-2">
+                  <ExternalLink className="w-4 h-4" /> 3X-UI Stockholm (Primary)
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </a>
+              <a
                 href="https://194.76.217.4:2053/x7kQ9m/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition"
               >
                 <span className="text-sm font-medium flex items-center gap-2">
-                  <ExternalLink className="w-4 h-4" /> 3X-UI Server Panel
+                  <ExternalLink className="w-4 h-4" /> 3X-UI Helsinki (Fallback)
                 </span>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </a>

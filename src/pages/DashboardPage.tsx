@@ -1449,11 +1449,11 @@ export function DashboardPage() {
                     </div>
 
                     {isAdmin && (
-                      <a href="https://194.76.217.4:2053/x7kQ9m/" target="_blank" rel="noopener noreferrer"
+                      <a href="http://138.124.24.164:39182/x7kQ9m/" target="_blank" rel="noopener noreferrer"
                         className="flex items-center justify-between border border-gray-200 rounded-2xl px-4 py-3
                           hover:border-black transition-colors">
                         <span className="flex items-center gap-2 text-sm font-medium">
-                          <Shield className="w-4 h-4 text-gray-400" /> 3X-UI Panel
+                          <Shield className="w-4 h-4 text-gray-400" /> 3X-UI Stockholm
                         </span>
                         <ExternalLink className="w-4 h-4 text-gray-300" />
                       </a>
