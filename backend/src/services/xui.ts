@@ -1133,9 +1133,10 @@ export async function provisionUser(
     }, XHTTP_INBOUND_ID).catch(() => { /* non-fatal: XHTTP inbound may not exist yet */ });
 
     // Mirror to WebSocket inbound — same UUID, flow must be "" (WS doesn't use Vision)
+    // 3X-UI requires panel-wide unique emails, so suffix with "-ws"
     await addClient({
       id: clientId,
-      email,
+      email: email + "-ws",
       flow: "",
       totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
       expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
