@@ -48,10 +48,18 @@ const XHTTP_INBOUND_ID = 2;
 // Server-side routing rules blackhole geosite:category-ads-all + tracker domains
 // for traffic with this inbound's tag (set up via 3X-UI panel routing config).
 // Result: ad-light browsing + faster social media loading.
+//
+// Currently lives on the Stockholm box (138.124.24.164, inbound id 3) only —
+// the Hetzner panel that the backend talks to does NOT have this inbound, so
+// the addClient mirror in provisionUser will silently fail there. New clients
+// must be mirrored to Stockholm via infrastructure/create-social-inbound.sh
+// (idempotent — re-run periodically as a cron until proper cross-panel
+// provisioning is built).
 const SOCIAL_PORT = 2087;
 const SOCIAL_PATH = "/yt-stream";
 const SOCIAL_HOST = "i.ytimg.com";
-const SOCIAL_INBOUND_ID = Number(process.env.XPANEL_SOCIAL_INBOUND_ID || "4");
+const SOCIAL_SERVER_IP = process.env.XPANEL_SOCIAL_SERVER_IP || "138.124.24.164";
+const SOCIAL_INBOUND_ID = Number(process.env.XPANEL_SOCIAL_INBOUND_ID || "3");
 
 // ── Multi-Server Configuration ────────────────────────────────────────────────
 // Each backend instance serves subscription links for ALL servers so users get
@@ -967,6 +975,9 @@ export function buildWsLink(clientId: string, remark: string): string {
  * Build a VLESS+WebSocket link for the social-optimized inbound (port 2087).
  * Server-side routing rules blackhole ad/tracker domains for this inbound's tag,
  * giving lighter ads and faster social media loading.
+ *
+ * Points at SOCIAL_SERVER_IP (Stockholm) — the only box that hosts this inbound.
+ * Clients use the same UUID as their primary connection.
  */
 export function buildSocialLink(clientId: string, remark: string): string {
   if (!clientId) {
@@ -980,7 +991,7 @@ export function buildSocialLink(clientId: string, remark: string): string {
     `host=${SOCIAL_HOST}`,
   ].join("&");
 
-  return `vless://${clientId}@${VPS_IP}:${SOCIAL_PORT}?${query}#${encodeURIComponent(remark + "-Social")}`;
+  return `vless://${clientId}@${SOCIAL_SERVER_IP}:${SOCIAL_PORT}?${query}#${encodeURIComponent(remark + "-Social")}`;
 }
 
 // ── Multi-Server Link Builders ────────────────────────────────────────────────
