@@ -80,12 +80,12 @@ const DEVICE_CONFIG: Record<DeviceType, {
     ],
   },
   windows: {
-    appName: 'Hiddify',
-    appUrl: 'https://github.com/hiddify/hiddify-app/releases',
-    appStore: 'Download',
-    steps: ['Open Hiddify', 'Click + → Add from clipboard', 'Click Connect'],
-    routingTip: 'Settings → Routing → Block None.',
-    persistTip: 'Hiddify → Settings → General → enable "Auto-connect" and "Start on boot". VPN reconnects automatically after any interruption.',
+    appName: 'Happ',
+    appUrl: 'https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe',
+    appStore: 'Direct download',
+    steps: ['Run setup-Happ.x64.exe to install', 'Open Happ → click + → Import from clipboard', 'Click Connect'],
+    routingTip: 'Settings → Routing → Global.',
+    persistTip: 'Happ → Settings → General → enable "Auto-connect" and "Launch at startup". VPN reconnects automatically after any interruption.',
   },
   linux: {
     appName: 'Hiddify',

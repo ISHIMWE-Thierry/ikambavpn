@@ -63,6 +63,12 @@ const ANDROID_APPS = [
 
 const DESKTOP_APPS = [
   {
+    name: 'Happ',
+    platforms: 'Windows',
+    desc: 'Recommended — direct .exe installer, one-click setup, supports subscription links.',
+    url: 'https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe',
+  },
+  {
     name: 'Hiddify',
     platforms: 'Windows / macOS / Linux',
     desc: 'Cross-platform, beautiful UI, supports subscription links.',
@@ -421,7 +427,8 @@ export function RussiaGuidePage() {
               <li><strong>iPhone:</strong> <a href="https://apps.apple.com/ru/app/%D0%B8%D0%B7%D0%B8-vpn/id6746414734?l=en-GB" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Изи VPN</a> — рекомендуем, доступен в российском App Store</li>
               <li><strong>Альтернативы iPhone:</strong> <a href="https://apps.apple.com/app/v2app/id6670790798" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2App</a> • <a href="https://apps.apple.com/app/id6476628951" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">V2RayTun</a> • <a href="https://apps.apple.com/app/streisand/id6450534064" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Streisand</a></li>
               <li><strong>Android:</strong> V2RayNG из Google Play или скачайте APK с GitHub</li>
-              <li><strong>Компьютер:</strong> Hiddify (Windows/macOS/Linux) с GitHub</li>
+              <li><strong>Windows:</strong> <a href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe" className="underline text-blue-600">Happ</a> — скачать .exe в один клик</li>
+              <li><strong>macOS / Linux:</strong> Hiddify с GitHub</li>
             </ul>
             <p><strong>Шаг 2:</strong> Перейдите в <strong>Панель управления</strong> → нажмите <strong>«Copy VPN Link»</strong></p>
             <p><strong>Шаг 3:</strong> Откройте Изи VPN → <strong>+</strong> → <strong>«Import from clipboard»</strong></p>
