@@ -38,8 +38,26 @@ SOCIAL_CLIENTS=$(echo "$CLIENTS" | jq -c 'map({id, email:(.email+"-yt"), enable,
 echo "==> Checking if port $PORT already has an inbound..."
 EXISTING=$(curl -sS -b "$COOKIE" "$PANEL_URL/panel/api/inbounds/list" | jq ".obj[] | select(.port==$PORT) | .id")
 if [ -n "$EXISTING" ]; then
-  echo "==> Inbound on $PORT already exists (id=$EXISTING) — skipping create."
+  echo "==> Inbound on $PORT already exists (id=$EXISTING) — syncing missing clients."
   INBOUND_ID=$EXISTING
+  # Diff: find clients in inbound 1 whose "<email>-yt" is NOT in this inbound, and addClient them.
+  EXISTING_EMAILS=$(curl -sS -b "$COOKIE" "$PANEL_URL/panel/api/inbounds/get/$INBOUND_ID" \
+    | jq -c '.obj.settings | fromjson | [.clients[].email]')
+  TO_ADD=$(echo "$CLIENTS" | jq -c --argjson have "$EXISTING_EMAILS" \
+    'map(select((.email + "-yt") as $e | ($have | index($e)) == null))
+     | map({id, email:(.email+"-yt"), enable, flow:"", totalGB, expiryTime, limitIp, tgId:(.tgId//""), subId, reset:(.reset//0)})')
+  ADD_COUNT=$(echo "$TO_ADD" | jq 'length')
+  if [ "$ADD_COUNT" -gt 0 ]; then
+    echo "   Adding $ADD_COUNT new clients..."
+    SETTINGS_NEW=$(jq -nc --argjson clients "$TO_ADD" '{clients:$clients}')
+    BODY=$(jq -nc --argjson id "$INBOUND_ID" --arg settings "$SETTINGS_NEW" '{id:$id, settings:$settings}')
+    RES=$(curl -sS -b "$COOKIE" -H 'Content-Type: application/json' -d "$BODY" "$PANEL_URL/panel/api/inbounds/addClient")
+    echo "   $(echo "$RES" | jq -c '{success, msg}')"
+  else
+    echo "   All clients already mirrored. Nothing to do."
+  fi
+  echo "==> DONE — sync complete (id=$INBOUND_ID)"
+  exit 0
 else
   echo "==> Creating VLESS+WS social inbound on :$PORT..."
   SETTINGS=$(jq -nc --argjson clients "$SOCIAL_CLIENTS" \
