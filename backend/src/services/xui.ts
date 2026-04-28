@@ -44,6 +44,15 @@ const XHTTP_PORT = 8443;
 const XHTTP_PATH = "/ikamba";
 const XHTTP_INBOUND_ID = 2;
 
+// Social-optimized WebSocket inbound — port 2087, /yt-stream, host i.ytimg.com.
+// Server-side routing rules blackhole geosite:category-ads-all + tracker domains
+// for traffic with this inbound's tag (set up via 3X-UI panel routing config).
+// Result: ad-light browsing + faster social media loading.
+const SOCIAL_PORT = 2087;
+const SOCIAL_PATH = "/yt-stream";
+const SOCIAL_HOST = "i.ytimg.com";
+const SOCIAL_INBOUND_ID = Number(process.env.XPANEL_SOCIAL_INBOUND_ID || "4");
+
 // ── Multi-Server Configuration ────────────────────────────────────────────────
 // Each backend instance serves subscription links for ALL servers so users get
 // Helsinki + Frankfurt (and future locations) in their VPN app.
@@ -954,6 +963,26 @@ export function buildWsLink(clientId: string, remark: string): string {
   return `vless://${clientId}@${VPS_IP}:${WS_PORT}?${query}#${encodeURIComponent(remark + "-WS")}`;
 }
 
+/**
+ * Build a VLESS+WebSocket link for the social-optimized inbound (port 2087).
+ * Server-side routing rules blackhole ad/tracker domains for this inbound's tag,
+ * giving lighter ads and faster social media loading.
+ */
+export function buildSocialLink(clientId: string, remark: string): string {
+  if (!clientId) {
+    throw new Error("buildSocialLink: clientId is required");
+  }
+
+  const query = [
+    `type=ws`,
+    `security=none`,
+    `path=${SOCIAL_PATH}`,
+    `host=${SOCIAL_HOST}`,
+  ].join("&");
+
+  return `vless://${clientId}@${VPS_IP}:${SOCIAL_PORT}?${query}#${encodeURIComponent(remark + "-Social")}`;
+}
+
 // ── Multi-Server Link Builders ────────────────────────────────────────────────
 // These variants accept a ServerConfig so we can generate links for any server,
 // not just the one this backend instance is running on.
@@ -1014,6 +1043,9 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   }
 
+  // Social-optimized link is currently primary-server-only (no per-server config yet)
+  links.push(buildSocialLink(clientId, remark));
+
   return links;
 }
 
@@ -1054,11 +1086,13 @@ export function getAllClientLinks(clientId: string, subId: string, email: string
   const remark = `IkambaVPN-${email.split("@")[0]}`;
   const wsLink = buildWsLink(clientId, remark);
   const vlessLink = buildVlessLink(clientId, remark);
+  const socialLink = buildSocialLink(clientId, remark);
   // Self-hosted subscription endpoint — uses DuckDNS domain for proper TLS cert
   const selfHostedSubUrl = `https://${BACKEND_DOMAIN}:4443/xui-public/sub/${encodeURIComponent(email)}`;
   return {
     vlessLink: wsLink, // WS is now the default/primary link
     vlessTcpLink: vlessLink, // TCP REALITY kept as backup
+    socialLink, // Social-optimized WS — ad/tracker blocking via server routing
     subscriptionUrl: selfHostedSubUrl,
     v2raytun: getV2RayTunDeepLink(selfHostedSubUrl),
     v2rayng: getV2RayNGDeepLink(selfHostedSubUrl),
@@ -1142,6 +1176,17 @@ export async function provisionUser(
       expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
       limitIp: options?.maxConnections ?? 0,
     }, WS_INBOUND_ID).catch(() => { /* non-fatal: WS inbound may not exist yet */ });
+
+    // Mirror to social-optimized inbound — same UUID, email +"-yt" suffix.
+    // Server-side routing rules blackhole ad/tracker domains for this inbound's tag.
+    await addClient({
+      id: clientId,
+      email: email + "-yt",
+      flow: "",
+      totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
+      expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
+      limitIp: options?.maxConnections ?? 0,
+    }, SOCIAL_INBOUND_ID).catch(() => { /* non-fatal: social inbound may not exist yet */ });
 
     const links = getAllClientLinks(clientId, subId, email);
 
