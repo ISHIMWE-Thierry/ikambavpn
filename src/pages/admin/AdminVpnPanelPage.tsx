@@ -515,7 +515,7 @@ function ClientRow({ client, onRefresh, isOnline, onViewActivity }: {
   const copySubUrl = () => {
     // Always build a fresh subscription URL using the canonical domain format
     // (matches what DashboardPage gives users — ikambavpn.duckdns.org)
-    const base = import.meta.env.DEV ? 'http://localhost:4000' : 'https://ikambavpn.duckdns.org:4443';
+    const base = import.meta.env.DEV ? 'http://localhost:4000' : 'https://ikambavpn.duckdns.org:8443';
     const freshUrl = `${base}/xui-public/sub/${encodeURIComponent(client.email)}`;
     navigator.clipboard.writeText(freshUrl);
     setCopied(true);
@@ -568,7 +568,7 @@ function ClientRow({ client, onRefresh, isOnline, onViewActivity }: {
             <div className="flex flex-col gap-1.5">
               <p className="text-xs font-medium text-gray-500">Subscription URL</p>
               <div className="bg-white rounded-xl p-2.5 font-mono text-[11px] break-all text-gray-600 border border-gray-200">
-                {`https://ikambavpn.duckdns.org:4443/xui-public/sub/${encodeURIComponent(client.email)}`}
+                {`https://ikambavpn.duckdns.org:8443/xui-public/sub/${encodeURIComponent(client.email)}`}
               </div>
               <button
                 onClick={copySubUrl}

@@ -1099,7 +1099,7 @@ export function getAllClientLinks(clientId: string, subId: string, email: string
   const vlessLink = buildVlessLink(clientId, remark);
   const socialLink = buildSocialLink(clientId, remark);
   // Self-hosted subscription endpoint — uses DuckDNS domain for proper TLS cert
-  const selfHostedSubUrl = `https://${BACKEND_DOMAIN}:4443/xui-public/sub/${encodeURIComponent(email)}`;
+  const selfHostedSubUrl = `https://${BACKEND_DOMAIN}:8443/xui-public/sub/${encodeURIComponent(email)}`;
   return {
     vlessLink: wsLink, // WS is now the default/primary link
     vlessTcpLink: vlessLink, // TCP REALITY kept as backup

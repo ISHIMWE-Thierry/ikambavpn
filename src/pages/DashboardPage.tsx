@@ -104,7 +104,7 @@ const DEVICE_CONFIG: Record<DeviceType, {
 };
 
 function getSubUrl(email: string) {
-  const base = import.meta.env.DEV ? 'http://localhost:4000' : 'https://ikambavpn.duckdns.org:4443';
+  const base = import.meta.env.DEV ? 'http://localhost:4000' : 'https://ikambavpn.duckdns.org:8443';
   return `${base}/xui-public/sub/${encodeURIComponent(email)}`;
 }
 
