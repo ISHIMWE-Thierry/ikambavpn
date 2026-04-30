@@ -8,3 +8,4 @@ dist/
 .firebase/
 backend/.env
 backend/dist/
+firebase-debug.log

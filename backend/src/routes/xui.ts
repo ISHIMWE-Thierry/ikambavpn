@@ -863,7 +863,6 @@ xuiRouter.post("/payment/create", async (req: AuthedRequest, res: Response) => {
     await db.collection("vpn_orders").doc(orderId).update({
       yookassaPaymentId: payment.id,
       yookassaStatus: payment.status,
-      paymentMethod: "YooKassa",
       updatedAt: new Date().toISOString(),
     });
 
