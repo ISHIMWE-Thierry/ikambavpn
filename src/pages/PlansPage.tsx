@@ -72,9 +72,7 @@ export function PlansPage() {
           (o) => o.status === 'active' && !!o.expiresAt && new Date(o.expiresAt) > new Date(),
         );
         if (active) setActiveOrder(active);
-        const pending = orders.some(
-          (o) => o.status === 'pending_payment' || o.status === 'payment_submitted',
-        );
+        const pending = orders.some((o) => o.status === 'pending_payment');
         setHasPending(pending);
       }).catch(() => {});
     }

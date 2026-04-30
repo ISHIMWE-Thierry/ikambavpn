@@ -1212,10 +1212,44 @@ export async function provisionUser(
       hiddifyLink: links.hiddify,
     };
   } catch (err: any) {
-    // If duplicate email, find the existing client and return their links
+    // If duplicate email, the user already has a client (most likely an
+    // expired/disabled one from a previous subscription that the admin is
+    // now reactivating). We MUST refresh expiry / re-enable / reset traffic
+    // — otherwise the order looks active in Firestore but the user stays
+    // expired or disabled on the VPN panel and cannot connect.
     if (err.message?.includes("Duplicate email")) {
       const existing = await findClientByEmail(email);
       if (existing) {
+        const newExpiry = options?.expiryDays ? daysFromNow(options.expiryDays) : 0;
+        const newTotal = options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0;
+        const newLimitIp = options?.maxConnections ?? 0;
+
+        const refreshUpdates: Partial<XuiClient> = {
+          enable: true,
+          expiryTime: newExpiry,
+          totalGB: newTotal,
+          limitIp: newLimitIp,
+          reset: 0,
+        };
+
+        // Refresh on the main VLESS+REALITY inbound
+        await updateClient(existing.id, refreshUpdates, DEFAULT_INBOUND_ID).catch(() => {
+          /* ignore — we still want to return links so the user gets something */
+        });
+
+        // Mirror refresh across the other inbounds (XHTTP / WS / social).
+        // Each mirror uses a suffixed email but the SAME UUID/clientId.
+        await updateClient(existing.id, refreshUpdates, XHTTP_INBOUND_ID).catch(() => {});
+        await updateClient(existing.id, refreshUpdates, WS_INBOUND_ID).catch(() => {});
+        await updateClient(existing.id, refreshUpdates, SOCIAL_INBOUND_ID).catch(() => {});
+
+        // Also reset traffic stats so the user starts fresh on the new period.
+        // Mirror inbounds use suffixed emails (.x@, -ws, -yt) — reset those too.
+        await resetClientTraffic(email, DEFAULT_INBOUND_ID).catch(() => {});
+        await resetClientTraffic(email.replace("@", ".x@"), XHTTP_INBOUND_ID).catch(() => {});
+        await resetClientTraffic(email + "-ws", WS_INBOUND_ID).catch(() => {});
+        await resetClientTraffic(email + "-yt", SOCIAL_INBOUND_ID).catch(() => {});
+
         const links = getAllClientLinks(existing.id, existing.subId, email);
         return {
           clientId: existing.id,

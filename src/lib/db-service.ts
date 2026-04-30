@@ -13,8 +13,7 @@ import {
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, COLLECTIONS } from './firebase';
+import { db, COLLECTIONS } from './firebase';
 import type { UserProfile, VpnOrder, PaymentAccount, VpnPlan, OrderStatus, VpnTrial, TrialStatus } from '../types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -197,20 +196,6 @@ export async function updateOrderStatus(
   });
 }
 
-// ── Payment proof upload ───────────────────────────────────────────────────────
-
-export async function uploadPaymentProof(orderId: string, file: File): Promise<string> {
-  // Sanitize filename: remove special chars, preserve extension
-  const ext = file.name.split('.').pop() || 'jpg';
-  const safeName = `proof_${Date.now()}.${ext}`;
-  const storageRef = ref(storage, `payment_proofs/${orderId}/${safeName}`);
-
-  // Set proper content type for the upload
-  const metadata = { contentType: file.type || 'image/jpeg' };
-  await uploadBytes(storageRef, file, metadata);
-  return getDownloadURL(storageRef);
-}
-
 // ── Payment accounts (admin-configured) ───────────────────────────────────────
 
 export async function getPaymentAccounts(): Promise<PaymentAccount[]> {
@@ -259,23 +244,12 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 // so admins only need to manage payment account details in one place.
 
 export interface AppPaymentSettings {
-  depositAccountName: string;
-  depositAccountNumber: string;
-  depositBankName: string;
-  depositInstructions: string;
-  /** USDC (Polygon) wallet address for PayGate.to payouts */
-  paygateUsdcWallet?: string;
-  /** Whether PayGate.to card payments are enabled */
-  paygateEnabled?: boolean;
   /** Admin-controlled RUB → USD rate (e.g. 100 means 100 RUB = 1 USD) */
   rubToUsdRate?: number;
 }
 
 const PAYMENT_FALLBACK: AppPaymentSettings = {
-  depositAccountName: 'Thierry Ishimwe',
-  depositAccountNumber: '+79099049277',
-  depositBankName: 'Sberbank',
-  depositInstructions: 'Send to our Sberbank number and upload a screenshot of the confirmation.',
+  rubToUsdRate: 0,
 };
 
 export async function getAppSettings(): Promise<AppPaymentSettings> {
@@ -285,12 +259,6 @@ export async function getAppSettings(): Promise<AppPaymentSettings> {
     if (snap.exists()) {
       const d = snap.data();
       return {
-        depositAccountName: d.depositAccountName || PAYMENT_FALLBACK.depositAccountName,
-        depositAccountNumber: d.depositAccountNumber || PAYMENT_FALLBACK.depositAccountNumber,
-        depositBankName: d.depositBankName || PAYMENT_FALLBACK.depositBankName,
-        depositInstructions: d.depositInstructions || PAYMENT_FALLBACK.depositInstructions,
-        paygateUsdcWallet: d.paygateUsdcWallet || '',
-        paygateEnabled: d.paygateEnabled ?? false,
         rubToUsdRate: d.rubToUsdRate || 0,
       };
     }
@@ -299,12 +267,6 @@ export async function getAppSettings(): Promise<AppPaymentSettings> {
     if (!colSnap.empty) {
       const d = colSnap.docs[0].data();
       return {
-        depositAccountName: d.depositAccountName || PAYMENT_FALLBACK.depositAccountName,
-        depositAccountNumber: d.depositAccountNumber || PAYMENT_FALLBACK.depositAccountNumber,
-        depositBankName: d.depositBankName || PAYMENT_FALLBACK.depositBankName,
-        depositInstructions: d.depositInstructions || PAYMENT_FALLBACK.depositInstructions,
-        paygateUsdcWallet: d.paygateUsdcWallet || '',
-        paygateEnabled: d.paygateEnabled ?? false,
         rubToUsdRate: d.rubToUsdRate || 0,
       };
     }

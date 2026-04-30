@@ -24,7 +24,6 @@ export interface UserProfile {
 
 export type OrderStatus =
   | 'pending_payment'
-  | 'payment_submitted'
   | 'active'
   | 'expired'
   | 'cancelled';
@@ -40,22 +39,12 @@ export interface VpnOrder {
   amount: number;
   currency: string;
   status: OrderStatus;
-  paymentMethod: string;
-  paymentProofUrl?: string;
   activatedAt?: string;
   expiresAt?: string;
   credentials?: VpnCredentials;
   createdAt: string;
   updatedAt: string;
-  // PayGate.to card payment fields (legacy)
-  paygateIpnToken?: string;
-  paygatePolygonAddress?: string;
-  paygateAmountUsd?: number;
-  paygateTxId?: string;
-  paygateAmountReceived?: string;
-  // RevenueCat card payment fields
-  rcPurchaseComplete?: boolean;
-  // YooKassa payment fields
+  // YooKassa payment fields (only payment method supported)
   yookassaPaymentId?: string;
   yookassaStatus?: string;
   yookassaActivated?: boolean;

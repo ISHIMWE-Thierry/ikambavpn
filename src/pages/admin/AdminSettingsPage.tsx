@@ -339,40 +339,35 @@ export function AdminSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Card payments (RevenueCat) */}
+        {/* Card payments — handled by YooKassa */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4" />
-              <h2 className="font-semibold">Card payments (RevenueCat)</h2>
+              <h2 className="font-semibold">Card payments (YooKassa)</h2>
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              Accept Visa, Mastercard, Apple Pay, Google Pay via RevenueCat + Stripe.
+              All online payments are processed by YooKassa (cards, SBP, YooMoney, Mir).
             </p>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2 text-sm">
-                <div className={`w-2 h-2 rounded-full ${
-                  import.meta.env.VITE_REVENUECAT_API_KEY ? 'bg-green-500' : 'bg-red-400'
-                }`} />
-                <span className="text-gray-600">
-                  {import.meta.env.VITE_REVENUECAT_API_KEY
-                    ? 'API key configured'
-                    : 'API key not set — add VITE_REVENUECAT_API_KEY to your environment'}
-                </span>
-              </div>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Products, prices, and entitlements are managed in the{' '}
+                Shop ID and secret key are configured server-side via the
+                <code className="mx-1 px-1.5 py-0.5 bg-gray-100 rounded">YOOKASSA_SHOP_ID</code>
+                and
+                <code className="mx-1 px-1.5 py-0.5 bg-gray-100 rounded">YOOKASSA_SECRET_KEY</code>
+                environment variables on the backend. Manage products, refunds, and webhooks
+                from the{' '}
                 <a
-                  href="https://app.revenuecat.com"
+                  href="https://yookassa.ru/my"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="underline hover:text-black transition"
                 >
-                  RevenueCat dashboard
+                  YooKassa dashboard
                 </a>
-                . Stripe handles payment processing.
+                .
               </p>
             </div>
           </CardContent>

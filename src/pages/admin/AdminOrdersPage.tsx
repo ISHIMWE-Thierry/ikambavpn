@@ -27,7 +27,6 @@ function statusBadge(status: OrderStatus) {
   const map: Record<OrderStatus, { label: string; variant: 'success' | 'warning' | 'danger' | 'muted' | 'default' }> = {
     active: { label: 'Active', variant: 'success' },
     pending_payment: { label: 'Pending payment', variant: 'warning' },
-    payment_submitted: { label: 'Under review', variant: 'muted' },
     expired: { label: 'Expired', variant: 'danger' },
     cancelled: { label: 'Cancelled', variant: 'danger' },
   };
@@ -159,7 +158,6 @@ export function AdminOrdersPage() {
           >
             <option value="all">All statuses</option>
             <option value="pending_payment">Pending payment</option>
-            <option value="payment_submitted">Under review</option>
             <option value="active">Active</option>
             <option value="expired">Expired</option>
             <option value="cancelled">Cancelled</option>
@@ -174,9 +172,9 @@ export function AdminOrdersPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           { label: 'Total', count: orders.length },
-          { label: 'Under review', count: orders.filter((o) => o.status === 'payment_submitted').length },
-          { label: 'Active', count: orders.filter((o) => o.status === 'active').length },
           { label: 'Pending', count: orders.filter((o) => o.status === 'pending_payment').length },
+          { label: 'Active', count: orders.filter((o) => o.status === 'active').length },
+          { label: 'Expired', count: orders.filter((o) => o.status === 'expired').length },
         ].map(({ label, count }) => (
           <div key={label} className="border border-gray-100 rounded-2xl px-4 py-3">
             <p className="text-2xl font-bold">{count}</p>
@@ -226,7 +224,15 @@ export function AdminOrdersPage() {
                     <div className="grid sm:grid-cols-2 gap-2">
                       <p><span className="text-gray-400">Order ID:</span> {order.id}</p>
                       <p><span className="text-gray-400">User ID:</span> {order.userId}</p>
-                      <p><span className="text-gray-400">Payment:</span> {order.paymentMethod}</p>
+                      <p><span className="text-gray-400">Payment:</span> YooKassa</p>
+                      {order.yookassaPaymentId && (
+                        <p className="font-mono text-xs">
+                          <span className="text-gray-400">YK ID:</span> {order.yookassaPaymentId}
+                        </p>
+                      )}
+                      {order.yookassaStatus && (
+                        <p><span className="text-gray-400">YK status:</span> {order.yookassaStatus}</p>
+                      )}
                       {order.activatedAt && (
                         <p><span className="text-gray-400">Activated:</span> {formatDate(order.activatedAt)}</p>
                       )}
@@ -234,17 +240,6 @@ export function AdminOrdersPage() {
                         <p><span className="text-gray-400">Expires:</span> {formatDate(order.expiresAt)}</p>
                       )}
                     </div>
-
-                    {order.paymentProofUrl && (
-                      <a
-                        href={order.paymentProofUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-black underline text-sm mt-1"
-                      >
-                        View payment proof →
-                      </a>
-                    )}
 
                     {order.credentials && (
                       <div className="bg-gray-50 rounded-xl p-3 font-mono text-xs mt-1">
@@ -254,7 +249,7 @@ export function AdminOrdersPage() {
                       </div>
                     )}
 
-                    {(order.status === 'payment_submitted' || order.status === 'pending_payment') && (
+                    {(order.status === 'pending_payment' || order.status === 'expired') && (
                       <ActivateForm order={order} onDone={fetchOrders} />
                     )}
                   </div>

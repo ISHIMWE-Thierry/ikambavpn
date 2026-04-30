@@ -1,14 +1,13 @@
-import { useEffect, useState, useRef, useCallback, useMemo, type ChangeEvent } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
   Power, Copy, Check, Wifi, WifiOff, Shield, Zap, Clock,
   ChevronDown, Download, RefreshCw, Activity, ExternalLink,
-  ChevronRight, AlertCircle, ArrowRight, Upload, Image, RotateCcw,
+  ChevronRight, AlertCircle, ArrowRight, Image, RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserOrders, getUserTrial, uploadPaymentProof, updateOrderStatus, getAppSettings, getPlans, type AppPaymentSettings } from '../lib/db-service';
-import { notifyAdminsPaymentProof } from '../lib/email-service';
+import { getUserOrders, getUserTrial, getPlans } from '../lib/db-service';
 import toast from 'react-hot-toast';
 import {
   provisionXuiAccount, getXuiStats, formatBytes, formatExpiry,
@@ -119,7 +118,6 @@ function statusBadge(status: OrderStatus) {
   const map: Record<OrderStatus, { label: string; variant: 'success'|'warning'|'danger'|'muted'|'default' }> = {
     active:            { label: 'Active',       variant: 'success' },
     pending_payment:   { label: 'Pending',      variant: 'warning' },
-    payment_submitted: { label: 'Under review', variant: 'success' },
     expired:           { label: 'Expired',      variant: 'danger'  },
     cancelled:         { label: 'Cancelled',    variant: 'danger'  },
   };
@@ -281,13 +279,6 @@ export function DashboardPage() {
   const [trial, setTrial]             = useState<VpnTrial | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
-  // Payment proof upload state (for pending_payment orders)
-  const [proofFile, setProofFile]         = useState<File | null>(null);
-  const [proofUploading, setProofUploading] = useState(false);
-  const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
-  const [paymentSettings, setPaymentSettings] = useState<AppPaymentSettings | null>(null);
-  const proofInputRef = useRef<HTMLInputElement>(null);
-
   // Inline tier picker state
   const [showTierPicker, setShowTierPicker] = useState(false);
   const [plans, setPlans]                   = useState<VpnPlan[]>([]);
@@ -339,11 +330,6 @@ export function DashboardPage() {
       }
     }).finally(() => setDataLoading(false));
   }, [firebaseUser]);
-
-  // Load payment settings for proof upload flow
-  useEffect(() => {
-    getAppSettings().then(setPaymentSettings).catch(() => {});
-  }, []);
 
   // Handle return from YooKassa payment — poll order status
   useEffect(() => {
@@ -436,55 +422,9 @@ export function DashboardPage() {
     }
   }, [firebaseUser, runHealth]);
 
-  function handleProofFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File is too large. Maximum size is 10 MB.');
-      return;
-    }
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
-    if (!allowed.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|webp|heic|heif|pdf)$/i)) {
-      toast.error('Please upload an image (JPG, PNG, WEBP) or PDF file.');
-      return;
-    }
-    setProofFile(file);
-  }
-
-  async function handleUploadProof(order: VpnOrder) {
-    if (!proofFile || !firebaseUser) return;
-    setProofUploading(true);
-    setUploadingOrderId(order.id);
-    try {
-      const url = await uploadPaymentProof(order.id, proofFile);
-      await updateOrderStatus(order.id, 'payment_submitted', { paymentProofUrl: url });
-      notifyAdminsPaymentProof({
-        orderId: order.id,
-        userName: profile ? `${profile.firstname} ${profile.lastname}`.trim() : (firebaseUser.displayName || null),
-        userEmail: firebaseUser.email || null,
-        planName: order.planName,
-        planDuration: order.planDuration,
-        amount: order.amount,
-        currency: order.currency,
-        proofUrl: url,
-      }).catch(() => {});
-      toast.success('Payment proof submitted! We\'ll review it shortly.');
-      setProofFile(null);
-      setUploadingOrderId(null);
-      refreshOrders();
-    } catch (err: any) {
-      const msg = err?.code === 'storage/unauthorized'
-        ? 'Upload not authorised. Please sign in again.'
-        : 'Failed to upload proof. Please try again.';
-      toast.error(msg);
-    } finally {
-      setProofUploading(false);
-    }
-  }
-
   const activeOrder  = orders.find((o) => o.status === 'active' && !!o.expiresAt && !isExpired(o.expiresAt));
-  const pendingOrders = orders.filter((o) => o.status === 'pending_payment' || o.status === 'payment_submitted');
-  const historyOrders = orders.filter((o) => o.status !== 'pending_payment' && o.status !== 'payment_submitted');
+  const pendingOrders = orders.filter((o) => o.status === 'pending_payment');
+  const historyOrders = orders.filter((o) => o.status !== 'pending_payment');
   const days         = daysUntilExpiry(activeOrder?.expiresAt);
   const expired      = isExpired(activeOrder?.expiresAt);
   // Trial is only active if status is 'active' AND expiresAt is in the future
@@ -1162,86 +1102,25 @@ export function DashboardPage() {
                     {statusBadge(o.status)}
                   </div>
 
-                  {/* Upload proof section — only for pending_payment (no proof yet) */}
+                  {/* Pending payment — let user retry the YooKassa checkout */}
                   {o.status === 'pending_payment' && (
-                    <div className="border-t border-gray-100 px-5 py-4 space-y-4">
-                      {/* Payment details */}
-                      {paymentSettings && (
-                        <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                          <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Pay here</p>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Amount</span>
-                            <span className="font-bold text-black">{formatCurrency(o.amount, o.currency)}</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Method</span>
-                            <span className="font-medium">{paymentSettings.depositBankName}</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Account</span>
-                            <button
-                              onClick={() => { navigator.clipboard.writeText(paymentSettings.depositAccountNumber); toast.success('Copied!'); }}
-                              className="flex items-center gap-1.5 font-semibold hover:underline"
-                            >
-                              {paymentSettings.depositAccountNumber}
-                              <Copy className="w-3.5 h-3.5 text-gray-400" />
-                            </button>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Name</span>
-                            <span className="font-medium">{paymentSettings.depositAccountName}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      <p className="text-xs text-gray-500">After paying, upload a screenshot to confirm your payment.</p>
-
-                      {/* File picker / preview */}
-                      <input
-                        ref={proofInputRef}
-                        type="file"
-                        accept="image/*,.pdf,.heic,.heif"
-                        className="hidden"
-                        onChange={handleProofFileChange}
-                      />
-                      <div
-                        onClick={() => proofInputRef.current?.click()}
-                        className="border-2 border-dashed border-gray-200 rounded-2xl p-6 flex flex-col items-center gap-2 cursor-pointer hover:border-black transition"
-                      >
-                        {proofFile && uploadingOrderId === null && proofFile.type.startsWith('image/') ? (
-                          <img
-                            src={URL.createObjectURL(proofFile)}
-                            alt="Payment proof"
-                            className="max-h-32 rounded-xl object-contain"
-                          />
-                        ) : (
-                          <Upload className="w-6 h-6 text-gray-400" />
-                        )}
-                        <p className="text-xs text-gray-400">
-                          {proofFile ? proofFile.name : 'Tap to upload screenshot'}
-                        </p>
+                    <div className="border-t border-gray-100 px-5 py-4 space-y-3">
+                      <div className="bg-gray-50 rounded-xl p-4 flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Amount</span>
+                        <span className="font-bold text-black">{formatCurrency(o.amount, o.currency)}</span>
                       </div>
-
+                      <p className="text-xs text-gray-500">
+                        Your payment hasn't been completed yet. Tap below to finish paying with YooKassa —
+                        your VPN will activate automatically once the payment is received.
+                      </p>
                       <Button
-                        onClick={() => handleUploadProof(o)}
-                        loading={proofUploading && uploadingOrderId === o.id}
-                        disabled={!proofFile || proofUploading}
+                        onClick={() => navigate('/plans')}
                         className="w-full"
                         size="sm"
                       >
-                        <Upload className="w-4 h-4" />
-                        Submit payment proof
+                        <ExternalLink className="w-4 h-4" />
+                        Complete payment
                       </Button>
-                    </div>
-                  )}
-
-                  {/* Already submitted — waiting for review */}
-                  {o.status === 'payment_submitted' && (
-                    <div className="border-t border-gray-100 px-5 py-3">
-                      <p className="text-xs text-green-600 flex items-center gap-1.5">
-                        <Check className="w-3.5 h-3.5" />
-                        Proof submitted — we'll activate your service shortly.
-                      </p>
                     </div>
                   )}
                 </div>

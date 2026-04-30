@@ -100,7 +100,7 @@ export function AdminDashboardPage() {
     }
   };
 
-  const reviewOrders = orders.filter((o) => o.status === 'payment_submitted').length;
+  const pendingOrders = orders.filter((o) => o.status === 'pending_payment').length;
 
   if (loading) {
     return (
@@ -119,7 +119,7 @@ export function AdminDashboardPage() {
         <StatCard icon={Users} label="Total users" value={users.length} />
         <StatCard icon={CheckCircle} label="Active VPN services" value={activeServiceCount} />
         <StatCard icon={Zap} label="Active trials" value={activeTrialCount} />
-        <StatCard icon={Clock} label="Under review" value={reviewOrders} />
+        <StatCard icon={Clock} label="Pending payment" value={pendingOrders} />
       </div>
 
       <div className="grid sm:grid-cols-2 gap-6">
@@ -193,13 +193,13 @@ export function AdminDashboardPage() {
                 </span>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </Link>
-              {reviewOrders > 0 && (
+              {pendingOrders > 0 && (
                 <Link
                   to="/admin/orders"
                   className="flex items-center justify-between px-4 py-3 rounded-xl bg-yellow-50 hover:bg-yellow-100 transition"
                 >
                   <span className="text-sm font-medium text-yellow-800">
-                    {reviewOrders} order{reviewOrders > 1 ? 's' : ''} awaiting review
+                    {pendingOrders} order{pendingOrders > 1 ? 's' : ''} pending payment
                   </span>
                   <ChevronRight className="w-4 h-4 text-yellow-500" />
                 </Link>

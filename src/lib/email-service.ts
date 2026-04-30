@@ -175,50 +175,8 @@ export async function notifyAdminsNewOrder(data: NewOrderEmailData): Promise<voi
   });
 }
 
-export interface PaymentProofEmailData {
-  orderId: string;
-  userName: string | null;
-  userEmail: string | null;
-  planName: string;
-  planDuration: string;
-  amount: number;
-  currency: string;
-  proofUrl: string;
-}
+// Manual payment proofs are no longer supported — all payments go via YooKassa.
 
-export async function notifyAdminsPaymentProof(data: PaymentProofEmailData): Promise<void> {
-  const admins = await getAdminEmails();
-  if (!admins.length) return;
-
-  const subject = `📎 Payment Proof — ${data.currency} ${data.amount} VPN Order`;
-  const body = `
-    <h3 style="color:#000000;margin-top:0;">Payment proof submitted</h3>
-    <p style="color:#666666;font-size:13px;">
-      A customer has uploaded payment proof and is awaiting service activation.
-    </p>
-    <table style="width:100%;border-collapse:collapse;">
-      ${tableRow('Customer', data.userName || 'Unknown')}
-      ${tableRow('Email', data.userEmail || 'N/A')}
-      ${tableRow('Plan', `${data.planName} — ${data.planDuration}`)}
-      ${tableRow('Amount', `${data.currency} ${data.amount.toFixed(2)}`)}
-      ${tableRow('Order ID', data.orderId)}
-    </table>
-    <div style="margin-top:20px;">
-      <a href="${data.proofUrl}" style="color:#000000;font-size:13px;font-weight:600;">View payment screenshot →</a>
-    </div>
-    <p style="color:#ff8c00;font-size:13px;margin-top:16px;font-weight:600;">
-      ⚡ Action required: review the proof and activate the service in the admin panel.
-    </p>
-  `;
-
-  await sendMail({
-    to: admins,
-    subject,
-    html: baseTemplate('Payment Proof — Action Required', body),
-    text: `Payment proof uploaded by ${data.userEmail || 'Unknown'}.\nPlan: ${data.planName} (${data.planDuration})\nAmount: ${data.currency} ${data.amount}\nOrder ID: ${data.orderId}\nProof: ${data.proofUrl}`,
-    tag: 'vpn-payment-proof',
-  });
-}
 
 // ── User notifications ────────────────────────────────────────────────────────
 

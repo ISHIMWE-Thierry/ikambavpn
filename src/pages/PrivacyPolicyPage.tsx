@@ -64,14 +64,11 @@ export function PrivacyPolicyPage() {
 
             <h3>3.2 Payment Information</h3>
             <ul>
-              <li><strong>Transaction records</strong> — plan purchased, amount paid, payment method
-                (bank transfer or card), and date of payment</li>
-              <li><strong>Payment proof uploads</strong> — screenshots or receipts you upload for
-                bank transfer verification</li>
+              <li><strong>Transaction records</strong> — plan purchased, amount paid, and date of payment</li>
             </ul>
             <p>
-              Card payments are processed by third-party payment processors (e.g., Stripe via
-              RevenueCat). We do not store your card number, CVV, or full card details on our servers.
+              All payments are processed by YooKassa (YooMoney). We do not store your card number,
+              CVV, or full card details on our servers.
             </p>
 
             <h3>3.3 Technical Information</h3>
@@ -110,8 +107,8 @@ export function PrivacyPolicyPage() {
             <p>We do not sell, rent, or trade your personal information. We may share limited data with:</p>
             <ul>
               <li>
-                <strong>Payment processors</strong> (e.g., Stripe/RevenueCat) — to process card payments.
-                They handle your payment details under their own privacy policies.
+                <strong>Payment processor</strong> (YooKassa / YooMoney) — to process online payments.
+                They handle your payment details under their own privacy policy.
               </li>
               <li>
                 <strong>Firebase (Google)</strong> — for authentication and data storage. Subject to
