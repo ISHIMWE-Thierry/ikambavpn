@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, ShoppingBag, CheckCircle, Clock, ChevronRight, Plus, Zap, Shield, ExternalLink, Brain, Settings } from 'lucide-react';
 import { getAllOrders, getAllUsers, getAllTrials, getPaymentAccounts, savePaymentAccount, updatePaymentAccount } from '../../lib/db-service';
-import { getServices } from '../../lib/api';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -52,13 +51,17 @@ export function AdminDashboardPage() {
       getAllUsers(),
       getPaymentAccounts(),
       getAllTrials(),
-      getServices().catch(() => []),   // live count from ResellPortal
-    ]).then(([o, u, p, trials, services]) => {
+    ]).then(([o, u, p, trials]) => {
       setOrders(o as VpnOrder[]);
       setUsers(u as UserProfile[]);
       setPaymentAccounts(p as PaymentAccount[]);
       setActiveTrialCount((trials as { status: string }[]).filter((t) => t.status === 'active').length);
-      setActiveServiceCount((services as { status: string }[]).filter((s) => s.status === 'active').length);
+      // Active service count = active vpn_orders (we no longer poll ResellPortal)
+      setActiveServiceCount(
+        (o as VpnOrder[]).filter(
+          (ord) => ord.status === 'active' && !!ord.expiresAt && new Date(ord.expiresAt) > new Date(),
+        ).length,
+      );
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 

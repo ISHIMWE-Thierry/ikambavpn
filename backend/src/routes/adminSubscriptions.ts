@@ -23,18 +23,37 @@ import {
 
 export const adminSubscriptionsRouter = Router();
 
-function isAdmin(req: AuthedRequest): boolean {
-  return (
-    (req.user as any)?.admin === true ||
-    (req.user as any)?.claims?.admin === true
-  );
+/**
+ * Admin auth check (matches the logic in routes/xui.ts):
+ *   1. Insecure/dev mode: trust everyone
+ *   2. Firebase custom claim `admin === true`
+ *   3. Firestore `users/{uid}.role === 'admin'`  ← this is how the app stores it
+ */
+const insecureMode = process.env.ALLOW_INSECURE_FIREBASE === "true";
+
+async function isAdmin(req: AuthedRequest): Promise<boolean> {
+  const user: any = req.user;
+  if (!user?.uid) return false;
+  if (insecureMode) return true;
+  if (user.admin === true) return true;
+  if (user.claims?.admin === true) return true;
+  try {
+    const db = getFirestore();
+    const doc = await db.collection("users").doc(user.uid).get();
+    if (doc.exists && doc.data()?.role === "admin") return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
-function requireAdmin(req: AuthedRequest, res: Response, next: NextFunction) {
-  if (!isAdmin(req) && process.env.ALLOW_INSECURE_FIREBASE !== "true") {
-    return res.status(403).json({ error: "admin only" });
-  }
-  next();
+async function requireAdmin(
+  req: AuthedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (await isAdmin(req)) return next();
+  return res.status(403).json({ error: "admin only" });
 }
 
 adminSubscriptionsRouter.use(requireAdmin);
