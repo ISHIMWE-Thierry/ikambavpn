@@ -95,6 +95,7 @@ export function AdminSmartSubscriptionsPage() {
   const [sendingFor, setSendingFor] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [withinDays, setWithinDays] = useState(14);
+  const [syncing, setSyncing] = useState(false);
 
   async function load(within = withinDays) {
     setLoading(true);
@@ -130,6 +131,24 @@ export function AdminSmartSubscriptionsPage() {
       toast.error(`Scan failed: ${(err as Error).message}`);
     } finally {
       setScanning(false);
+    }
+  }
+
+  async function syncFromXui() {
+    setSyncing(true);
+    try {
+      const res = await authedFetch('/admin/subscriptions/sync-from-xui', {
+        method: 'POST',
+        body: JSON.stringify({ thresholdHours: 24 }),
+      });
+      toast.success(
+        `X-UI sync · updated ${res.updated} · skipped ${res.skipped} · errors ${res.errored}`
+      );
+      await load();
+    } catch (err) {
+      toast.error(`Sync failed: ${(err as Error).message}`);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -182,6 +201,14 @@ export function AdminSmartSubscriptionsPage() {
               Auto-renewal reminders · device tracking · email integrity
             </p>
           </div>
+          <Button
+            onClick={syncFromXui}
+            disabled={syncing}
+            variant="secondary"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing…' : 'Sync from x-ui'}
+          </Button>
           <Button
             onClick={runScan}
             disabled={scanning}

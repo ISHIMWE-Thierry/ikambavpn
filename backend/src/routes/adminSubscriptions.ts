@@ -20,6 +20,7 @@ import {
   scanAndSendRenewalReminders,
   processOrderForRenewal,
 } from "../services/renewalScanner";
+import { getClientStatByEmail } from "../services/xui";
 
 export const adminSubscriptionsRouter = Router();
 
@@ -299,6 +300,173 @@ adminSubscriptionsRouter.post(
       console.error("[admin/subscriptions] send-renewal failed:", err);
       return res.status(500).json({
         error: "send-renewal failed",
+        message: (err as Error).message,
+      });
+    }
+  }
+);
+
+/**
+ * POST /admin/subscriptions/sync-from-xui
+ *
+ * For every active order, look up the user's real expiry in 3X-UI and update
+ * Firestore `vpn_orders.expiresAt` to match. 3X-UI is the source of truth —
+ * users may have renewed via direct panel edits or earlier webhook hiccups.
+ *
+ * Body (optional):
+ *   { dryRun: true }  — return what *would* change without writing.
+ *   { thresholdHours: 24 }  — only sync if drift exceeds N hours (default 24).
+ *
+ * This is safe to run anytime; it never shortens a user's access (we only
+ * accept x-ui values that are LATER than Firestore's).
+ */
+adminSubscriptionsRouter.post(
+  "/subscriptions/sync-from-xui",
+  async (req: AuthedRequest, res: Response) => {
+    const dryRun = req.body?.dryRun === true;
+    const thresholdHours = Number(req.body?.thresholdHours ?? 24);
+    const thresholdMs = thresholdHours * 60 * 60 * 1000;
+
+    const db = getFirestore();
+    const inboundIds = [
+      Number(process.env.XPANEL_INBOUND_ID || "1"),
+      Number(process.env.XPANEL_WS_INBOUND_ID || "3"),
+    ];
+
+    try {
+      const snap = await db
+        .collection("vpn_orders")
+        .where("status", "==", "active")
+        .get();
+
+      const results: Array<{
+        orderId: string;
+        userEmail: string | null;
+        firestoreExpiresAt: string | null;
+        xuiExpiresAt: string | null;
+        action: "synced" | "would-sync" | "skip-no-email" | "skip-no-xui-record" | "skip-no-drift" | "skip-xui-earlier" | "error";
+        message?: string;
+      }> = [];
+
+      let updated = 0;
+      let skipped = 0;
+      let errored = 0;
+
+      for (const doc of snap.docs) {
+        const o = doc.data() as any;
+        const orderId = doc.id;
+        const email = o.userEmail || null;
+        const firestoreExpiresAt = o.expiresAt || null;
+
+        if (!email) {
+          results.push({
+            orderId,
+            userEmail: null,
+            firestoreExpiresAt,
+            xuiExpiresAt: null,
+            action: "skip-no-email",
+          });
+          skipped++;
+          continue;
+        }
+
+        try {
+          let maxExpiry: number | null = null;
+          for (const inboundId of inboundIds) {
+            const stat = await getClientStatByEmail(email, inboundId);
+            if (stat?.expiryTime && stat.expiryTime > 0) {
+              if (maxExpiry === null || stat.expiryTime > maxExpiry) {
+                maxExpiry = stat.expiryTime;
+              }
+            }
+          }
+
+          if (maxExpiry === null) {
+            results.push({
+              orderId,
+              userEmail: email,
+              firestoreExpiresAt,
+              xuiExpiresAt: null,
+              action: "skip-no-xui-record",
+            });
+            skipped++;
+            continue;
+          }
+
+          const xuiIso = new Date(maxExpiry).toISOString();
+          const fsMs = firestoreExpiresAt
+            ? new Date(firestoreExpiresAt).getTime()
+            : 0;
+          const drift = maxExpiry - fsMs;
+
+          if (drift <= 0) {
+            // x-ui is the same or older — never shorten, just skip.
+            results.push({
+              orderId,
+              userEmail: email,
+              firestoreExpiresAt,
+              xuiExpiresAt: xuiIso,
+              action: "skip-xui-earlier",
+            });
+            skipped++;
+            continue;
+          }
+
+          if (drift < thresholdMs) {
+            results.push({
+              orderId,
+              userEmail: email,
+              firestoreExpiresAt,
+              xuiExpiresAt: xuiIso,
+              action: "skip-no-drift",
+            });
+            skipped++;
+            continue;
+          }
+
+          if (!dryRun) {
+            await db.collection("vpn_orders").doc(orderId).update({
+              expiresAt: xuiIso,
+              xuiSyncedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+
+          results.push({
+            orderId,
+            userEmail: email,
+            firestoreExpiresAt,
+            xuiExpiresAt: xuiIso,
+            action: dryRun ? "would-sync" : "synced",
+          });
+          updated++;
+        } catch (err) {
+          results.push({
+            orderId,
+            userEmail: email,
+            firestoreExpiresAt,
+            xuiExpiresAt: null,
+            action: "error",
+            message: (err as Error).message,
+          });
+          errored++;
+        }
+      }
+
+      return res.json({
+        ok: true,
+        dryRun,
+        thresholdHours,
+        totalOrders: snap.size,
+        updated,
+        skipped,
+        errored,
+        items: results,
+      });
+    } catch (err) {
+      console.error("[admin/subscriptions] sync-from-xui failed:", err);
+      return res.status(500).json({
+        error: "sync-from-xui failed",
         message: (err as Error).message,
       });
     }

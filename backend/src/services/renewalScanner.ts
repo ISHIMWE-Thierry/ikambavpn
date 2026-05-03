@@ -17,7 +17,17 @@
 import { getFirestore } from "./firebase";
 import { createPayment, isYooKassaConfigured, YooKassaPayment } from "./yookassa";
 import { sendMail, emailShell, escapeHtml } from "./firebaseMail";
+import { getClientStatByEmail } from "./xui";
 import { randomUUID } from "crypto";
+
+// Inbound IDs — the user has a client entry in each of these inbounds
+// (default REALITY, WebSocket anti-DPI, and social-optimised). They share
+// the same expiryTime in normal operation, but we take the max as the
+// source of truth in case any inbound is out of sync.
+const XUI_INBOUND_IDS_FOR_TRUTH = [
+  Number(process.env.XPANEL_INBOUND_ID || "1"),
+  Number(process.env.XPANEL_WS_INBOUND_ID || "3"),
+];
 
 interface VpnOrderDoc {
   id: string;
@@ -279,6 +289,35 @@ async function emailRenewalLink(args: {
 }
 
 /**
+ * Read the user's REAL expiry from 3X-UI across all relevant inbounds.
+ * 3X-UI is the source of truth — Firestore `vpn_orders.expiresAt` can be
+ * stale (e.g. user renewed via panel directly, or webhook hiccupped).
+ *
+ * Returns max expiryTime (epoch ms) found across inbounds, or null if the
+ * client doesn't exist in x-ui at all (rare — could be a deleted client).
+ */
+async function getXuiTruthExpiry(email: string): Promise<number | null> {
+  let maxExpiry: number | null = null;
+  for (const inboundId of XUI_INBOUND_IDS_FOR_TRUTH) {
+    try {
+      const stat = await getClientStatByEmail(email, inboundId);
+      if (stat?.expiryTime && stat.expiryTime > 0) {
+        if (maxExpiry === null || stat.expiryTime > maxExpiry) {
+          maxExpiry = stat.expiryTime;
+        }
+      }
+    } catch (err) {
+      // Don't fail the whole scan because one inbound is unreachable.
+      console.warn(
+        `[renewal] xui lookup failed for ${email} inbound=${inboundId}:`,
+        (err as Error).message
+      );
+    }
+  }
+  return maxExpiry;
+}
+
+/**
  * Process a single order: maybe send a reminder for it.
  * Returns the result for logging.
  */
@@ -291,6 +330,43 @@ export async function processOrderForRenewal(
 > {
   if (!order.expiresAt) return { kind: "skip", reason: "no expiresAt" };
   if (!order.userEmail) return { kind: "skip", reason: "no userEmail" };
+
+  // ── X-UI truth check ─────────────────────────────────────────────────────
+  // Before doing anything, ask 3X-UI directly. If the panel says the user's
+  // access stretches well beyond our Firestore record, they've already renewed
+  // (manually, via webhook race, or via direct panel edit). Sync Firestore and
+  // skip the email — sending now would be spam.
+  try {
+    const xuiExpiryMs = await getXuiTruthExpiry(order.userEmail);
+    if (xuiExpiryMs !== null) {
+      const firestoreExpiryMs = new Date(order.expiresAt).getTime();
+      const drift = xuiExpiryMs - firestoreExpiryMs;
+      // If x-ui is more than 1 day ahead of Firestore, trust x-ui and sync.
+      if (drift > 24 * 60 * 60 * 1000) {
+        const newExpiryIso = new Date(xuiExpiryMs).toISOString();
+        await getFirestore()
+          .collection("vpn_orders")
+          .doc(order.id)
+          .update({
+            expiresAt: newExpiryIso,
+            xuiSyncedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        return {
+          kind: "skip",
+          reason: `xui truth: expires ${newExpiryIso} (Firestore was ${order.expiresAt}; synced)`,
+        };
+      }
+      // x-ui says expired or matches Firestore → continue with normal flow.
+    }
+  } catch (err) {
+    // Never block the scan on x-ui being grumpy.
+    console.warn(
+      `[renewal] xui truth check failed for ${order.userEmail}:`,
+      (err as Error).message
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const daysLeft = daysUntil(order.expiresAt);
   if (daysLeft > 5) return { kind: "skip", reason: `daysLeft=${daysLeft} >5` };
