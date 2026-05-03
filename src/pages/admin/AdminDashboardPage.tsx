@@ -185,6 +185,15 @@ export function AdminDashboardPage() {
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </Link>
               <Link
+                to="/admin/subscriptions"
+                className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition"
+              >
+                <span className="text-sm font-medium flex items-center gap-2">
+                  <Clock className="w-4 h-4" /> Smart Subscriptions
+                </span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </Link>
+              <Link
                 to="/admin/settings"
                 className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition"
               >

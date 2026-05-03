@@ -72,7 +72,12 @@ export function PlansPage() {
           (o) => o.status === 'active' && !!o.expiresAt && new Date(o.expiresAt) > new Date(),
         );
         if (active) setActiveOrder(active);
-        const pending = orders.some((o) => o.status === 'pending_payment');
+        // Ignore renewal-type pending orders — they're created by the smart-
+        // subscription scanner and live alongside the user's active sub. They
+        // must NOT block the user from buying or upgrading through the site.
+        const pending = orders.some(
+          (o) => o.status === 'pending_payment' && !(o as any).isRenewal,
+        );
         setHasPending(pending);
       }).catch(() => {});
     }

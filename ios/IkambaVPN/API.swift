@@ -1,4 +1,19 @@
 import Foundation
+import UIKit
+
+/// Returns the underlying hardware identifier (e.g. "iPhone15,2") which is the
+/// closest stable handle Apple lets us read in user-space. Real serial numbers
+/// have been blocked since iOS 7 for privacy.
+private func deviceModelIdentifier() -> String {
+    var sysinfo = utsname()
+    uname(&sysinfo)
+    let mirror = Mirror(reflecting: sysinfo.machine)
+    let id = mirror.children.reduce(into: "") { acc, elem in
+        guard let value = elem.value as? Int8, value != 0 else { return }
+        acc.append(String(UnicodeScalar(UInt8(value))))
+    }
+    return id.isEmpty ? UIDevice.current.model : id
+}
 
 final class API {
     static let shared = API()
@@ -40,11 +55,26 @@ final class API {
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let body: [String: Any] = [
+
+        // Stable device fingerprint (per app vendor). Apple does NOT expose
+        // hardware serials anymore, so this UUID is what we use.
+        let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
+        let deviceModel = deviceModelIdentifier()             // e.g. "iPhone15,2"
+        let deviceName = UIDevice.current.name                 // e.g. "Thierry's iPhone"
+        let osVersion = UIDevice.current.systemVersion         // e.g. "17.4"
+        let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
+
+        var body: [String: Any] = [
             "session_id": sessionId,
             "status": status,
-            "local_ping_ms": ping as Any
+            "device_id": deviceId,
+            "device_model": deviceModel,
+            "device_name": deviceName,
+            "os_version": osVersion,
+            "app_version": appVersion
         ]
+        if let ping { body["local_ping_ms"] = ping }
+
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -52,3 +82,4 @@ final class API {
         }
     }
 }
+

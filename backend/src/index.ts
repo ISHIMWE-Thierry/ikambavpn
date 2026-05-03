@@ -9,11 +9,13 @@ import { aiRouter } from "./routes/ai";
 import { metricsRouter } from "./routes/metrics";
 import { heartbeatRouter } from "./routes/heartbeat";
 import { adminRouter } from "./routes/admin";
+import { adminSubscriptionsRouter } from "./routes/adminSubscriptions";
 import { xuiRouter, xuiPublicRouter } from "./routes/xui";
 import { initFirebase } from "./services/firebase";
 import { authMiddleware } from "./middleware/auth";
 import { startWatchdog } from "./services/watchdog";
 import { startAnalyticsScheduler } from "./services/vpn-analytics";
+import { startRenewalScanner } from "./services/renewalScanner";
 
 dotenv.config();
 
@@ -32,6 +34,7 @@ app.use("/ai", authMiddleware, aiRouter);
 app.use("/servers", metricsRouter);
 app.use("/connection", authMiddleware, heartbeatRouter);
 app.use("/admin", authMiddleware, adminRouter);
+app.use("/admin", authMiddleware, adminSubscriptionsRouter);
 app.use("/xui", authMiddleware, xuiRouter);
 app.use("/xui-public", xuiPublicRouter);  // No auth — V2RayTun calls this directly
 
@@ -44,6 +47,10 @@ app.listen(port, () => {
 
   // Start analytics scheduler — snapshots online status + daily activity to Firestore
   startAnalyticsScheduler();
+
+  // Start renewal scanner — emails users whose subscriptions expire in <5 days
+  // (every 6h, with anti-spam guards). Does NOT touch x-ui or any inbound.
+  startRenewalScanner();
 
   // Startup health check — verify 3X-UI panel is reachable
   const panelUrl = process.env.XPANEL_URL || "";

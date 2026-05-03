@@ -17,7 +17,7 @@
  *   - MINOR: New features, non-breaking changes
  *   - MAJOR: Breaking changes, major overhaul
  */
-export const APP_VERSION = '1.2.1';
+export const APP_VERSION = '1.3.0';
 
 /**
  * Compare two semantic version strings.

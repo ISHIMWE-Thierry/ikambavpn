@@ -18,6 +18,7 @@ import { AdminUsersPage } from './pages/admin/AdminUsersPage'
 import { AdminVpnPanelPage } from './pages/admin/AdminVpnPanelPage'
 import { AdminAIMonitorPage } from './pages/admin/AdminAIMonitorPage'
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage'
+import { AdminSmartSubscriptionsPage } from './pages/admin/AdminSmartSubscriptionsPage'
 import { TrialPage } from './pages/TrialPage'
 import { RussiaGuidePage } from './pages/RussiaGuidePage'
 import { EmailVerificationPage } from './pages/EmailVerificationPage'
@@ -124,6 +125,14 @@ export default function App() {
           element={
             <ProtectedRoute adminOnly>
               <AdminSettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/subscriptions"
+          element={
+            <ProtectedRoute adminOnly>
+              <AdminSmartSubscriptionsPage />
             </ProtectedRoute>
           }
         />
