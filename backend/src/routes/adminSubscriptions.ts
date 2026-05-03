@@ -148,7 +148,7 @@ adminSubscriptionsRouter.get(
       await Promise.all(
         userIds.map(async (uid) => {
           try {
-            const snap = await db.collection("vpn_users").doc(uid).get();
+            const snap = await db.collection("users").doc(uid).get();
             const email = snap.exists ? (snap.data() as any).email || null : null;
             profileEmails.set(uid, email);
           } catch {
