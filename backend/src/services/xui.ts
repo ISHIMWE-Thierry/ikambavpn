@@ -1077,7 +1077,7 @@ export function buildHostkeyEsTurboLink(clientId: string, remark: string): strin
     `spx=`,
   ].join("&");
 
-  return `vless://${clientId}@${HOSTKEY_ES_IP}:43234?${query}#${encodeURIComponent(remark + "-🇪🇸 Spain TCP Turbo")}`;
+  return `vless://${clientId}@${HOSTKEY_ES_IP}:43234?${query}#${encodeURIComponent("🇪🇸 Spain TCP Turbo")}`;
 }
 
 export function buildHostkeyEsXhttpLink(clientId: string, remark: string): string {
@@ -1092,7 +1092,7 @@ export function buildHostkeyEsXhttpLink(clientId: string, remark: string): strin
     `path=${encodeURIComponent(HOSTKEY_ES_XHTTP_PATH)}`,
   ].join("&");
 
-  return `vless://${clientId}@${HOSTKEY_ES_IP}:8443?${query}#${encodeURIComponent(remark + "-🇪🇸 Spain Stealth XHTTP")}`;
+  return `vless://${clientId}@${HOSTKEY_ES_IP}:8443?${query}#${encodeURIComponent("🇪🇸 Spain Stealth")}`;
 }
 
 export function buildFrankfurtTurboLink(clientId: string, remark: string): string {
@@ -1106,7 +1106,7 @@ export function buildFrankfurtTurboLink(clientId: string, remark: string): strin
     `spx=`,
   ].join("&");
 
-  return `vless://${clientId}@${VPS_IP}:${FRANKFURT_TURBO_PORT}?${query}#${encodeURIComponent(remark + "-🇩🇪 Germany TCP Turbo")}`;
+  return `vless://${clientId}@${VPS_IP}:${FRANKFURT_TURBO_PORT}?${query}#${encodeURIComponent("🇩🇪 Germany TCP Turbo")}`;
 }
 
 // ── Multi-Server Link Builders ────────────────────────────────────────────────
@@ -1130,7 +1130,7 @@ export function buildVlessLinkForServer(clientId: string, remark: string, server
   ].join("&");
 
   const port = server.vlessPort || VLESS_PORT;
-  return `vless://${clientId}@${server.ip}:${port}?${query}#${encodeURIComponent(remark + "-" + countryProfileLabel(server.label))}`;
+  return `vless://${clientId}@${server.ip}:${port}?${query}#${encodeURIComponent(countryProfileLabel(server.label))}`;
 }
 
 /**
