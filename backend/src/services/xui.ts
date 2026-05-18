@@ -1126,7 +1126,6 @@ export function buildVlessLinkForServer(clientId: string, remark: string, server
     `sni=${server.realitySni || REALITY_SNI}`,
     `sid=${server.realityShortId}`,
     `spx=/`,
-    `flow=xtls-rprx-vision`,
   ].join("&");
 
   const port = server.vlessPort || VLESS_PORT;
