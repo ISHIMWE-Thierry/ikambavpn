@@ -1106,7 +1106,7 @@ export function buildFrankfurtTurboLink(clientId: string, remark: string): strin
 
 /**
  * Build a VLESS+REALITY link for a specific server.
- * The remark includes the server location so users see e.g. "IkambaVPN-user-Helsinki"
+ * The remark includes the server location and the intended fast TCP profile.
  */
 export function buildVlessLinkForServer(clientId: string, remark: string, server: ServerConfig): string {
   const query = [
@@ -1121,7 +1121,7 @@ export function buildVlessLinkForServer(clientId: string, remark: string, server
   ].join("&");
 
   const port = server.vlessPort || VLESS_PORT;
-  return `vless://${clientId}@${server.ip}:${port}?${query}#${encodeURIComponent(remark + "-" + server.label)}`;
+  return `vless://${clientId}@${server.ip}:${port}?${query}#${encodeURIComponent(remark + "-" + server.label + "-TCP-Turbo-Reality")}`;
 }
 
 /**
@@ -1144,9 +1144,9 @@ export function buildWsLinkForServer(clientId: string, remark: string, server: S
 }
 
 /**
- * Generate ALL VLESS links for a client across ALL servers.
- * Returns an array of link strings — WS first per server, then REALITY TCP.
- * Order: [WS-Server1, REALITY-Server1, WS-Server2, REALITY-Server2, ...]
+ * Generate the public subscription profile list.
+ * Keep it intentionally small: one TCP turbo profile per server, plus ES
+ * XHTTP stealth as the only stealth/anti-DPI variant.
  */
 export function buildAllServerLinks(clientId: string, remark: string): string[] {
   const servers = getAllServers();
@@ -1160,8 +1160,6 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  addOptional(() => buildXhttpLink(clientId, remark));
-  addOptional(() => buildHostkeyEsVisionLink(clientId, remark));
   addOptional(() => buildHostkeyEsTurboLink(clientId, remark));
   addOptional(() => buildHostkeyEsXhttpLink(clientId, remark));
   addOptional(() => buildFrankfurtTurboLink(clientId, remark));
@@ -1170,11 +1168,7 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     if (server.realityPubKey && server.realityShortId) {
       links.push(buildVlessLinkForServer(clientId, remark, server));
     }
-    links.push(buildWsLinkForServer(clientId, remark, server));
   }
-
-  // Social-optimized link is currently primary-server-only (no per-server config yet)
-  links.push(buildSocialLink(clientId, remark));
 
   return links;
 }
