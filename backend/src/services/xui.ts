@@ -183,7 +183,7 @@ export interface XuiClient {
   id: string;          // UUID
   email: string;       // remark / identifier
   enable: boolean;
-  flow: string;        // "xtls-rprx-vision" for REALITY
+  flow: string;        // empty for plain TCP REALITY
   totalGB: number;     // 0 = unlimited
   expiryTime: number;  // epoch ms, 0 = never
   subId: string;       // subscription token (auto-generated)
@@ -228,7 +228,7 @@ export interface XuiCreateClientOptions {
   tgId?: string;
   /** Force a specific UUID (used when mirroring a client to a second inbound). */
   id?: string;
-  /** VLESS flow. Default "xtls-rprx-vision" for TCP, must be "" for XHTTP. */
+  /** VLESS flow. Default is empty for plain TCP REALITY. */
   flow?: string;
 }
 
@@ -802,7 +802,7 @@ export async function addClient(
     id: clientId,
     email: opts.email,
     enable: true,
-    flow: opts.flow !== undefined ? opts.flow : "xtls-rprx-vision",
+    flow: opts.flow !== undefined ? opts.flow : "",
     totalGB: opts.totalGB ?? 0,
     expiryTime: opts.expiryTime ?? 0,
     subId,
@@ -975,7 +975,6 @@ export function buildVlessLink(clientId: string, remark: string): string {
     `sni=${REALITY_SNI}`,
     `sid=${REALITY_SHORT_ID}`,
     `spx=/`,
-    `flow=xtls-rprx-vision`,
   ].join("&");
 
   return `vless://${clientId}@${VPS_IP}:${VLESS_PORT}?${query}#${encodeURIComponent(remark)}`;
