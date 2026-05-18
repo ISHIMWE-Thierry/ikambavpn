@@ -43,6 +43,9 @@ const WS_INBOUND_ID = Number(process.env.XPANEL_WS_INBOUND_ID || "3");
 const XHTTP_PORT = 8443;
 const XHTTP_PATH = "/ikamba";
 const XHTTP_INBOUND_ID = 2;
+const XHTTP_PUBLIC_KEY = process.env.XHTTP_REALITY_PUBLIC_KEY || "";
+const XHTTP_SHORT_ID = process.env.XHTTP_REALITY_SHORT_ID || "";
+const XHTTP_SNI = process.env.XHTTP_REALITY_SNI || REALITY_SNI;
 
 // Extra production profiles included in the normal user subscription.
 // Values are public VLESS/REALITY client metadata, not private server keys.
@@ -951,14 +954,18 @@ export function buildVlessLink(clientId: string, remark: string): string {
  * Same REALITY keys as the TCP inbound — just a different transport.
  */
 export function buildXhttpLink(clientId: string, remark: string): string {
+  if (!XHTTP_PUBLIC_KEY || !XHTTP_SHORT_ID) {
+    throw new Error("buildXhttpLink: XHTTP REALITY metadata is not set");
+  }
+
   const query = [
     `type=xhttp`,
     `security=reality`,
-    `pbk=${REALITY_PUBLIC_KEY}`,
+    `pbk=${XHTTP_PUBLIC_KEY}`,
     `fp=${REALITY_FINGERPRINT}`,
-    `sni=${REALITY_SNI}`,
-    `sid=${REALITY_SHORT_ID}`,
-    `path=${XHTTP_PATH}`,
+    `sni=${XHTTP_SNI}`,
+    `sid=${XHTTP_SHORT_ID}`,
+    `path=${encodeURIComponent(XHTTP_PATH)}`,
     `mode=auto`,
   ].join("&");
 
@@ -1121,12 +1128,20 @@ export function buildWsLinkForServer(clientId: string, remark: string, server: S
 export function buildAllServerLinks(clientId: string, remark: string): string[] {
   const servers = getAllServers();
   const links: string[] = [];
+  const addOptional = (builder: () => string) => {
+    try {
+      const link = builder();
+      if (link) links.push(link);
+    } catch {
+      // Optional transport is not configured on this subscription host.
+    }
+  };
 
-  links.push(buildXhttpLink(clientId, remark));
-  links.push(buildHostkeyEsVisionLink(clientId, remark));
-  links.push(buildHostkeyEsTurboLink(clientId, remark));
-  links.push(buildHostkeyEsXhttpLink(clientId, remark));
-  links.push(buildFrankfurtTurboLink(clientId, remark));
+  addOptional(() => buildXhttpLink(clientId, remark));
+  addOptional(() => buildHostkeyEsVisionLink(clientId, remark));
+  addOptional(() => buildHostkeyEsTurboLink(clientId, remark));
+  addOptional(() => buildHostkeyEsXhttpLink(clientId, remark));
+  addOptional(() => buildFrankfurtTurboLink(clientId, remark));
 
   for (const server of servers) {
     if (server.realityPubKey && server.realityShortId) {
