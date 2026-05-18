@@ -319,6 +319,29 @@ export function clearSubCache(email: string): void {
   subCache.delete(email);
 }
 
+function normalizeMirrorEmail(email: string): string {
+  return email.replace(/-ws$/, "").replace(/-yt$/, "").replace(/\.x@/, "@");
+}
+
+/**
+ * Subscription URLs used to be created with the 3X-UI subId token. Newer URLs
+ * use email because that lets this backend attach app-facing expiry/traffic
+ * metadata. Accept both so old links keep working.
+ */
+export async function resolveSubscriptionEmail(identifier: string): Promise<string> {
+  const decoded = decodeURIComponent(identifier);
+  if (decoded.includes("@")) return normalizeMirrorEmail(decoded);
+
+  const inbounds = await listInbounds();
+  for (const inb of inbounds) {
+    const settings = JSON.parse((inb as any).settings || "{}");
+    const client = (settings.clients || []).find((c: any) => c.subId === decoded);
+    if (client?.email) return normalizeMirrorEmail(client.email);
+  }
+
+  return decoded;
+}
+
 // ── Session Management ────────────────────────────────────────────────────────
 
 let session: XuiSession | null = null;

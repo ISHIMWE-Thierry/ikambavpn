@@ -35,6 +35,7 @@ app.use("/servers", metricsRouter);
 app.use("/connection", authMiddleware, heartbeatRouter);
 app.use("/admin", authMiddleware, adminRouter);
 app.use("/admin", authMiddleware, adminSubscriptionsRouter);
+app.use("/xui", xuiPublicRouter); // Legacy public subscription paths, no auth
 app.use("/xui", authMiddleware, xuiRouter);
 app.use("/xui-public", xuiPublicRouter);  // No auth — V2RayTun calls this directly
 

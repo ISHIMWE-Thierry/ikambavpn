@@ -20,7 +20,6 @@ import {
   listInbounds,
   getSystemStatus,
   getAllClientLinks,
-  getSubscriptionUrl,
   getV2RayTunDeepLink,
   buildVlessLink,
   buildXhttpLink,
@@ -30,6 +29,7 @@ import {
   resetClientTraffic,
   getCachedSubscription,
   clearSubCache,
+  resolveSubscriptionEmail,
   getAllOnlineClients,
   getRecentConnections,
   getUserActivitySummaries,
@@ -255,7 +255,7 @@ xuiPublicRouter.get("/ws-link/:email", async (req: Request, res: Response) => {
 
 xuiPublicRouter.get("/sub/:email", async (req: Request, res: Response) => {
   try {
-    const email = decodeURIComponent(req.params.email);
+    const email = await resolveSubscriptionEmail(req.params.email);
 
     const entry = await getCachedSubscription(email);
     if (!entry) {
@@ -276,6 +276,11 @@ xuiPublicRouter.get("/sub/:email", async (req: Request, res: Response) => {
     // Return 503 (temporary) instead of 500 so clients know to retry
     return res.status(503).send("Temporarily unavailable — please retry");
   }
+});
+
+xuiPublicRouter.get("/subscription/:email", (req: Request, res: Response) => {
+  const base = process.env.PUBLIC_SUB_BASE || `${req.protocol}://${req.get("host")}`;
+  return res.redirect(307, `${base}/xui-public/sub/${encodeURIComponent(req.params.email)}`);
 });
 
 // ── User-facing endpoints ─────────────────────────────────────────────────────
@@ -348,7 +353,8 @@ xuiRouter.get("/links/:email", async (req: AuthedRequest, res: Response) => {
  */
 xuiRouter.get("/subscription/:subId", async (req: Request, res: Response) => {
   const { subId } = req.params;
-  return res.redirect(getSubscriptionUrl(subId));
+  const base = process.env.PUBLIC_SUB_BASE || `${req.protocol}://${req.get("host")}`;
+  return res.redirect(307, `${base}/xui-public/sub/${encodeURIComponent(subId)}`);
 });
 
 /**
@@ -357,7 +363,8 @@ xuiRouter.get("/subscription/:subId", async (req: Request, res: Response) => {
  */
 xuiRouter.get("/deeplink/:subId", async (req: Request, res: Response) => {
   const { subId } = req.params;
-  const subUrl = getSubscriptionUrl(subId);
+  const base = process.env.PUBLIC_SUB_BASE || `${req.protocol}://${req.get("host")}`;
+  const subUrl = `${base}/xui-public/sub/${encodeURIComponent(subId)}`;
   return res.redirect(getV2RayTunDeepLink(subUrl));
 });
 
