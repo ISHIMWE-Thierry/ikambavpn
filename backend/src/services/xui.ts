@@ -44,6 +44,24 @@ const XHTTP_PORT = 8443;
 const XHTTP_PATH = "/ikamba";
 const XHTTP_INBOUND_ID = 2;
 
+// Extra production profiles included in the normal user subscription.
+// Values are public VLESS/REALITY client metadata, not private server keys.
+const HOSTKEY_ES_IP = process.env.HOSTKEY_ES_IP || "152.114.194.169";
+const HOSTKEY_ES_PUBLIC_KEY =
+  process.env.HOSTKEY_ES_PUBLIC_KEY || "KGzL6YisolF-AzJ-qIIm9HqxnQi7NnC-WfKfumaOYG4";
+const HOSTKEY_ES_SHORT_ID_443 = process.env.HOSTKEY_ES_SHORT_ID_443 || "6654a290102fe531";
+const HOSTKEY_ES_SHORT_ID_43234 = process.env.HOSTKEY_ES_SHORT_ID_43234 || "d24c784291c548ee";
+const HOSTKEY_ES_SHORT_ID_8443 = process.env.HOSTKEY_ES_SHORT_ID_8443 || "e4924abc2dbcd900";
+const HOSTKEY_ES_XHTTP_PATH = process.env.HOSTKEY_ES_XHTTP_PATH || "/assets/es-speed/events";
+
+const FRANKFURT_TURBO_PORT = Number(process.env.FRANKFURT_TURBO_PORT || "43234");
+const FRANKFURT_TURBO_PUBLIC_KEY =
+  process.env.FRANKFURT_TURBO_PUBLIC_KEY ||
+  process.env.XHTTP_REALITY_PUBLIC_KEY ||
+  "i2ryLXz5H51kVANIqKIFI30_rAx6iuEveXwPqY_GyRY";
+const FRANKFURT_TURBO_SHORT_ID = process.env.FRANKFURT_TURBO_SHORT_ID || "0123456789";
+const FRANKFURT_TURBO_SNI = process.env.FRANKFURT_TURBO_SNI || "www.yahoo.com";
+
 // Social-optimized WebSocket inbound — port 2087, /yt-stream, host i.ytimg.com.
 // Server-side routing rules blackhole geosite:category-ads-all + tracker domains
 // for traffic with this inbound's tag (set up via 3X-UI panel routing config).
@@ -994,6 +1012,64 @@ export function buildSocialLink(clientId: string, remark: string): string {
   return `vless://${clientId}@${SOCIAL_SERVER_IP}:${SOCIAL_PORT}?${query}#${encodeURIComponent(remark + "-Social")}`;
 }
 
+export function buildHostkeyEsVisionLink(clientId: string, remark: string): string {
+  const query = [
+    `type=tcp`,
+    `security=reality`,
+    `pbk=${HOSTKEY_ES_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=www.microsoft.com`,
+    `sid=${HOSTKEY_ES_SHORT_ID_443}`,
+    `spx=/`,
+    `flow=xtls-rprx-vision`,
+  ].join("&");
+
+  return `vless://${clientId}@${HOSTKEY_ES_IP}:443?${query}#${encodeURIComponent(remark + "-ES-Speed-443-Vision-Reality")}`;
+}
+
+export function buildHostkeyEsTurboLink(clientId: string, remark: string): string {
+  const query = [
+    `type=tcp`,
+    `security=reality`,
+    `pbk=${HOSTKEY_ES_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=www.yahoo.com`,
+    `sid=${HOSTKEY_ES_SHORT_ID_43234}`,
+    `spx=`,
+  ].join("&");
+
+  return `vless://${clientId}@${HOSTKEY_ES_IP}:43234?${query}#${encodeURIComponent(remark + "-ES-LTE-Turbo-TCP-Reality")}`;
+}
+
+export function buildHostkeyEsXhttpLink(clientId: string, remark: string): string {
+  const query = [
+    `type=xhttp`,
+    `security=reality`,
+    `pbk=${HOSTKEY_ES_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=www.cloudflare.com`,
+    `sid=${HOSTKEY_ES_SHORT_ID_8443}`,
+    `spx=/`,
+    `path=${encodeURIComponent(HOSTKEY_ES_XHTTP_PATH)}`,
+  ].join("&");
+
+  return `vless://${clientId}@${HOSTKEY_ES_IP}:8443?${query}#${encodeURIComponent(remark + "-ES-DPI-XHTTP-Reality")}`;
+}
+
+export function buildFrankfurtTurboLink(clientId: string, remark: string): string {
+  const query = [
+    `type=tcp`,
+    `security=reality`,
+    `pbk=${FRANKFURT_TURBO_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=${FRANKFURT_TURBO_SNI}`,
+    `sid=${FRANKFURT_TURBO_SHORT_ID}`,
+    `spx=`,
+  ].join("&");
+
+  return `vless://${clientId}@${VPS_IP}:${FRANKFURT_TURBO_PORT}?${query}#${encodeURIComponent(remark + "-Frankfurt-TCP-Turbo-Reality")}`;
+}
+
 // ── Multi-Server Link Builders ────────────────────────────────────────────────
 // These variants accept a ServerConfig so we can generate links for any server,
 // not just the one this backend instance is running on.
@@ -1046,12 +1122,17 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
   const servers = getAllServers();
   const links: string[] = [];
 
+  links.push(buildXhttpLink(clientId, remark));
+  links.push(buildHostkeyEsVisionLink(clientId, remark));
+  links.push(buildHostkeyEsTurboLink(clientId, remark));
+  links.push(buildHostkeyEsXhttpLink(clientId, remark));
+  links.push(buildFrankfurtTurboLink(clientId, remark));
+
   for (const server of servers) {
-    // WS first (primary), then REALITY TCP (backup) for each server
-    links.push(buildWsLinkForServer(clientId, remark, server));
     if (server.realityPubKey && server.realityShortId) {
       links.push(buildVlessLinkForServer(clientId, remark, server));
     }
+    links.push(buildWsLinkForServer(clientId, remark, server));
   }
 
   // Social-optimized link is currently primary-server-only (no per-server config yet)
