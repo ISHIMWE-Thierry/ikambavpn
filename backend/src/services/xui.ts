@@ -28,9 +28,9 @@ const SUB_BASE = process.env.XPANEL_SUB_URL || "https://194.76.217.4:2096/sub";
 const VPS_IP = process.env.XPANEL_VPS_IP || "194.76.217.4";
 const REALITY_PUBLIC_KEY = process.env.XPANEL_REALITY_PUBLIC_KEY || "";
 const REALITY_SHORT_ID = process.env.XPANEL_REALITY_SHORT_ID || "";
-const REALITY_SNI = "www.microsoft.com";
+const REALITY_SNI = process.env.XPANEL_REALITY_SNI || "www.microsoft.com";
 const REALITY_FINGERPRINT = "chrome";
-const VLESS_PORT = 443;
+const VLESS_PORT = Number(process.env.XPANEL_VLESS_PORT || "443");
 
 // WebSocket (anti-DPI primary) inbound — multiplexes all traffic over one TCP connection
 // This prevents ISP connection-count-based blocking (YouTube creates 50+ connections)
@@ -1169,7 +1169,9 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
 
   addOptional(() => buildHostkeyEsTurboLink(clientId, remark));
   addOptional(() => buildHostkeyEsXhttpLink(clientId, remark));
-  addOptional(() => buildFrankfurtTurboLink(clientId, remark));
+  if (process.env.FRANKFURT_TURBO_ENABLED === "1") {
+    addOptional(() => buildFrankfurtTurboLink(clientId, remark));
+  }
 
   for (const server of servers) {
     if (server.realityPubKey && server.realityShortId) {
