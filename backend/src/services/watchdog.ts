@@ -5,18 +5,18 @@
  * 1. Re-enable any clients that got auto-disabled by 3X-UI (traffic limit, IP limit, etc.)
  * 2. Fix any clients that still have limitIp > 0 (set to 0 = unlimited)
  * 3. Restart Xray if it's not running
- * 4. Enforce anti-disconnect Xray policy (connIdle=900, uplinkOnly=0, downlinkOnly=0)
+ * 4. Enforce anti-disconnect Xray policy (connIdle=3600, uplinkOnly=0, downlinkOnly=0)
  *
  * This ensures VPN connections NEVER get permanently dropped due to 3X-UI's
  * aggressive enforcement. The VPN should persist even under heavy bandwidth usage.
  *
  * Anti-disconnect settings explained:
- * - connIdle=1800: Kill truly idle connections after 30 min (long YouTube streams)
+ * - connIdle=3600: Kill truly idle connections after 60 min (long video streams)
  * - handshake=20: Extra time for REALITY handshake during YouTube burst connections
  * - uplinkOnly=0: Never kill download-only streams (video streaming, large downloads)
  * - downlinkOnly=0: Never kill upload-only streams (file uploads, VoIP)
  * - bufferSize=0: Unlimited per-connection buffer (smoother streaming)
- * - TCP keepalive 60s: Below mobile NAT timeout (~120s)
+ * - TCP keepalive 300/30/6: Matches x-ui generated config while keeping probes active
  * - tcpMaxSeg=1400: Smaller MSS to avoid fragmentation on mobile/LTE tunnels
  * - MPTCP: Survives WiFi↔cellular handoffs on mobile
  * - BBR congestion: Better throughput on lossy networks
@@ -45,7 +45,7 @@ const REQUIRED_POLICY = {
   levels: {
     "0": {
       handshake: 20,       // 20s — extra time for REALITY handshake during YouTube burst
-      connIdle: 1800,      // 30 min idle timeout — long YouTube streams can have idle gaps
+      connIdle: 3600,      // 60 min idle timeout — long video streams can have idle gaps
       uplinkOnly: 0,
       downlinkOnly: 0,
       bufferSize: 0,
@@ -63,9 +63,9 @@ const REQUIRED_POLICY = {
 
 /** Sockopt settings for anti-disconnect on all inbounds/outbounds */
 const REQUIRED_SOCKOPT = {
-  tcpKeepAliveIdle: 60,     // 60s — well below mobile NAT timeout (~120s)
-  tcpKeepAliveInterval: 15, // 15s between probes — fast enough for mobile network switching
-  tcpKeepAliveProbes: 4,    // 4 probes × 15s = 1 min to detect dead connection
+  tcpKeepAliveIdle: 300,    // x-ui supported generated value
+  tcpKeepAliveInterval: 30, // x-ui supported generated value
+  tcpKeepAliveProbes: 6,    // x-ui supported generated value
   tcpUserTimeout: 60000,    // 60s total TCP timeout
   tcpMaxSeg: 1400,          // Smaller MSS avoids fragmentation on mobile/LTE tunnels
   tcpcongestion: "bbr",
@@ -312,12 +312,12 @@ async function enforceAntiDisconnectPolicy(): Promise<boolean> {
         }
       }
 
-      // Ensure sniffing includes quic + fakedns
+      // Ensure sniffing includes QUIC so routing can block UDP:443 reliably.
       if (!inbound.sniffing) inbound.sniffing = {};
       inbound.sniffing.enabled = true;
       inbound.sniffing.routeOnly = false; // MUST be false — true causes traffic to bypass proxy
       const dest: string[] = inbound.sniffing.destOverride || [];
-      for (const proto of ["http", "tls", "quic", "fakedns"]) {
+      for (const proto of ["http", "tls", "quic"]) {
         if (!dest.includes(proto)) {
           dest.push(proto);
           changed = true;
@@ -347,14 +347,9 @@ async function enforceAntiDisconnectPolicy(): Promise<boolean> {
 }
 
 /**
- * Enforce critical sniffing settings in the x-ui database itself.
- * This is essential because x-ui regenerates config.json from its DB on every
- * Xray restart. If routeOnly=true in the DB, the QUIC block routing rule is
- * completely bypassed — YouTube QUIC traffic flows through unblocked.
- *
- * Key fixes:
- * - routeOnly MUST be false — otherwise sniffed traffic skips routing rules
- * - destOverride MUST include "quic" — otherwise Xray can't detect QUIC to block it
+ * Enforce critical inbound settings in the x-ui database itself.
+ * 3X-UI regenerates config.json from these DB rows, so file-only changes are
+ * lost whenever the panel rewrites Xray config.
  */
 async function enforceDbSniffingSettings(): Promise<boolean> {
   try {
@@ -395,42 +390,64 @@ async function enforceDbSniffingSettings(): Promise<boolean> {
       }
     };
 
-    // Read current sniffing value
-    const raw = sqlite("SELECT sniffing FROM inbounds WHERE port = 443").trim();
+    const rowSep = "\x1f";
+    const rawRows = sqlite(
+      "SELECT id || char(31) || port || char(31) || coalesce(tag,'') || char(31) || coalesce(protocol,'') || char(31) || coalesce(sniffing,'') || char(31) || coalesce(stream_settings,'') FROM inbounds WHERE coalesce(tag,'') != 'api' AND coalesce(protocol,'') != 'dokodemo-door'"
+    ).trim();
 
-    if (!raw) return true;
+    if (!rawRows) return true;
 
-    const sniffing = JSON.parse(raw);
-    let dbChanged = false;
+    const updates: string[] = [];
+    for (const row of rawRows.split("\n")) {
+      const [id, port, tag, protocol, sniffingRaw, streamRaw] = row.split(rowSep);
+      if (!id || protocol === "dokodemo-door" || tag === "api") continue;
 
-    // Fix routeOnly — MUST be false for routing rules (QUIC block) to work
-    if (sniffing.routeOnly !== false) {
-      console.log(`[watchdog] DB FIX: sniffing.routeOnly ${sniffing.routeOnly} → false`);
-      sniffing.routeOnly = false;
-      dbChanged = true;
-    }
+      const sniffing = sniffingRaw ? JSON.parse(sniffingRaw) : {};
+      const streamSettings = streamRaw ? JSON.parse(streamRaw) : {};
+      let rowChanged = false;
 
-    // Fix destOverride — must include quic for QUIC detection
-    const dest: string[] = sniffing.destOverride || [];
-    for (const proto of ["http", "tls", "quic", "fakedns"]) {
-      if (!dest.includes(proto)) {
-        console.log(`[watchdog] DB FIX: adding "${proto}" to sniffing.destOverride`);
-        dest.push(proto);
-        dbChanged = true;
+      if (sniffing.routeOnly !== false) {
+        console.log(`[watchdog] DB FIX ${tag || port}: sniffing.routeOnly ${sniffing.routeOnly} → false`);
+        sniffing.routeOnly = false;
+        rowChanged = true;
       }
-    }
-    sniffing.destOverride = dest;
 
-    if (!sniffing.enabled) {
-      sniffing.enabled = true;
-      dbChanged = true;
+      const dest: string[] = sniffing.destOverride || [];
+      for (const proto of ["http", "tls", "quic"]) {
+        if (!dest.includes(proto)) {
+          console.log(`[watchdog] DB FIX ${tag || port}: adding "${proto}" to sniffing.destOverride`);
+          dest.push(proto);
+          rowChanged = true;
+        }
+      }
+      sniffing.destOverride = dest;
+
+      if (!sniffing.enabled) {
+        sniffing.enabled = true;
+        rowChanged = true;
+      }
+
+      if (!streamSettings.sockopt) streamSettings.sockopt = {};
+      for (const [key, val] of Object.entries(REQUIRED_SOCKOPT)) {
+        if (streamSettings.sockopt[key] !== val) {
+          streamSettings.sockopt[key] = val;
+          rowChanged = true;
+        }
+      }
+
+      if (!rowChanged) continue;
+
+      const newSniffing = JSON.stringify(sniffing).replace(/'/g, "''");
+      const newStream = JSON.stringify(streamSettings).replace(/'/g, "''");
+      updates.push(
+        `UPDATE inbounds SET sniffing = '${newSniffing}', stream_settings = '${newStream}' WHERE id = ${Number(id)};`
+      );
     }
 
-    if (dbChanged) {
+    if (updates.length > 0) {
       const { writeFile, unlink } = await import("fs/promises");
-      const tmpSql = `/tmp/ikamba-sniffing-${Date.now()}.sql`;
-      const newVal = JSON.stringify(sniffing).replace(/'/g, "''");
-      await writeFile(tmpSql, `UPDATE inbounds SET sniffing = '${newVal}' WHERE port = 443;\n`, "utf-8");
+      const tmpSql = `/tmp/ikamba-inbounds-${Date.now()}.sql`;
+      await writeFile(tmpSql, `${updates.join("\n")}\n`, "utf-8");
       try {
         if (canWriteDb) {
           execFileSync("sqlite3", [DB_PATH, `.read ${tmpSql}`], { encoding: "utf-8" });
@@ -447,12 +464,12 @@ async function enforceDbSniffingSettings(): Promise<boolean> {
       } finally {
         await unlink(tmpSql).catch(() => {});
       }
-      console.log("[watchdog] ✅ DB sniffing enforced: routeOnly=false, quic in destOverride");
+      console.log(`[watchdog] ✅ DB inbound settings enforced: ${updates.length} row(s)`);
     }
 
     return true;
   } catch (err: any) {
-    console.error("[watchdog] DB sniffing enforcement error:", err.message);
+    console.error("[watchdog] DB inbound settings enforcement error:", err.message);
     return false;
   }
 }
