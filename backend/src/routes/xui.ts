@@ -268,6 +268,8 @@ xuiPublicRouter.get("/sub/:email", async (req: Request, res: Response) => {
     res.setHeader("Content-Disposition", "inline");
     res.setHeader("Profile-Update-Interval", "1"); // Check every 1 hour for config updates
     res.setHeader("Subscription-Userinfo", entry.userInfo);
+    res.setHeader("ETag", `"sub-${Date.now()}"`);
+    res.setHeader("Last-Modified", new Date().toUTCString());
     // Subscription profiles change during live server failover; force clients and
     // intermediaries to revalidate so new locations appear immediately.
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
