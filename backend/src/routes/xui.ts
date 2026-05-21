@@ -268,8 +268,11 @@ xuiPublicRouter.get("/sub/:email", async (req: Request, res: Response) => {
     res.setHeader("Content-Disposition", "inline");
     res.setHeader("Profile-Update-Interval", "1"); // Check every 1 hour for config updates
     res.setHeader("Subscription-Userinfo", entry.userInfo);
-    // Allow client apps to cache for 2 minutes — fast enough for config switches
-    res.setHeader("Cache-Control", "public, max-age=120");
+    // Subscription profiles change during live server failover; force clients and
+    // intermediaries to revalidate so new locations appear immediately.
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     return res.send(base64);
   } catch (err: any) {
     console.error(`[sub] Error for ${req.params.email}:`, err.message);
