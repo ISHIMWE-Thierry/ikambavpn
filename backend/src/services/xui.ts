@@ -263,6 +263,45 @@ interface SubCacheEntry {
 const subCache = new Map<string, SubCacheEntry>();
 const SUB_CACHE_TTL = 5 * 60 * 1000; // 5 minutes — long enough to survive panel restarts
 
+function clientMatchesEmail(client: any, email: string): boolean {
+  const clientEmail = String(client?.email || "");
+  return clientEmail === email || normalizeMirrorEmail(clientEmail) === email;
+}
+
+function userInfoFromClient(client: any): string {
+  const upload = Number(client?.up || 0);
+  const download = Number(client?.down || 0);
+  const total = Number(client?.total || client?.totalGB || 0);
+  const expiryTime = Number(client?.expiryTime || 0);
+  const expireSec = expiryTime ? Math.floor(expiryTime / 1000) : 0;
+  return `upload=${upload}; download=${download}; total=${total}; expire=${expireSec}`;
+}
+
+type SubscriptionClientLookup = {
+  client: any;
+  source: "local" | "remote";
+};
+
+async function findSubscriptionClient(email: string): Promise<SubscriptionClientLookup | null> {
+  const inbounds = await listInbounds();
+  for (const inb of inbounds) {
+    const settings = JSON.parse((inb as any).settings || "{}");
+    const client = (settings.clients || []).find((c: any) => clientMatchesEmail(c, email));
+    if (client?.id) return { client, source: "local" };
+  }
+
+  for (const server of SECONDARY_SERVERS) {
+    const remoteInbounds = await listRemoteInbounds(server);
+    for (const inb of remoteInbounds) {
+      const settings = JSON.parse((inb as any).settings || "{}");
+      const client = (settings.clients || []).find((c: any) => clientMatchesEmail(c, email));
+      if (client?.id) return { client, source: "remote" };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Get or refresh a cached subscription entry for an email.
  * Returns cached data if fresh, otherwise fetches from 3X-UI.
@@ -276,17 +315,10 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
 
   // Try to fetch fresh data from 3X-UI panel
   try {
-    const inbounds = await listInbounds();
-    let clientId = "";
-    for (const inb of inbounds) {
-      const settings = JSON.parse((inb as any).settings || "{}");
-      const client = (settings.clients || []).find((c: any) => c.email === email);
-      if (client) {
-        clientId = client.id;
-        break;
-      }
-    }
-    if (!clientId) return null;
+    const lookup = await findSubscriptionClient(email);
+    if (!lookup) return null;
+
+    const clientId = lookup.client.id;
 
     const remark = `IkambaVPN-${email.split("@")[0]}`;
 
@@ -303,8 +335,12 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
       if (stat) {
         const expireSec = stat.expiryTime ? Math.floor(stat.expiryTime / 1000) : 0;
         userInfo = `upload=${stat.up}; download=${stat.down}; total=${stat.total}; expire=${expireSec}`;
+      } else {
+        userInfo = userInfoFromClient(lookup.client);
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      userInfo = userInfoFromClient(lookup.client);
+    }
 
     const entry: SubCacheEntry = { vlessLink, userInfo, cachedAt: Date.now() };
     subCache.set(email, entry);
@@ -482,6 +518,24 @@ async function getRemoteOnlineClients(server: ServerConfig): Promise<string[]> {
     if (!res.ok) return [];
 
     const data = (await res.json()) as { success: boolean; obj?: string[] };
+    return data.success && data.obj ? data.obj : [];
+  } catch {
+    return [];
+  }
+}
+
+async function listRemoteInbounds(server: ServerConfig): Promise<XuiInbound[]> {
+  if (!server.panelUrl) return [];
+  try {
+    const cookie = await loginRemotePanel(server);
+    if (!cookie) return [];
+
+    const res = await fetch(`${server.panelUrl}/panel/api/inbounds/list`, {
+      headers: { Cookie: cookie, Accept: "application/json" },
+    });
+    if (!res.ok) return [];
+
+    const data = (await res.json()) as { success: boolean; obj?: XuiInbound[] };
     return data.success && data.obj ? data.obj : [];
   } catch {
     return [];
