@@ -81,6 +81,43 @@ async function checkIsAdmin(user: any): Promise<boolean> {
 
 // ── Public subscription endpoint ──────────────────────────────────────────────
 
+export async function publicSubscriptionHandler(req: Request, res: Response) {
+  try {
+    const identifier = req.params.email || req.params.identifier || req.params.subId;
+    const email = await resolveSubscriptionEmail(identifier);
+
+    const entry = await getCachedSubscription(email);
+    if (!entry) {
+      return res.status(404).send("Client not found");
+    }
+
+    const base64 = Buffer.from(entry.vlessLink).toString("base64");
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", "inline");
+    res.setHeader("Profile-Update-Interval", "1"); // Check every 1 hour for config updates
+    res.setHeader("Subscription-Userinfo", entry.userInfo);
+    res.setHeader("ETag", `"sub-${Date.now()}"`);
+    res.setHeader("Last-Modified", new Date().toUTCString());
+    // Subscription profiles change during live server failover; force clients and
+    // intermediaries to revalidate so new locations appear immediately.
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    return res.send(base64);
+  } catch (err: any) {
+    console.error(`[sub] Error for ${req.params.email || req.params.identifier || req.params.subId}:`, err.message);
+    // Return 503 (temporary) instead of 500 so clients know to retry
+    return res.status(503).send("Temporarily unavailable - please retry");
+  }
+}
+
+export function publicSubscriptionRedirectHandler(req: Request, res: Response) {
+  const identifier = req.params.email || req.params.identifier || req.params.subId;
+  const base = process.env.PUBLIC_SUB_BASE || `${req.protocol}://${req.get("host")}`;
+  return res.redirect(307, `${base}/xui-public/sub/${encodeURIComponent(identifier)}`);
+}
+
 /**
  * GET /xui-public/health
  * Public health check — no auth. Frontend and users can call this to check
@@ -253,40 +290,9 @@ xuiPublicRouter.get("/ws-link/:email", async (req: Request, res: Response) => {
   }
 });
 
-xuiPublicRouter.get("/sub/:email", async (req: Request, res: Response) => {
-  try {
-    const email = await resolveSubscriptionEmail(req.params.email);
+xuiPublicRouter.get("/sub/:email", publicSubscriptionHandler);
 
-    const entry = await getCachedSubscription(email);
-    if (!entry) {
-      return res.status(404).send("Client not found");
-    }
-
-    const base64 = Buffer.from(entry.vlessLink).toString("base64");
-
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Content-Disposition", "inline");
-    res.setHeader("Profile-Update-Interval", "1"); // Check every 1 hour for config updates
-    res.setHeader("Subscription-Userinfo", entry.userInfo);
-    res.setHeader("ETag", `"sub-${Date.now()}"`);
-    res.setHeader("Last-Modified", new Date().toUTCString());
-    // Subscription profiles change during live server failover; force clients and
-    // intermediaries to revalidate so new locations appear immediately.
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    return res.send(base64);
-  } catch (err: any) {
-    console.error(`[sub] Error for ${req.params.email}:`, err.message);
-    // Return 503 (temporary) instead of 500 so clients know to retry
-    return res.status(503).send("Temporarily unavailable — please retry");
-  }
-});
-
-xuiPublicRouter.get("/subscription/:email", (req: Request, res: Response) => {
-  const base = process.env.PUBLIC_SUB_BASE || `${req.protocol}://${req.get("host")}`;
-  return res.redirect(307, `${base}/xui-public/sub/${encodeURIComponent(req.params.email)}`);
-});
+xuiPublicRouter.get("/subscription/:email", publicSubscriptionRedirectHandler);
 
 // ── User-facing endpoints ─────────────────────────────────────────────────────
 

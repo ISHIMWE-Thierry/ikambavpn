@@ -10,7 +10,12 @@ import { metricsRouter } from "./routes/metrics";
 import { heartbeatRouter } from "./routes/heartbeat";
 import { adminRouter } from "./routes/admin";
 import { adminSubscriptionsRouter } from "./routes/adminSubscriptions";
-import { xuiRouter, xuiPublicRouter } from "./routes/xui";
+import {
+  xuiRouter,
+  xuiPublicRouter,
+  publicSubscriptionHandler,
+  publicSubscriptionRedirectHandler,
+} from "./routes/xui";
 import { initFirebase } from "./services/firebase";
 import { authMiddleware } from "./middleware/auth";
 import { startWatchdog } from "./services/watchdog";
@@ -35,6 +40,8 @@ app.use("/servers", metricsRouter);
 app.use("/connection", authMiddleware, heartbeatRouter);
 app.use("/admin", authMiddleware, adminRouter);
 app.use("/admin", authMiddleware, adminSubscriptionsRouter);
+app.get("/sub/:identifier", publicSubscriptionHandler); // Legacy root subscription URL
+app.get("/subscription/:identifier", publicSubscriptionRedirectHandler); // Legacy root subscription redirect
 app.use("/xui", xuiPublicRouter); // Legacy public subscription paths, no auth
 app.use("/xui", authMiddleware, xuiRouter);
 app.use("/xui-public", xuiPublicRouter);  // No auth — V2RayTun calls this directly
