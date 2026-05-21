@@ -368,14 +368,35 @@ async function enforceDbSniffingSettings(): Promise<boolean> {
       return true; // Not on VPS
     }
 
-    // Dynamic import better-sqlite3 or use child_process for sqlite3
-    const { execSync } = await import("child_process");
+    // Use sqlite3 CLI because this backend intentionally keeps dependencies small.
+    // The API service runs as vpnadmin while x-ui owns the DB as root, so writes
+    // may need sudo even though reads are allowed.
+    const { execFileSync } = await import("child_process");
+    const canWriteDb = (() => {
+      try {
+        execFileSync("test", ["-w", DB_PATH]);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    const sqlite = (sql: string, write = false): string => {
+      if (write && !canWriteDb) {
+        return execFileSync("sudo", ["-n", "sqlite3", DB_PATH, sql], { encoding: "utf-8" });
+      }
+      try {
+        return execFileSync("sqlite3", [DB_PATH, sql], { encoding: "utf-8" });
+      } catch (err: any) {
+        const stderr = String(err.stderr || err.message || "");
+        if (write && stderr.includes("readonly")) {
+          return execFileSync("sudo", ["-n", "sqlite3", DB_PATH, sql], { encoding: "utf-8" });
+        }
+        throw err;
+      }
+    };
 
     // Read current sniffing value
-    const raw = execSync(
-      `sqlite3 "${DB_PATH}" "SELECT sniffing FROM inbounds WHERE port = 443"`,
-      { encoding: "utf-8" }
-    ).trim();
+    const raw = sqlite("SELECT sniffing FROM inbounds WHERE port = 443").trim();
 
     if (!raw) return true;
 
@@ -406,11 +427,26 @@ async function enforceDbSniffingSettings(): Promise<boolean> {
     }
 
     if (dbChanged) {
+      const { writeFile, unlink } = await import("fs/promises");
+      const tmpSql = `/tmp/ikamba-sniffing-${Date.now()}.sql`;
       const newVal = JSON.stringify(sniffing).replace(/'/g, "''");
-      execSync(
-        `sqlite3 "${DB_PATH}" "UPDATE inbounds SET sniffing = '${newVal}' WHERE port = 443"`,
-        { encoding: "utf-8" }
-      );
+      await writeFile(tmpSql, `UPDATE inbounds SET sniffing = '${newVal}' WHERE port = 443;\n`, "utf-8");
+      try {
+        if (canWriteDb) {
+          execFileSync("sqlite3", [DB_PATH, `.read ${tmpSql}`], { encoding: "utf-8" });
+        } else {
+          execFileSync("sudo", ["-n", "sqlite3", DB_PATH, `.read ${tmpSql}`], { encoding: "utf-8" });
+        }
+      } catch (err: any) {
+        const stderr = String(err.stderr || err.message || "");
+        if (stderr.includes("readonly")) {
+          execFileSync("sudo", ["-n", "sqlite3", DB_PATH, `.read ${tmpSql}`], { encoding: "utf-8" });
+        } else {
+          throw err;
+        }
+      } finally {
+        await unlink(tmpSql).catch(() => {});
+      }
       console.log("[watchdog] ✅ DB sniffing enforced: routeOnly=false, quic in destOverride");
     }
 
