@@ -13,6 +13,7 @@
  */
 
 import { Router, Response, NextFunction } from "express";
+import admin from "firebase-admin";
 import { AuthedRequest } from "../middleware/auth";
 import { getFirestore } from "../services/firebase";
 import { getDeviceSummaryForUsers } from "../services/devices";
@@ -20,7 +21,7 @@ import {
   scanAndSendRenewalReminders,
   processOrderForRenewal,
 } from "../services/renewalScanner";
-import { getClientStatByEmail } from "../services/xui";
+import { getClientStatByEmail, listInbounds } from "../services/xui";
 
 export const adminSubscriptionsRouter = Router();
 
@@ -31,6 +32,21 @@ export const adminSubscriptionsRouter = Router();
  *   3. Firestore `users/{uid}.role === 'admin'`  ← this is how the app stores it
  */
 const insecureMode = process.env.ALLOW_INSECURE_FIREBASE === "true";
+const PUBLIC_SUB_BASE =
+  process.env.PUBLIC_SUB_BASE || "https://ikambavpn.duckdns.org:8443";
+const UNLIMITED_EXPIRES_AT = "2099-12-31T23:59:59.000Z";
+
+function normalizeXuiEmail(email: string): string {
+  return email.replace(/-ws$/, "").replace(/-yt$/, "").replace(/\.x@/, "@");
+}
+
+function emailToDocId(email: string): string {
+  return email.toLowerCase().replace(/[.@]/g, "_");
+}
+
+function subscriptionUrlFor(email: string): string {
+  return `${PUBLIC_SUB_BASE}/xui-public/sub/${encodeURIComponent(email)}`;
+}
 
 async function isAdmin(req: AuthedRequest): Promise<boolean> {
   const user: any = req.user;
@@ -334,6 +350,159 @@ adminSubscriptionsRouter.post(
     ];
 
     try {
+      const nowMs = Date.now();
+      const xuiInbounds = await listInbounds();
+      const primaryInboundId = Number(process.env.XPANEL_INBOUND_ID || "1");
+      const primaryInbound = xuiInbounds.find((inbound: any) => inbound.id === primaryInboundId) || xuiInbounds[0];
+      const primarySettings = JSON.parse((primaryInbound as any)?.settings || "{}");
+      const activeXuiClientsByEmail = new Map<string, any>();
+      for (const raw of primarySettings.clients || []) {
+        if (!raw?.email || !raw?.id || raw.email === "default") continue;
+        const email = normalizeXuiEmail(raw.email);
+        const expiryTime = Number(raw.expiryTime || 0);
+        if (raw.enable === false) continue;
+        if (expiryTime > 0 && expiryTime <= nowMs) continue;
+
+        const existing = activeXuiClientsByEmail.get(email);
+        if (!existing || expiryTime > Number(existing.expiryTime || 0)) {
+          activeXuiClientsByEmail.set(email, { ...raw, email });
+        }
+      }
+
+      const usersSnap = await db.collection("users").get();
+      const usersByEmail = new Map<string, { uid: string; data: any }>();
+      for (const userDoc of usersSnap.docs) {
+        const data = userDoc.data() as any;
+        if (data.email) usersByEmail.set(String(data.email).toLowerCase(), { uid: userDoc.id, data });
+      }
+
+      const allOrdersSnap = await db.collection("vpn_orders").get();
+      const ordersByEmail = new Map<string, Array<{ id: string; data: any }>>();
+      for (const orderDoc of allOrdersSnap.docs) {
+        const data = orderDoc.data() as any;
+        const email = String(data.userEmail || "").toLowerCase();
+        if (!email) continue;
+        if (!ordersByEmail.has(email)) ordersByEmail.set(email, []);
+        ordersByEmail.get(email)!.push({ id: orderDoc.id, data });
+      }
+
+      let vpnClientsSynced = 0;
+      let ordersCreated = 0;
+      let ordersReconciled = 0;
+      let firestoreUsersCreated = 0;
+      let skippedNoAuthUser = 0;
+
+      for (const client of activeXuiClientsByEmail.values()) {
+        const email = client.email;
+        const expiryTime = Number(client.expiryTime || 0);
+        const expiresAt = expiryTime > 0
+          ? new Date(expiryTime).toISOString()
+          : UNLIMITED_EXPIRES_AT;
+        const subUrl = subscriptionUrlFor(email);
+        const stat = await getClientStatByEmail(email).catch(() => null);
+
+        if (!dryRun) {
+          await db.collection("vpn_clients").doc(emailToDocId(email)).set({
+            email,
+            uuid: client.id,
+            subId: client.subId || "",
+            enabled: client.enable !== false,
+            expiryTime: expiryTime || new Date(UNLIMITED_EXPIRES_AT).getTime(),
+            expiresAt,
+            totalTrafficLimit: Number(client.totalGB || client.total || stat?.total || 0),
+            uploadBytes: Number(stat?.up || 0),
+            downloadBytes: Number(stat?.down || 0),
+            limitIp: Number(client.limitIp || 0),
+            subscriptionUrl: subUrl,
+            source: "xui_admin_sync",
+            syncedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+        }
+        vpnClientsSynced++;
+
+        let user = usersByEmail.get(email.toLowerCase());
+        if (!user) {
+          try {
+            const authUser = await admin.auth().getUserByEmail(email);
+            user = {
+              uid: authUser.uid,
+              data: {
+                email,
+                firstname: authUser.displayName || email.split("@")[0],
+                lastname: "",
+                role: "user",
+              },
+            };
+            if (!dryRun) {
+              await db.collection("users").doc(authUser.uid).set({
+                email,
+                firstname: authUser.displayName || email.split("@")[0],
+                lastname: "",
+                role: "user",
+                emailVerified: authUser.emailVerified ? 1 : 0,
+                paymentstatus: "True",
+                accountStatus: "active",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }, { merge: true });
+            }
+            usersByEmail.set(email.toLowerCase(), user);
+            firestoreUsersCreated++;
+          } catch {
+            skippedNoAuthUser++;
+            continue;
+          }
+        }
+
+        const existingActiveOrder = (ordersByEmail.get(email.toLowerCase()) || [])
+          .filter((order) => order.data.status === "active")
+          .sort((a, b) =>
+            String(b.data.updatedAt || b.data.createdAt || "")
+              .localeCompare(String(a.data.updatedAt || a.data.createdAt || ""))
+          )[0];
+
+        const orderData = {
+          userId: user.uid,
+          userEmail: email,
+          userName: [user.data.firstname, user.data.lastname].filter(Boolean).join(" ") || email.split("@")[0],
+          planId: "xui-synced",
+          planName: "Ikamba VPN Active",
+          planDuration: expiryTime > 0 ? "synced" : "unlimited",
+          amount: 0,
+          currency: "USD",
+          status: "active",
+          subscriptionUrl: subUrl,
+          activatedAt: existingActiveOrder?.data?.activatedAt || new Date().toISOString(),
+          expiresAt,
+          credentials: {
+            ...(existingActiveOrder?.data?.credentials || {}),
+            xuiClientId: client.id,
+            xuiSubId: client.subId || "",
+            xuiSubscriptionUrl: subUrl,
+            xuiV2raytunLink: `v2raytun://import/${subUrl}`,
+            xuiV2rayngLink: `v2rayng://install-config?url=${encodeURIComponent(subUrl)}`,
+            xuiHiddifyLink: `hiddify://import/${subUrl}`,
+          },
+          xuiSyncedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (!dryRun) {
+          if (existingActiveOrder) {
+            await db.collection("vpn_orders").doc(existingActiveOrder.id).set(orderData, { merge: true });
+          } else {
+            await db.collection("vpn_orders").add({
+              ...orderData,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        }
+
+        if (existingActiveOrder) ordersReconciled++;
+        else ordersCreated++;
+      }
+
       const snap = await db
         .collection("vpn_orders")
         .where("status", "==", "active")
@@ -458,6 +627,12 @@ adminSubscriptionsRouter.post(
         dryRun,
         thresholdHours,
         totalOrders: snap.size,
+        activeXuiClients: activeXuiClientsByEmail.size,
+        vpnClientsSynced,
+        ordersReconciled,
+        ordersCreated,
+        firestoreUsersCreated,
+        skippedNoAuthUser,
         updated,
         skipped,
         errored,
