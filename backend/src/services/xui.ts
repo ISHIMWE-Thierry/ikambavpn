@@ -99,6 +99,8 @@ export interface ServerConfig {
   wsPort?: number;         // default: 2083
   wsPath?: string;         // default: /ws-tunnel
   wsHost?: string;         // default: dl.google.com
+  inboundId?: number;      // default: primary VLESS inbound id
+  xhttpInboundId?: number;  // optional secondary XHTTP inbound id
   // Panel credentials for querying this server's 3X-UI API (online status, etc.)
   panelUrl?: string;       // e.g. "https://187.77.71.106:2053/ikamba-panel"
   panelUser?: string;
@@ -144,6 +146,8 @@ function parseSecondaryServers(): ServerConfig[] {
       wsPort: s.wsPort || WS_PORT,
       wsPath: s.wsPath || WS_PATH,
       wsHost: s.wsHost || WS_HOST,
+      inboundId: s.inboundId || s.vlessInboundId || DEFAULT_INBOUND_ID,
+      xhttpInboundId: s.xhttpInboundId || undefined,
       panelUrl: s.panelUrl || "",
       panelUser: s.panelUser || "",
       panelPass: s.panelPass || "",
@@ -228,6 +232,8 @@ export interface XuiCreateClientOptions {
   tgId?: string;
   /** Force a specific UUID (used when mirroring a client to a second inbound). */
   id?: string;
+  /** Force a specific subscription token when mirroring across servers. */
+  subId?: string;
   /** VLESS flow. Default is empty for plain TCP REALITY. */
   flow?: string;
 }
@@ -542,6 +548,176 @@ async function listRemoteInbounds(server: ServerConfig): Promise<XuiInbound[]> {
   }
 }
 
+async function addRemoteClient(
+  server: ServerConfig,
+  opts: XuiCreateClientOptions,
+  inboundId: number = server.inboundId || DEFAULT_INBOUND_ID
+): Promise<void> {
+  if (!server.panelUrl) throw new Error(`${server.label} panel URL is not configured`);
+  const cookie = await loginRemotePanel(server);
+  if (!cookie) throw new Error(`${server.label} panel login failed`);
+
+  const client = buildClientPayload(opts);
+  const res = await fetch(`${server.panelUrl}/panel/api/inbounds/addClient`, {
+    method: "POST",
+    headers: {
+      Cookie: cookie,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      id: inboundId,
+      settings: JSON.stringify({ clients: [client] }),
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${server.label} addClient HTTP ${res.status}: ${text}`);
+  }
+
+  const data = (await res.json()) as { success: boolean; msg?: string };
+  if (!data.success) {
+    throw new Error(`${server.label} addClient failed: ${data.msg || "unknown"}`);
+  }
+}
+
+async function updateRemoteClient(
+  server: ServerConfig,
+  clientId: string,
+  updates: Partial<XuiClient>,
+  inboundId: number = server.inboundId || DEFAULT_INBOUND_ID
+): Promise<void> {
+  if (!server.panelUrl) throw new Error(`${server.label} panel URL is not configured`);
+  const inbounds = await listRemoteInbounds(server);
+  const inbound = inbounds.find((inb) => inb.id === inboundId);
+  const settings = JSON.parse((inbound as any)?.settings || "{}");
+  const clients: XuiClient[] = settings.clients || [];
+  const existing = clients.find((c) => c.id === clientId);
+  if (!existing) throw new Error(`${server.label} client ${clientId} not found`);
+
+  const cookie = await loginRemotePanel(server);
+  if (!cookie) throw new Error(`${server.label} panel login failed`);
+
+  const res = await fetch(`${server.panelUrl}/panel/api/inbounds/updateClient/${clientId}`, {
+    method: "POST",
+    headers: {
+      Cookie: cookie,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      id: inboundId,
+      settings: JSON.stringify({ clients: [{ ...existing, ...updates }] }),
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${server.label} updateClient HTTP ${res.status}: ${text}`);
+  }
+
+  const data = (await res.json()) as { success: boolean; msg?: string };
+  if (!data.success) {
+    throw new Error(`${server.label} updateClient failed: ${data.msg || "unknown"}`);
+  }
+}
+
+async function deleteRemoteClient(
+  server: ServerConfig,
+  clientId: string,
+  inboundId: number = server.inboundId || DEFAULT_INBOUND_ID
+): Promise<void> {
+  if (!server.panelUrl) throw new Error(`${server.label} panel URL is not configured`);
+  const cookie = await loginRemotePanel(server);
+  if (!cookie) throw new Error(`${server.label} panel login failed`);
+
+  const res = await fetch(
+    `${server.panelUrl}/panel/api/inbounds/${inboundId}/delClient/${clientId}`,
+    {
+      method: "POST",
+      headers: { Cookie: cookie, Accept: "application/json" },
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${server.label} deleteClient HTTP ${res.status}: ${text}`);
+  }
+
+  const data = (await res.json()) as { success: boolean; msg?: string };
+  if (!data.success) {
+    throw new Error(`${server.label} deleteClient failed: ${data.msg || "unknown"}`);
+  }
+}
+
+async function findRemoteClientByEmail(
+  server: ServerConfig,
+  email: string,
+  inboundId: number = server.inboundId || DEFAULT_INBOUND_ID
+): Promise<XuiClient | null> {
+  const inbounds = await listRemoteInbounds(server);
+  const inbound = inbounds.find((inb) => inb.id === inboundId);
+  const settings = JSON.parse((inbound as any)?.settings || "{}");
+  const clients: XuiClient[] = settings.clients || [];
+  return clients.find((c) => c.email === email) || null;
+}
+
+async function ensureRemoteClient(
+  server: ServerConfig,
+  opts: XuiCreateClientOptions,
+  inboundId: number = server.inboundId || DEFAULT_INBOUND_ID
+): Promise<{ server: string; inboundId: number; action: string; ok: boolean; error?: string }> {
+  const updates: Partial<XuiClient> = {
+    enable: true,
+    expiryTime: opts.expiryTime ?? 0,
+    totalGB: opts.totalGB ?? 0,
+    limitIp: opts.limitIp ?? 0,
+    flow: opts.flow !== undefined ? opts.flow : "",
+    reset: 0,
+  };
+
+  try {
+    await addRemoteClient(server, opts, inboundId);
+    return { server: server.label, inboundId, action: "created", ok: true };
+  } catch (err: any) {
+    const message = String(err?.message || err);
+    const existing = await findRemoteClientByEmail(server, opts.email, inboundId).catch(() => null);
+    if (!existing) {
+      return { server: server.label, inboundId, action: "failed", ok: false, error: message };
+    }
+
+    if (opts.id && existing.id !== opts.id) {
+      try {
+        await deleteRemoteClient(server, existing.id, inboundId);
+        await addRemoteClient(server, opts, inboundId);
+        return { server: server.label, inboundId, action: "recreated", ok: true };
+      } catch (replaceErr: any) {
+        return {
+          server: server.label,
+          inboundId,
+          action: "failed",
+          ok: false,
+          error: String(replaceErr?.message || replaceErr),
+        };
+      }
+    }
+
+    try {
+      await updateRemoteClient(server, existing.id, updates, inboundId);
+      return { server: server.label, inboundId, action: "updated", ok: true };
+    } catch (updateErr: any) {
+      return {
+        server: server.label,
+        inboundId,
+        action: "failed",
+        ok: false,
+        error: String(updateErr?.message || updateErr),
+      };
+    }
+  }
+}
+
 /**
  * Get online clients from ALL servers (local + secondary panels).
  * Returns deduplicated email list with server labels.
@@ -841,6 +1017,21 @@ export async function getInbound(id: number = DEFAULT_INBOUND_ID): Promise<XuiIn
 
 // ── Client (User) Operations ──────────────────────────────────────────────────
 
+function buildClientPayload(opts: XuiCreateClientOptions): XuiClient {
+  return {
+    id: opts.id ?? randomUUID(),
+    email: opts.email,
+    enable: true,
+    flow: opts.flow !== undefined ? opts.flow : "",
+    totalGB: opts.totalGB ?? 0,
+    expiryTime: opts.expiryTime ?? 0,
+    subId: opts.subId ?? genSubId(),
+    limitIp: opts.limitIp ?? 0,
+    tgId: opts.tgId ?? "",
+    reset: 0,
+  };
+}
+
 /**
  * Add a new client to an inbound.
  * Returns the client UUID and subscription token.
@@ -849,21 +1040,7 @@ export async function addClient(
   opts: XuiCreateClientOptions,
   inboundId: number = DEFAULT_INBOUND_ID
 ): Promise<{ id: string; subId: string; email: string }> {
-  const clientId = opts.id ?? randomUUID();
-  const subId = genSubId();
-
-  const client: XuiClient = {
-    id: clientId,
-    email: opts.email,
-    enable: true,
-    flow: opts.flow !== undefined ? opts.flow : "",
-    totalGB: opts.totalGB ?? 0,
-    expiryTime: opts.expiryTime ?? 0,
-    subId,
-    limitIp: opts.limitIp ?? 0, // 0 = unlimited IPs — prevents VPN disconnects under heavy use
-    tgId: opts.tgId ?? "",
-    reset: 0,
-  };
+  const client = buildClientPayload(opts);
 
   const cookie = await login();
 
@@ -885,7 +1062,7 @@ export async function addClient(
     throw new Error(`Failed to add client: ${data.msg}`);
   }
 
-  return { id: clientId, subId, email: opts.email };
+  return { id: client.id, subId: client.subId, email: opts.email };
 }
 
 /**
@@ -1321,6 +1498,75 @@ export interface ProvisionedUser {
   hiddifyLink: string;
 }
 
+export interface ProvisionUserOptions {
+  trafficLimitGB?: number;
+  expiryDays?: number;
+  maxConnections?: number;
+}
+
+function buildProvisionClientOptions(
+  email: string,
+  options: ProvisionUserOptions | undefined,
+  clientId?: string,
+  subId?: string
+): XuiCreateClientOptions {
+  return {
+    id: clientId,
+    subId,
+    email,
+    totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
+    expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
+    limitIp: options?.maxConnections ?? 0,
+    flow: "",
+  };
+}
+
+export async function syncClientToSecondaryServers(
+  email: string,
+  clientId: string,
+  subId: string,
+  options?: ProvisionUserOptions
+): Promise<Array<{ server: string; inboundId: number; action: string; ok: boolean; error?: string }>> {
+  const servers = SECONDARY_SERVERS.filter((server) => server.panelUrl);
+  const tasks: Array<Promise<{ server: string; inboundId: number; action: string; ok: boolean; error?: string }>> = [];
+
+  for (const server of servers) {
+    tasks.push(
+      ensureRemoteClient(
+        server,
+        buildProvisionClientOptions(email, options, clientId, subId),
+        server.inboundId || DEFAULT_INBOUND_ID
+      )
+    );
+
+    const shouldMirrorXhttp =
+      server.xhttpInboundId ||
+      server.ip === HOSTKEY_ES_IP ||
+      server.label.toLowerCase().includes("spain") ||
+      server.label.toLowerCase() === "es";
+
+    if (shouldMirrorXhttp) {
+      tasks.push(
+        ensureRemoteClient(
+          server,
+          {
+            ...buildProvisionClientOptions(email.replace("@", ".x@"), options, clientId),
+            flow: "",
+          },
+          server.xhttpInboundId || XHTTP_INBOUND_ID
+        )
+      );
+    }
+  }
+
+  const results = await Promise.all(tasks);
+  const failures = results.filter((result) => !result.ok);
+  if (failures.length > 0) {
+    console.warn("[multi-server] Client mirror failures:", JSON.stringify(failures));
+  }
+  return results;
+}
+
 /**
  * Provision a new VLESS+REALITY user end-to-end.
  *
@@ -1329,18 +1575,18 @@ export interface ProvisionedUser {
  */
 export async function provisionUser(
   email: string,
-  options?: {
-    trafficLimitGB?: number;
-    expiryDays?: number;
-    maxConnections?: number;
-  }
+  options?: ProvisionUserOptions
 ): Promise<ProvisionedUser> {
   try {
+    const totalGB = options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0;
+    const expiryTime = options?.expiryDays ? daysFromNow(options.expiryDays) : 0;
+    const limitIp = options?.maxConnections ?? 0;
+
     const { id: clientId, subId } = await addClient({
       email,
-      totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
-      expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
-      limitIp: options?.maxConnections ?? 0,
+      totalGB,
+      expiryTime,
+      limitIp,
     });
 
     // Mirror to XHTTP inbound — same UUID, flow must be "" (not xtls-rprx-vision)
@@ -1348,9 +1594,9 @@ export async function provisionUser(
       id: clientId,
       email: email.replace("@", ".x@"),
       flow: "",
-      totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
-      expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
-      limitIp: options?.maxConnections ?? 0,
+      totalGB,
+      expiryTime,
+      limitIp,
     }, XHTTP_INBOUND_ID).catch(() => { /* non-fatal: XHTTP inbound may not exist yet */ });
 
     // Mirror to WebSocket inbound — same UUID, flow must be "" (WS doesn't use Vision)
@@ -1359,9 +1605,9 @@ export async function provisionUser(
       id: clientId,
       email: email + "-ws",
       flow: "",
-      totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
-      expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
-      limitIp: options?.maxConnections ?? 0,
+      totalGB,
+      expiryTime,
+      limitIp,
     }, WS_INBOUND_ID).catch(() => { /* non-fatal: WS inbound may not exist yet */ });
 
     // Mirror to social-optimized inbound — same UUID, email +"-yt" suffix.
@@ -1370,10 +1616,13 @@ export async function provisionUser(
       id: clientId,
       email: email + "-yt",
       flow: "",
-      totalGB: options?.trafficLimitGB ? GB(options.trafficLimitGB) : 0,
-      expiryTime: options?.expiryDays ? daysFromNow(options.expiryDays) : 0,
-      limitIp: options?.maxConnections ?? 0,
+      totalGB,
+      expiryTime,
+      limitIp,
     }, SOCIAL_INBOUND_ID).catch(() => { /* non-fatal: social inbound may not exist yet */ });
+
+    await syncClientToSecondaryServers(email, clientId, subId, options);
+    clearSubCache(email);
 
     const links = getAllClientLinks(clientId, subId, email);
 
@@ -1425,6 +1674,9 @@ export async function provisionUser(
         await resetClientTraffic(email.replace("@", ".x@"), XHTTP_INBOUND_ID).catch(() => {});
         await resetClientTraffic(email + "-ws", WS_INBOUND_ID).catch(() => {});
         await resetClientTraffic(email + "-yt", SOCIAL_INBOUND_ID).catch(() => {});
+
+        await syncClientToSecondaryServers(email, existing.id, existing.subId, options);
+        clearSubCache(email);
 
         const links = getAllClientLinks(existing.id, existing.subId, email);
         return {
