@@ -7,7 +7,7 @@ import {
   ChevronRight, AlertCircle, ArrowRight, Image, RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserOrders, getUserTrial, getPlans } from '../lib/db-service';
+import { getUserOrders, getUserTrial, getPlans, createOrder } from '../lib/db-service';
 import toast from 'react-hot-toast';
 import {
   provisionXuiAccount, getXuiStats, formatBytes, formatExpiry,
@@ -433,8 +433,8 @@ export function DashboardPage() {
   // If the trial expired by time but Firestore still says 'active', treat as used
   const trialUsed    = trial?.status === 'expired' || trialExpired;
 
-  // User can activate/copy link only if they have active paid plan OR active trial
-  const canActivate  = (!expired && !!activeOrder) || activeTrial;
+  // VPN is free for any signed-in user — activation always allowed.
+  const canActivate  = !!firebaseUser;
   const canCopyLink  = activated && canActivate;
   const isConnected  = activated && serverOnline === true;
 
@@ -451,11 +451,35 @@ export function DashboardPage() {
     if (!firebaseUser?.email) return;
     setActivating(true); setActivateError(null);
     try {
+      // Persist a free vpn_orders record on first activation so the rest of
+      // the app (admin views, analytics, history) sees this user as active.
+      if (!activeOrder) {
+        await createOrder({
+          userId: firebaseUser.uid,
+          userEmail: firebaseUser.email,
+          userName: firebaseUser.displayName ?? null,
+          planId: 'free',
+          planName: 'Free',
+          planDuration: 'Lifetime',
+          amount: 0,
+          currency: 'RUB',
+          status: 'active',
+          activatedAt: new Date().toISOString(),
+        });
+      }
+
+      // Provision the VLESS account on the panel — gives this user a working link.
       await provisionXuiAccount({ email: firebaseUser.email, trafficLimitGB: 0, expiryDays: 0, maxConnections: 2 });
       setActivated(true);
       runHealth();
       healthRef.current = setInterval(runHealth, 60_000);
       getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
+
+      // Refresh local orders so the UI immediately shows the active order.
+      try {
+        const updated = await getUserOrders(firebaseUser.uid);
+        setOrders(updated);
+      } catch { /* harmless */ }
     } catch (e: any) {
       setActivateError(e.message || 'Activation failed. Try again.');
     } finally {
