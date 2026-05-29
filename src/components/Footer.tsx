@@ -12,7 +12,7 @@ export function Footer() {
           </Link>
 
           <nav className="flex flex-wrap justify-center gap-6 text-sm text-gray-500">
-            <Link to="/plans" className="hover:text-black transition-colors">Plans</Link>
+            <Link to="/plans" className="hover:text-black transition-colors">Free</Link>
             <Link to="/signin" className="hover:text-black transition-colors">Sign in</Link>
             <Link to="/signup" className="hover:text-black transition-colors">Get started</Link>
           </nav>

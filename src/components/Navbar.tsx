@@ -27,7 +27,7 @@ export function Navbar() {
         {/* Desktop nav */}
         <nav className="hidden sm:flex items-center gap-6">
           <Link to="/plans" className="text-sm text-gray-600 hover:text-black transition-colors">
-            Plans
+            Free
           </Link>
           {firebaseUser ? (
             <>
@@ -73,7 +73,7 @@ export function Navbar() {
       {menuOpen && (
         <div className="sm:hidden bg-white border-t border-gray-100 px-4 py-4 flex flex-col gap-4">
           <Link to="/plans" className="text-sm text-gray-700" onClick={() => setMenuOpen(false)}>
-            Plans
+            Free
           </Link>
           {firebaseUser ? (
             <>

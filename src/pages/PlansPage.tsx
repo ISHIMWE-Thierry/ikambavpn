@@ -1,301 +1,97 @@
-import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Shield } from 'lucide-react';
-import { getPlans, getUserOrders, getAppSettings } from '../lib/db-service';
+import { Check, Shield, Sparkles } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
 import { PageTransition } from '../components/PageTransition';
-import { formatCurrency } from '../lib/utils';
-import type { VpnPlan, VpnOrder } from '../types';
 
-// Fallback static plans if Firestore has none yet
-const DEFAULT_PLANS: VpnPlan[] = [
-  {
-    id: 'basic-1m',
-    name: 'Basic',
-    description: 'Essential protection',
-    duration: '1 Month',
-    price: 49,
-    currency: 'RUB',
-    features: ['1 device', 'All servers', 'No-logs policy', 'Standard support'],
-  },
-  {
-    id: 'popular-1m',
-    name: 'Popular',
-    description: 'Most chosen plan',
-    duration: '1 Month',
-    price: 79,
-    currency: 'RUB',
-    features: ['3 devices', 'All servers', 'No-logs policy', 'Standard support'],
-    popular: true,
-  },
-  {
-    id: 'premium-1m',
-    name: 'Premium',
-    description: 'Full access + priority support',
-    duration: '1 Month',
-    price: 99,
-    currency: 'RUB',
-    features: ['5 devices', 'All servers', 'No-logs policy', 'Premium support'],
-  },
+const FREE_FEATURES = [
+  'Unlimited devices',
+  'All servers (Spain, Finland, Sweden)',
+  'No-logs policy',
+  'No payment ever required',
+  'Unlimited bandwidth',
+  'Reality + WebSocket + XHTTP profiles included',
 ];
-
-function vibrate() {
-  try { if ('vibrate' in navigator) navigator.vibrate(10); } catch { /* noop */ }
-}
 
 export function PlansPage() {
   const { firebaseUser } = useAuth();
   const navigate = useNavigate();
-  const [plans, setPlans] = useState<VpnPlan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeIdx, setActiveIdx] = useState(1);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [activeOrder, setActiveOrder] = useState<VpnOrder | null>(null);
-  const [hasPending, setHasPending] = useState(false);
-  const [rubToUsdRate, setRubToUsdRate] = useState(0);
 
-  useEffect(() => {
-    getPlans()
-      .then((p) => setPlans(p.length ? p : DEFAULT_PLANS))
-      .catch(() => setPlans(DEFAULT_PLANS))
-      .finally(() => setLoading(false));
-
-    getAppSettings()
-      .then((s) => setRubToUsdRate(s.rubToUsdRate || 0))
-      .catch(() => {});
-
-    if (firebaseUser) {
-      getUserOrders(firebaseUser.uid).then((orders) => {
-        const active = orders.find(
-          (o) => o.status === 'active' && !!o.expiresAt && new Date(o.expiresAt) > new Date(),
-        );
-        if (active) setActiveOrder(active);
-        // Ignore renewal-type pending orders — they're created by the smart-
-        // subscription scanner and live alongside the user's active sub. They
-        // must NOT block the user from buying or upgrading through the site.
-        const pending = orders.some(
-          (o) => o.status === 'pending_payment' && !(o as any).isRenewal,
-        );
-        setHasPending(pending);
-      }).catch(() => {});
-    }
-  }, [firebaseUser]);
-
-  // Scroll to popular card on load (mobile)
-  useEffect(() => {
-    if (!loading && scrollRef.current) {
-      const popularIdx = plans.findIndex((p) => p.popular) ?? 1;
-      const cardWidth = 288 + 16; // w-72 + gap
-      scrollRef.current.scrollLeft = popularIdx * cardWidth - (window.innerWidth / 2) + 144;
-    }
-  }, [loading, plans]);
-
-  function onScroll() {
-    const el = scrollRef.current;
-    if (!el) return;
-    const cardWidth = 288 + 16;
-    const idx = Math.round((el.scrollLeft + window.innerWidth / 2 - 144) / cardWidth);
-    const clamped = Math.max(0, Math.min(idx, plans.length - 1));
-    if (clamped !== activeIdx) {
-      setActiveIdx(clamped);
-      vibrate();
-    }
-  }
-
-  const handleSelect = (plan: VpnPlan) => {
-    if (!firebaseUser) { navigate('/signup'); return; }
-    if (hasPending) {
-      navigate('/dashboard');
-      return;
-    }
-    if (activeOrder) {
-      // Only allow upgrading to a higher plan
-      if (plan.price <= activeOrder.amount) return;
-      navigate('/checkout', { state: { plan, isUpgrade: true } });
-      return;
-    }
-    navigate('/checkout', { state: { plan } });
+  const cta = () => {
+    if (firebaseUser) navigate('/dashboard');
+    else navigate('/signup');
   };
-
-  /** Label & disabled state for a plan button */
-  const planButtonState = (plan: VpnPlan) => {
-    if (hasPending) return { label: 'Pending order…', disabled: true };
-    if (activeOrder) {
-      if (plan.price === activeOrder.amount) return { label: 'Current plan', disabled: true };
-      if (plan.price < activeOrder.amount) return { label: `Get ${plan.name}`, disabled: true };
-      return { label: `Upgrade to ${plan.name}`, disabled: false };
-    }
-    return { label: `Get ${plan.name}`, disabled: false };
-  };
-
-  /** USD equivalent string */
-  const usdEquiv = (plan: VpnPlan) => {
-    if (plan.currency !== 'RUB' || rubToUsdRate <= 0) return null;
-    return `≈ $${(plan.price / rubToUsdRate).toFixed(2)}`;
-  };
-
-  const handleTrial = () => {
-    if (!firebaseUser) { navigate('/signup', { state: { from: { pathname: '/trial' } } }); return; }
-    navigate('/trial');
-  };
-
-  if (loading) {
-    return (
-      <main className="flex-1 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
-      </main>
-    );
-  }
 
   return (
     <PageTransition>
-    <main className="flex-1 py-16 overflow-hidden">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-black mb-3">Choose your plan</h1>
-          <p className="text-gray-500 max-w-md mx-auto">
-            Simple, transparent pricing. No hidden fees. Cancel or renew anytime.
-          </p>
-        </div>
-
-        {/* Free trial banner */}
-        <div className="mb-10 border border-gray-100 rounded-2xl p-6 flex flex-col sm:flex-row
-          items-center justify-between gap-4 bg-gray-50">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shrink-0">
-              <Shield className="w-5 h-5 text-white" />
+      <main className="flex-1 py-16 overflow-hidden">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 bg-black/5 rounded-full text-xs font-semibold">
+              <Sparkles className="w-3.5 h-3.5" /> Now 100% free
             </div>
-            <div>
-              <p className="font-semibold text-black">Try free for 1 hour</p>
-              <p className="text-sm text-gray-500 mt-0.5">No payment required. One trial per account.</p>
-            </div>
+            <h1 className="text-4xl sm:text-5xl font-bold text-black mb-3">
+              IkambaVPN is free.
+            </h1>
+            <p className="text-gray-500 max-w-md mx-auto text-lg">
+              No plans, no charges, no payment. Sign up and use it.
+            </p>
           </div>
-          <Button variant="secondary" className="shrink-0" onClick={handleTrial}>
-            Start free trial
-          </Button>
-        </div>
-      </div>
 
-      {/* Mobile: horizontal snap carousel */}
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="flex sm:hidden no-scrollbar flex-row flex-nowrap gap-4 overflow-x-scroll overflow-y-hidden snap-x snap-mandatory pt-5 pb-6"
-        style={{
-          WebkitOverflowScrolling: 'touch',
-          paddingLeft: 'calc(50vw - 144px)',
-          paddingRight: 'calc(50vw - 144px)',
-        }}
-      >
-        {plans.map((plan, i) => (
-          <div key={plan.id} className="snap-center shrink-0 w-72">
-            <div className={`relative flex flex-col rounded-2xl border h-full ${
-              plan.popular ? 'border-black shadow-lg bg-black text-white' : 'border-gray-100 shadow-sm bg-white'
-            } p-6 transition-all duration-300 ${activeIdx === i && plan.popular ? 'scale-[1.02]' : ''}`}>
-              {plan.popular && (
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                  <Badge>Most popular</Badge>
-                </div>
-              )}
-              <div className="mb-4">
-                <h2 className={`text-xl font-bold ${plan.popular ? 'text-white' : 'text-black'}`}>{plan.name}</h2>
-                <p className={`text-sm mt-1 ${plan.popular ? 'text-gray-400' : 'text-gray-500'}`}>{plan.description}</p>
-              </div>
-              <div className="mb-6">
-                <span className={`text-4xl font-bold ${plan.popular ? 'text-white' : 'text-black'}`}>
-                  {plan.currency === 'RUB' ? `${plan.price} ₽` : formatCurrency(plan.price, plan.currency)}
-                </span>
-                <span className={`text-sm ml-1 ${plan.popular ? 'text-gray-400' : 'text-gray-400'}`}>/ {plan.duration}</span>
-                {usdEquiv(plan) && (
-                  <p className={`text-xs mt-1 ${plan.popular ? 'text-gray-400' : 'text-gray-400'}`}>{usdEquiv(plan)}</p>
-                )}
-              </div>
-              <ul className="flex flex-col gap-2 mb-8 flex-1">
-                {plan.features.map((f) => (
-                  <li key={f} className={`flex items-start gap-2 text-sm ${plan.popular ? 'text-gray-300' : 'text-gray-700'}`}>
-                    <Check className={`w-4 h-4 mt-0.5 shrink-0 ${plan.popular ? 'text-white' : 'text-black'}`} />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <button
-                onClick={() => handleSelect(plan)}
-                disabled={planButtonState(plan).disabled}
-                className={`w-full rounded-xl py-3 text-sm font-semibold transition-colors ${
-                  planButtonState(plan).disabled
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : plan.popular ? 'bg-white text-black hover:bg-gray-100' : 'bg-black text-white hover:bg-gray-800'
-                }`}
-              >
-                {planButtonState(plan).label}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Dot indicators — mobile only */}
-      <div className="sm:hidden flex justify-center gap-1.5 mb-6">
-        {plans.map((_, i) => (
-          <div key={i} className={`rounded-full transition-all duration-300 ${
-            activeIdx === i ? 'w-4 h-1.5 bg-black' : 'w-1.5 h-1.5 bg-gray-300'
-          }`} />
-        ))}
-      </div>
-
-      {/* Desktop: 3-column grid */}
-      <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto px-4 sm:px-6">
-        {plans.map((plan) => (
-          <div key={plan.id} className={`relative flex flex-col rounded-2xl border ${
-            plan.popular ? 'border-black shadow-lg' : 'border-gray-100 shadow-sm'
-          } bg-white p-6`}>
-            {plan.popular && (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <Badge>Most popular</Badge>
-              </div>
-            )}
+          <div className="relative rounded-2xl border border-black shadow-lg bg-black text-white p-8 sm:p-10 mb-10">
             <div className="mb-6">
-              <h2 className="text-xl font-bold text-black">{plan.name}</h2>
-              <p className="text-sm text-gray-500 mt-1">{plan.description}</p>
+              <h2 className="text-2xl font-bold">Full access</h2>
+              <p className="text-sm text-gray-400 mt-1">Everything included, forever.</p>
             </div>
-            <div className="mb-6">
-              <span className="text-4xl font-bold text-black">
-                {plan.currency === 'RUB' ? `${plan.price} ₽` : formatCurrency(plan.price, plan.currency)}
-              </span>
-              <span className="text-gray-400 text-sm ml-1">/ {plan.duration}</span>
-              {usdEquiv(plan) && (
-                <p className="text-xs text-gray-400 mt-1">{usdEquiv(plan)}</p>
-              )}
+            <div className="mb-8">
+              <span className="text-5xl font-bold">Free</span>
+              <span className="text-sm ml-2 text-gray-400">/ forever</span>
             </div>
-            <ul className="flex flex-col gap-2 mb-8 flex-1">
-              {plan.features.map((f) => (
-                <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
-                  <Check className="w-4 h-4 text-black mt-0.5 shrink-0" />
+            <ul className="flex flex-col gap-3 mb-8">
+              {FREE_FEATURES.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm text-gray-200">
+                  <Check className="w-4 h-4 text-white mt-0.5 shrink-0" />
                   {f}
                 </li>
               ))}
             </ul>
-            <Button
-              variant={plan.popular ? 'primary' : 'secondary'}
-              className="w-full"
-              disabled={planButtonState(plan).disabled}
-              onClick={() => handleSelect(plan)}
+            <button
+              onClick={cta}
+              className="w-full rounded-xl py-3 text-sm font-semibold bg-white text-black hover:bg-gray-100 transition-colors"
             >
-              {planButtonState(plan).label}
+              {firebaseUser ? 'Open dashboard' : 'Sign up — free'}
+            </button>
+          </div>
+
+          <div className="border border-gray-100 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shrink-0">
+                <Shield className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="font-semibold text-black">Already have an account?</p>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Your existing account already has full free access — nothing to do.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              className="shrink-0"
+              onClick={() => navigate(firebaseUser ? '/dashboard' : '/signin')}
+            >
+              {firebaseUser ? 'Dashboard' : 'Sign in'}
             </Button>
           </div>
-        ))}
-      </div>
 
-      <p className="text-center text-sm text-gray-400 mt-10 px-4">
-        Questions?{' '}
-        <a href="mailto:support@ikamba.com" className="underline hover:text-black">
-          Contact support
-        </a>
-      </p>
-    </main>
+          <p className="text-center text-sm text-gray-400 mt-10">
+            Questions?{' '}
+            <a href="mailto:support@ikamba.com" className="underline hover:text-black">
+              Contact support
+            </a>
+          </p>
+        </div>
+      </main>
     </PageTransition>
   );
 }

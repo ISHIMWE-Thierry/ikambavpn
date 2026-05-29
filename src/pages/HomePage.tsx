@@ -12,8 +12,8 @@ const steps = [
   },
   {
     n: '02',
-    title: 'Choose a plan',
-    desc: 'Basic, Popular, or Premium — or start with a free 1-hour trial.',
+    title: 'Get your link',
+    desc: 'Your free subscription link is ready in the dashboard the moment you sign in.',
   },
   {
     n: '03',
@@ -218,14 +218,14 @@ export function HomePage() {
           style={{ animationDelay: '80ms' }}
         >
           Private.<br />
-          <span className="text-gray-300">Unrestricted.</span>
+          <span className="text-gray-300">Free forever.</span>
         </h1>
 
         <p
           className="text-base sm:text-lg text-gray-500 max-w-sm mx-auto mb-10 leading-relaxed anim-hero"
           style={{ animationDelay: '160ms' }}
         >
-          One link. Works on every device.<br />No logs, no limits, no contracts.
+          One link. Every device. No logs, no limits, no payment — ever.
         </p>
 
         <div
@@ -234,13 +234,13 @@ export function HomePage() {
         >
           <Link to="/signup">
             <Button size="lg" className="min-w-[180px]">
-              Try free — 1 hour
+              Get free access
               <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
           <Link to="/plans">
             <Button size="lg" variant="secondary" className="min-w-[140px]">
-              View plans
+              Learn more
             </Button>
           </Link>
         </div>
@@ -300,34 +300,33 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* ── Pricing preview ───────────────────────────────────────────────── */}
+      {/* ── Free ──────────────────────────────────────────────────────────── */}
       <section className="py-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <p className="text-[11px] text-gray-400 uppercase tracking-[0.15em] text-center mb-3">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 text-center">
+          <p className="text-[11px] text-gray-400 uppercase tracking-[0.15em] mb-3">
             Pricing
           </p>
-          <h2 className="text-3xl font-bold text-center text-black mb-2">
-            Under 100 ₽ / month
+          <h2 className="text-4xl sm:text-5xl font-bold text-black mb-3">
+            100% Free.
           </h2>
-          <p className="text-center text-sm text-gray-400 mb-12">
-            Transparent pricing. No hidden fees.
+          <p className="text-sm text-gray-500 mb-8">
+            No plans. No charge. No card required. Sign up and use it.
           </p>
+          <Link to="/signup">
+            <Button size="lg" className="min-w-[200px]">
+              Get free access
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </Link>
         </div>
-
-        {/* Desktop: 3-column grid — Mobile: horizontal snap carousel */}
-        <PricingCarousel />
-
-        <p className="text-center text-xs text-gray-400 mt-8 px-4">
-          First-time users get 1 hour free — no card required.
-        </p>
       </section>
 
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
       <section className="px-4 sm:px-6 pb-16">
         <div className="max-w-4xl mx-auto bg-black rounded-3xl px-8 py-16 text-center text-white">
-          <h2 className="text-3xl font-bold mb-3">Start for free</h2>
+          <h2 className="text-3xl font-bold mb-3">Start now — free</h2>
           <p className="text-gray-400 text-sm mb-8 max-w-xs mx-auto">
-            Create your account, verify your email, and get 1 hour free access instantly.
+            Create your account, verify your email, and get unlimited free access — no payment, no plans.
           </p>
           <Link to="/signup">
             <Button variant="secondary" size="lg">
