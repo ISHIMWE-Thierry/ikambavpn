@@ -70,25 +70,35 @@ export interface XuiClientStat {
 
 // ── Public endpoints (no auth) ────────────────────────────────────────────────
 
-/**
- * Check whether the VPN server / Xray process is online.
- * Calls the public /xui-public/health endpoint — no login required.
- * Returns { online, latencyMs }.
- */
-export async function checkVpnServerHealth(): Promise<{ online: boolean; latencyMs: number }> {
+// sslip.io always has a valid TLS cert (no DNS propagation wait).
+// Used as fallback when the primary duckdns cert hasn't been issued yet.
+const HEALTH_FALLBACK = 'https://187-77-71-106.sslip.io:4443';
+
+async function fetchHealth(base: string, timeoutMs = 6000): Promise<{ online: boolean; latencyMs: number }> {
   const start = Date.now();
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    const res = await fetch(`${API_BASE}/xui-public/health`, { signal: controller.signal });
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${base}/xui-public/health`, { signal: controller.signal });
     clearTimeout(timer);
-    const latencyMs = Date.now() - start;
-    if (!res.ok) return { online: false, latencyMs };
+    if (!res.ok) return { online: false, latencyMs: Date.now() - start };
     const json = await res.json() as { online?: boolean };
-    return { online: json.online ?? false, latencyMs };
+    return { online: json.online ?? false, latencyMs: Date.now() - start };
   } catch {
     return { online: false, latencyMs: Date.now() - start };
   }
+}
+
+/**
+ * Check whether the VPN server / Xray process is online.
+ * Tries the primary domain first, falls back to sslip.io if TLS cert isn't ready.
+ */
+export async function checkVpnServerHealth(): Promise<{ online: boolean; latencyMs: number }> {
+  if (import.meta.env.DEV) return fetchHealth('http://localhost:4000');
+  const primary = await fetchHealth(API_BASE, 5000);
+  if (primary.online) return primary;
+  // Primary failed (likely cert not yet issued) — try sslip.io
+  return fetchHealth(HEALTH_FALLBACK, 5000);
 }
 
 /**
@@ -264,9 +274,18 @@ export interface UserStatus {
  * No auth required.
  */
 export async function getUserStatus(email: string): Promise<UserStatus> {
-  const res = await fetch(`${API_BASE}/xui-public/user-status/${encodeURIComponent(email)}`);
-  const json = await res.json() as UserStatus;
-  return json;
+  const path = `/xui-public/user-status/${encodeURIComponent(email)}`;
+  const base = import.meta.env.DEV ? 'http://localhost:4000' : API_BASE;
+  try {
+    const res = await fetch(`${base}${path}`);
+    if (res.ok) return res.json() as Promise<UserStatus>;
+  } catch { /* fall through to sslip */ }
+  // Fallback to sslip.io if duckdns cert not ready
+  if (!import.meta.env.DEV) {
+    const res = await fetch(`${HEALTH_FALLBACK}${path}`);
+    return res.json() as Promise<UserStatus>;
+  }
+  throw new Error('User status unavailable');
 }
 
 export interface AdminOverview {
