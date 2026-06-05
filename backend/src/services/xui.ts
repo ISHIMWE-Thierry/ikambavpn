@@ -376,15 +376,12 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
   // Try to fetch fresh data from 3X-UI panel
   try {
     const lookup = await findSubscriptionClient(email);
-    if (!lookup) return null;
 
-    const clientId = lookup.client.id;
-
+    // Panel lookup is best-effort — buildAllServerLinks uses shared UUIDs so
+    // clientId doesn't affect the output. Any authenticated user gets links.
+    const clientId = lookup?.client?.id ?? "free";
     const remark = `IkambaVPN-${email.split("@")[0]}`;
 
-    // ── Multi-server subscription ─────────────────────────────────────────────
-    // Generate links for ALL servers (primary + secondary) so users see
-    // Helsinki, Frankfurt, etc. in their VPN app. Each server gets WS + REALITY.
     const allLinks = buildAllServerLinks(clientId, remark);
     const vlessLink = allLinks.join("\n");
 
@@ -395,11 +392,11 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
       if (stat) {
         const expireSec = stat.expiryTime ? Math.floor(stat.expiryTime / 1000) : 0;
         userInfo = `upload=${stat.up}; download=${stat.down}; total=${stat.total}; expire=${expireSec}`;
-      } else {
+      } else if (lookup) {
         userInfo = userInfoFromClient(lookup.client);
       }
     } catch {
-      userInfo = userInfoFromClient(lookup.client);
+      if (lookup) userInfo = userInfoFromClient(lookup.client);
     }
 
     const entry: SubCacheEntry = { vlessLink, userInfo, cachedAt: Date.now() };
