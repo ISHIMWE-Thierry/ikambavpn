@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 
 const API_BASE = import.meta.env.DEV
   ? 'http://localhost:4000'
-  : 'https://ikambavpn.duckdns.org:8443';
+  : 'https://ikambavpn.duckdns.org:4443';
 
 interface DeviceItem {
   deviceId: string;

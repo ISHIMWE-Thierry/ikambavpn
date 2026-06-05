@@ -24,12 +24,17 @@ import {
   buildVlessLink,
   buildXhttpLink,
   buildWsLink,
+  buildBrazilDpiXhttpLink,
+  buildNonsubTcpLink,
+  BRAZIL_CLEAN_IP,
   GB,
   daysFromNow,
   resetClientTraffic,
   getCachedSubscription,
   clearSubCache,
   resolveSubscriptionEmail,
+  findSubscriptionClient,
+  buildTcpRealityLinks,
   getAllOnlineClients,
   getRecentConnections,
   getUserActivitySummaries,
@@ -91,7 +96,21 @@ export async function publicSubscriptionHandler(req: Request, res: Response) {
       return res.status(404).send("Client not found");
     }
 
-    const base64 = Buffer.from(entry.vlessLink).toString("base64");
+    const tcpOnly =
+      req.query.tcp_only === "1" || req.query.profile === "tcp";
+    let payload = entry.vlessLink;
+    if (tcpOnly) {
+      const lookup = await findSubscriptionClient(email);
+      if (!lookup) return res.status(404).send("Client not found");
+      const remark = `IkambaVPN-${email.split("@")[0]}`;
+      const tcpLinks = buildTcpRealityLinks(lookup.client.id, remark);
+      if (!tcpLinks.length) {
+        return res.status(503).send("TCP REALITY profiles not configured");
+      }
+      payload = tcpLinks.join("\n");
+    }
+
+    const base64 = Buffer.from(payload).toString("base64");
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Content-Disposition", "inline");
@@ -285,6 +304,77 @@ xuiPublicRouter.get("/ws-link/:email", async (req: Request, res: Response) => {
     if (!wsLink) return res.status(404).json({ ok: false, error: "WS link not available" });
 
     return res.json({ ok: true, link: wsLink });
+  } catch (err: any) {
+    return res.status(503).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * GET /xui-public/nonsub-link/:email
+ * Permanent VLESS link — TCP+REALITY, tradingview SNI, no Cloudflare, no subscription.
+ */
+xuiPublicRouter.get("/nonsub-link/:email", async (req: Request, res: Response) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const lookup = await findSubscriptionClient(email);
+    if (!lookup) return res.status(404).json({ ok: false, error: "Client not found" });
+
+    const remark = `IkambaVPN-${email.split("@")[0]}`;
+    const link = buildNonsubTcpLink(lookup.client.id, remark);
+    return res.json({
+      ok: true,
+      link,
+      permanent: true,
+      noSubscription: true,
+      note: "Import this vless:// URI only. Do not use a subscription URL.",
+    });
+  } catch (err: any) {
+    return res.status(503).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * GET /xui-public/brazil-xhttp-link/:email
+ * Permanent direct link — Brazil IP exit via XHTTP+REALITY (test30 shape). No subscription.
+ */
+xuiPublicRouter.get("/brazil-xhttp-link/:email", async (req: Request, res: Response) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const lookup = await findSubscriptionClient(email);
+    if (!lookup) return res.status(404).json({ ok: false, error: "Client not found" });
+
+    const remark = `IkambaVPN-${email.split("@")[0]}`;
+    const link = buildBrazilDpiXhttpLink(lookup.client.id, remark);
+    return res.json({
+      ok: true,
+      link,
+      exitIp: BRAZIL_CLEAN_IP,
+      note: "Import vless:// directly. Exit shows Brazil; SNI uses cloudflare for DPI camouflage.",
+      permanent: true,
+    });
+  } catch (err: any) {
+    return res.status(503).json({ ok: false, error: err.message });
+  }
+});
+
+xuiPublicRouter.get("/tcp-link/:email", async (req: Request, res: Response) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const lookup = await findSubscriptionClient(email);
+    if (!lookup) return res.status(404).json({ ok: false, error: "Client not found" });
+
+    const remark = `IkambaVPN-${email.split("@")[0]}`;
+    const links = buildTcpRealityLinks(lookup.client.id, remark);
+    if (!links.length) {
+      return res.status(503).json({ ok: false, error: "TCP REALITY not configured" });
+    }
+
+    return res.json({
+      ok: true,
+      links,
+      primary: links[0],
+      subscriptionHint: `Add ?tcp_only=1 to your subscription URL for TCP-only profiles`,
+    });
   } catch (err: any) {
     return res.status(503).json({ ok: false, error: err.message });
   }

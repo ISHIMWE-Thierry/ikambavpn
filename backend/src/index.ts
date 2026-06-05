@@ -10,6 +10,7 @@ import { metricsRouter } from "./routes/metrics";
 import { heartbeatRouter } from "./routes/heartbeat";
 import { adminRouter } from "./routes/admin";
 import { adminSubscriptionsRouter } from "./routes/adminSubscriptions";
+import { adminCustomersRouter } from "./routes/adminCustomers";
 import {
   xuiRouter,
   xuiPublicRouter,
@@ -40,6 +41,7 @@ app.use("/servers", metricsRouter);
 app.use("/connection", authMiddleware, heartbeatRouter);
 app.use("/admin", authMiddleware, adminRouter);
 app.use("/admin", authMiddleware, adminSubscriptionsRouter);
+app.use("/admin", authMiddleware, adminCustomersRouter);
 app.get("/sub/:identifier", publicSubscriptionHandler); // Legacy root subscription URL
 app.get("/subscription/:identifier", publicSubscriptionRedirectHandler); // Legacy root subscription redirect
 app.use("/xui", xuiPublicRouter); // Legacy public subscription paths, no auth

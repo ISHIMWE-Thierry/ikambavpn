@@ -57,6 +57,22 @@ const HOSTKEY_ES_SHORT_ID_43234 = process.env.HOSTKEY_ES_SHORT_ID_43234 || "d24c
 const HOSTKEY_ES_SHORT_ID_8443 = process.env.HOSTKEY_ES_SHORT_ID_8443 || "e4924abc2dbcd900";
 const HOSTKEY_ES_XHTTP_PATH = process.env.HOSTKEY_ES_XHTTP_PATH || "/assets/es-speed/events";
 
+// es-grpc-9443 inbound on HOSTKEY Spain — VLESS + gRPC + REALITY, SNI www.apple.com.
+// PROVEN WORKING: carries live Russian-user web traffic (WiFi + mobile). gRPC
+// (HTTP/2) survives the DPI that freezes TCP+Vision REALITY on this user's
+// network. Shared free UUID is already provisioned in this inbound on the server.
+const HOSTKEY_ES_GRPC_PORT = Number(process.env.HOSTKEY_ES_GRPC_PORT || "9443");
+const HOSTKEY_ES_GRPC_SHORT_ID =
+  process.env.HOSTKEY_ES_GRPC_SHORT_ID || "c0cf136b037aaab1";
+const HOSTKEY_ES_GRPC_SNI =
+  process.env.HOSTKEY_ES_GRPC_SNI || "www.apple.com";
+const HOSTKEY_ES_GRPC_SERVICE =
+  process.env.HOSTKEY_ES_GRPC_SERVICE || "ikambasvc266940179";
+// Shared free UUID provisioned in the ES gRPC inbound on the server. Same UUID
+// for every client on this inbound (free tier — no per-user accounting).
+const ES_GRPC_SHARED_UUID =
+  process.env.ES_GRPC_SHARED_UUID || "86dc53bb-8e7c-4086-a32e-984d706b9fad";
+
 const FRANKFURT_TURBO_PORT = Number(process.env.FRANKFURT_TURBO_PORT || "43234");
 const FRANKFURT_TURBO_PUBLIC_KEY =
   process.env.FRANKFURT_TURBO_PUBLIC_KEY ||
@@ -1357,6 +1373,97 @@ export function buildHostkeyEsVisionLink(clientId: string, remark: string): stri
   return `vless://${clientId}@${HOSTKEY_ES_IP}:443?${query}#${encodeURIComponent(remark + "-ES-Speed-443-Vision-Reality")}`;
 }
 
+/**
+ * 🇪🇸 Spain TCP+REALITY+Vision on port 2087 (es-vision-2087 inbound).
+ *
+ * The intended fast & stealthy default profile:
+ *   - TCP transport (single long-lived connection, lowest DPI surface)
+ *   - REALITY with target=www.microsoft.com (top-tier SNI — too important
+ *     to block wholesale, so most DPI leaves it alone)
+ *   - xtls-rprx-vision flow (strips TLS-in-TLS, ~30–50% faster than gRPC,
+ *     avoids the double-encryption entropy signature)
+ *   - shortId is unique to this inbound (minted on server 2026-06-05)
+ *
+ * REALITY public key is shared with the rest of the ES inbounds
+ * (HOSTKEY_ES_PUBLIC_KEY) because the server reuses one privateKey.
+ */
+export function buildEsSpainGrpcLink(_clientId: string, _remark: string): string {
+  if (!HOSTKEY_ES_PUBLIC_KEY) {
+    throw new Error("buildEsSpainGrpcLink: HOSTKEY_ES_PUBLIC_KEY not configured");
+  }
+  if (!HOSTKEY_ES_GRPC_SHORT_ID) {
+    throw new Error("buildEsSpainGrpcLink: HOSTKEY_ES_GRPC_SHORT_ID not configured");
+  }
+  // Force the shared free UUID — the Spain es-grpc-9443 inbound uses one
+  // shared client for the free tier. Per-user UUIDs would fail auth.
+  const uuid = ES_GRPC_SHARED_UUID;
+  const query = [
+    `type=grpc`,
+    `security=reality`,
+    `pbk=${HOSTKEY_ES_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=${HOSTKEY_ES_GRPC_SNI}`,
+    `sid=${HOSTKEY_ES_GRPC_SHORT_ID}`,
+    `spx=`,
+    `serviceName=${HOSTKEY_ES_GRPC_SERVICE}`,
+    `mode=gun`,
+  ].join("&");
+  return `vless://${uuid}@${HOSTKEY_ES_IP}:${HOSTKEY_ES_GRPC_PORT}?${query}#${encodeURIComponent("🇪🇸 Spain gRPC")}`;
+}
+
+/**
+ * 🇪🇸 Spain XHTTP+REALITY on 8443 (es-xhttp-8443 inbound).
+ *
+ * For clients that DON'T support gRPC (e.g. izi VPN). XHTTP is HTTP-based, so
+ * like gRPC it survives the DPI that freezes TCP+Vision REALITY on these
+ * networks. REALITY fronts cloudflare/tradingview; Host header = server IP and
+ * mode=auto are the shape that passes aggressive RU/WiFi DPI. Uses the shared
+ * free UUID already provisioned in this inbound. Carries live RU traffic.
+ */
+export function buildEsSpainXhttpLink(_clientId: string, _remark: string): string {
+  if (!HOSTKEY_ES_PUBLIC_KEY) {
+    throw new Error("buildEsSpainXhttpLink: HOSTKEY_ES_PUBLIC_KEY not configured");
+  }
+  const uuid = ES_GRPC_SHARED_UUID; // same shared free UUID across ES inbounds
+  // es-xhttp-443: XHTTP clone of the proven working es-grpc-9443 inbound —
+  // same REALITY key/shortId and www.apple.com SNI, but XHTTP transport on
+  // port 443 (the privileged TLS port RU DPI can't broadly drop) and a client
+  // that supports XHTTP (izi VPN, no gRPC needed).
+  const query = [
+    `type=xhttp`,
+    `security=reality`,
+    `pbk=i2ryLXz5H51kVANIqKIFI30_rAx6iuEveXwPqY_GyRY`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=www.cloudflare.com`,
+    `sid=509db650956762e8`,
+    `spx=/`,
+    `path=${encodeURIComponent("/assets/fceebc8ad5ca/events")}`,
+    `host=${HOSTKEY_ES_IP}`,
+    `mode=auto`,
+  ].join("&");
+  return `vless://${uuid}@${HOSTKEY_ES_IP}:443?${query}#${encodeURIComponent("🇪🇸 Spain XHTTP")}`;
+}
+
+/**
+ * Frankfurt TCP+REALITY+Vision on port 443 (IkambaVPN-test30-Backup-Frankfurt-TCP-Reality).
+ * x-ui inbound-443, sni=www.microsoft.com, sid=bf08e4d4a095a87d.
+ * Shared UUID 38285504-... is provisioned with flow=xtls-rprx-vision in this inbound.
+ * Confirmed working on both WiFi and mobile data in Russia.
+ */
+export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
+  const query = [
+    `type=tcp`,
+    `security=reality`,
+    `pbk=HVv7GZjb6DYZsfQKvv21lyV8LquTZGZPcMSQ6SevhBA`,
+    `fp=chrome`,
+    `flow=xtls-rprx-vision`,
+    `sni=www.microsoft.com`,
+    `sid=bf08e4d4a095a87d`,
+    `spx=/`,
+  ].join("&");
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt Vision")}`;
+}
+
 export function buildHostkeyEsTurboLink(clientId: string, remark: string): string {
   const query = [
     `type=tcp`,
@@ -1642,7 +1749,7 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  addOptional(() => buildWifiBrLink(clientId, remark));
+  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
 
   return links;
 }
