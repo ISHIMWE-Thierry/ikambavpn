@@ -13,28 +13,37 @@ const API_BASE = import.meta.env.DEV
   : 'https://ikambavpn.duckdns.org:4443';
 
 async function xuiRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  // Get Firebase ID token for auth
   const { auth } = await import('./firebase');
   const token = await auth.currentUser?.getIdToken();
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options?.headers,
+  };
 
-  const res = await fetch(`${API_BASE}/xui${path}`, {
-    ...options,
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options?.headers,
-    },
-  });
+  const bases = import.meta.env.DEV
+    ? ['http://localhost:4000']
+    : [API_BASE, HEALTH_FALLBACK];
 
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error || `API error ${res.status}`);
+  let lastErr: Error = new Error('All backends unreachable');
+  for (const base of bases) {
+    try {
+      const res = await fetch(`${base}/xui${path}`, { ...options, headers });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || `API error ${res.status}`);
+      }
+      const json = (await res.json()) as { ok: boolean; data: T; error?: string };
+      if (!json.ok) throw new Error(json.error || 'Unknown error');
+      return json.data;
+    } catch (e: any) {
+      lastErr = e;
+      // Only retry on network/TLS errors, not on 4xx application errors
+      if (e.message?.startsWith('API error 4') || e.message?.startsWith('Admin only')) throw e;
+    }
   }
-
-  const json = (await res.json()) as { ok: boolean; data: T; error?: string };
-  if (!json.ok) throw new Error(json.error || 'Unknown error');
-  return json.data;
+  throw lastErr;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

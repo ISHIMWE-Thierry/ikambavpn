@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import toast from 'react-hot-toast';
 
-const API_BASE = import.meta.env.DEV
-  ? 'http://localhost:4000'
-  : 'https://ikambavpn.duckdns.org:4443';
+const BASES = import.meta.env.DEV
+  ? ['http://localhost:4000']
+  : ['https://ikambavpn.duckdns.org:4443', 'https://187-77-71-106.sslip.io:4443'];
 
 interface DeviceItem {
   deviceId: string;
@@ -46,19 +46,19 @@ interface SubscriptionRow {
 async function authedFetch(path: string, init: RequestInit = {}) {
   const token = await auth.currentUser?.getIdToken();
   if (!token) throw new Error('Not signed in');
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      ...(init.headers || {}),
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`${res.status}: ${txt}`);
+  const headers = { ...(init.headers || {}), Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  let lastErr: Error = new Error('Unreachable');
+  for (const base of BASES) {
+    try {
+      const res = await fetch(`${base}${path}`, { ...init, headers });
+      if (!res.ok) { const txt = await res.text(); throw new Error(`${res.status}: ${txt}`); }
+      return res.json();
+    } catch (e: any) {
+      lastErr = e;
+      if (String(e.message).match(/^4\d\d:/)) throw e;
+    }
   }
-  return res.json();
+  throw lastErr;
 }
 
 function formatPrice(amount: number, currency: string) {
