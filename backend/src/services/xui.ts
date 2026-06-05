@@ -513,18 +513,42 @@ async function apiRequest<T = any>(
 // ── Online Status & Activity Tracking ─────────────────────────────────────────
 
 /**
- * Get list of currently online client emails from 3X-UI panel.
- * Uses POST /panel/api/inbounds/onlines — returns email[] of connected users.
+ * Get list of currently online client emails.
+ * Merges two sources:
+ *  1. x-ui panel /onlines API — tracks connections to the x-ui Xray instance.
+ *  2. Codex Xray access log — tracks connections via port 8444 XHTTP (the
+ *     active subscription profile). "Online" = seen in the last 3 minutes.
  */
 export async function getOnlineClients(): Promise<string[]> {
+  const onlineSet = new Set<string>();
+
+  // Source 1: x-ui panel
   try {
     const result = await apiRequest<string[]>("/panel/api/inbounds/onlines", {
       method: "POST",
     });
-    return result || [];
-  } catch {
-    return [];
-  }
+    (result || []).forEach((e) => onlineSet.add(e));
+  } catch { /* panel may be unreachable */ }
+
+  // Source 2: codex Xray access log (port 8444 XHTTP connections)
+  try {
+    const { execSync } = await import("child_process");
+    const raw = execSync("tail -200 /var/log/xray-codex/access.log 2>/dev/null", {
+      encoding: "utf-8", timeout: 3000,
+    });
+    const cutoff = Date.now() - 3 * 60 * 1000; // 3 minutes
+    for (const line of raw.split("\n")) {
+      if (!line.includes("email:")) continue;
+      const tsMatch = line.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+      const emailMatch = line.match(/email:\s+(\S+)/);
+      if (!tsMatch || !emailMatch) continue;
+      const [, yr, mo, dy, hr, mn, sc] = tsMatch;
+      const ts = new Date(`${yr}-${mo}-${dy}T${hr}:${mn}:${sc}Z`).getTime();
+      if (ts >= cutoff) onlineSet.add(emailMatch[1].trim());
+    }
+  } catch { /* log may not exist yet */ }
+
+  return [...onlineSet];
 }
 
 // ── Remote Panel Session Cache ────────────────────────────────────────────────
@@ -822,13 +846,18 @@ export interface ConnectionLogEntry {
  */
 export async function getRecentConnections(maxLines: number = 500): Promise<ConnectionLogEntry[]> {
   const { execSync } = await import("child_process");
-  const logPath = "/var/log/xray/access.log";
+  // Read from BOTH Xray log files: x-ui managed Xray + codex XHTTP Xray (port 8444)
+  const logPaths = [
+    "/var/log/xray/access.log",
+    "/var/log/xray-codex/access.log",
+    "/var/log/xray-es/access.log",
+  ];
 
   try {
-    const raw = execSync(`tail -${maxLines} ${logPath} 2>/dev/null`, {
-      encoding: "utf-8",
-      timeout: 5000,
-    });
+    const raw = execSync(
+      logPaths.map(p => `tail -${maxLines} ${p} 2>/dev/null`).join(" ; "),
+      { encoding: "utf-8", timeout: 5000 }
+    );
 
     const entries: ConnectionLogEntry[] = [];
     for (const line of raw.split("\n")) {
