@@ -65,6 +65,42 @@ const FRANKFURT_TURBO_PUBLIC_KEY =
 const FRANKFURT_TURBO_SHORT_ID = process.env.FRANKFURT_TURBO_SHORT_ID || "0123456789";
 const FRANKFURT_TURBO_SNI = process.env.FRANKFURT_TURBO_SNI || "www.yahoo.com";
 
+// Brazil clean IP — test30 Russia-DPI XHTTP+REALITY (exit IP geolocates as BR).
+export const BRAZIL_CLEAN_IP = process.env.BRAZIL_CLEAN_IP || "187.77.71.106";
+const BRAZIL_XHTTP_PORT = Number(process.env.BRAZIL_XHTTP_PORT || "8443");
+const BRAZIL_XHTTP_PATH =
+  process.env.BRAZIL_XHTTP_PATH || "/assets/fceebc8ad5ca/events";
+const BRAZIL_XHTTP_PUBLIC_KEY =
+  process.env.BRAZIL_XHTTP_PUBLIC_KEY || FRANKFURT_TURBO_PUBLIC_KEY;
+const BRAZIL_XHTTP_SHORT_ID =
+  process.env.BRAZIL_XHTTP_SHORT_ID || "509db650956762e8";
+const BRAZIL_XHTTP_SNI = process.env.BRAZIL_XHTTP_SNI || "tradingview.com";
+
+// Hetzner — test30-style XHTTP+REALITY (installed via install-hetzner-dpi-xhttp.py)
+const HETZNER_XHTTP_PORT = Number(process.env.HETZNER_XHTTP_PORT || "8443");
+const HETZNER_XHTTP_PATH =
+  process.env.HETZNER_XHTTP_PATH || "/assets/fceebc8ad5ca/events";
+const HETZNER_XHTTP_PUBLIC_KEY =
+  process.env.HETZNER_XHTTP_PUBLIC_KEY || REALITY_PUBLIC_KEY;
+const HETZNER_XHTTP_SHORT_ID =
+  process.env.HETZNER_XHTTP_SHORT_ID || REALITY_SHORT_ID || "d24c784291c548ee";
+const HETZNER_XHTTP_SNI = process.env.HETZNER_XHTTP_SNI || "tradingview.com";
+
+// NONSUB — permanent direct links only (no subscription URL). TCP+REALITY, no Cloudflare SNI.
+export const NONSUB_PORT = Number(process.env.NONSUB_PORT || "43234");
+const NONSUB_SNI = process.env.NONSUB_SNI || "tradingview.com";
+const NONSUB_PUBLIC_KEY = process.env.NONSUB_REALITY_PUBLIC_KEY || REALITY_PUBLIC_KEY;
+const NONSUB_SHORT_ID = process.env.NONSUB_REALITY_SHORT_ID || REALITY_SHORT_ID || "d24c784291c548ee";
+
+// Albania exit — real Albanian IP (Tirana VPS). whatismyip shows AL only when users
+// connect to this host, not Finland/Spain. Set after 3X-UI is up on the Albania box.
+const ALBANIA_VPS_IP = process.env.ALBANIA_VPS_IP || "";
+const ALBANIA_VLESS_HOST = process.env.ALBANIA_VLESS_HOST || ALBANIA_VPS_IP;
+const ALBANIA_REALITY_PUBLIC_KEY = process.env.ALBANIA_REALITY_PUBLIC_KEY || "";
+const ALBANIA_REALITY_SHORT_ID = process.env.ALBANIA_REALITY_SHORT_ID || "";
+const ALBANIA_VLESS_PORT = Number(process.env.ALBANIA_VLESS_PORT || "443");
+const ALBANIA_REALITY_SNI = process.env.ALBANIA_REALITY_SNI || "www.yahoo.com";
+
 // Social-optimized WebSocket inbound — port 2087, /yt-stream, host i.ytimg.com.
 // Server-side routing rules blackhole geosite:category-ads-all + tracker domains
 // for traffic with this inbound's tag (set up via 3X-UI panel routing config).
@@ -168,8 +204,10 @@ export function getAllServers(): ServerConfig[] {
 // HTTPS agent that tolerates IP-based or short-lived certs
 const tlsAgent = new https.Agent({ rejectUnauthorized: false });
 
-// Public-facing backend domain for subscription URLs (DuckDNS domain with valid TLS)
+// Public-facing backend domain for subscription URLs.
 const BACKEND_DOMAIN = process.env.XPANEL_BACKEND_DOMAIN || "ikambavpn.duckdns.org";
+/** Host in vless:// URIs — Duck DNS (not Cloudflare). Falls back to VPS IP. */
+const VLESS_CONNECT_HOST = process.env.XPANEL_VLESS_HOST || BACKEND_DOMAIN;
 
 // For Node.js native fetch with HTTPS IP certs — set at module level
 if (PANEL_URL.startsWith("https://")) {
@@ -288,7 +326,7 @@ type SubscriptionClientLookup = {
   source: "local" | "remote";
 };
 
-async function findSubscriptionClient(email: string): Promise<SubscriptionClientLookup | null> {
+export async function findSubscriptionClient(email: string): Promise<SubscriptionClientLookup | null> {
   const inbounds = await listInbounds();
   for (const inb of inbounds) {
     const settings = JSON.parse((inb as any).settings || "{}");
@@ -848,7 +886,7 @@ export function isNoiseDest(dest: string, port: string): boolean {
   const d = dest.toLowerCase();
 
   // ── Our own VPN infrastructure ──
-  if (d.includes("ikambavpn") || d.includes("duckdns.org")) return true;
+  if (d.includes("ikambavpn") || d.includes("ikambaremit.com")) return true;
 
   // ── DNS-over-HTTPS / resolver services ──
   if (
@@ -1185,6 +1223,28 @@ export async function getClientStatByEmail(
  * V2RayNG, V2RayTun, and Hiddify to fail parsing the link silently — users see
  * "connected" but traffic doesn't flow, or the connection drops after a few seconds.
  */
+/**
+ * Permanent NONSUB profile: VLESS+TCP+REALITY, tradingview SNI, no Cloudflare, no subscription.
+ */
+export function buildNonsubTcpLink(clientId: string, remark: string): string {
+  if (!clientId) throw new Error("buildNonsubTcpLink: clientId is required");
+  if (!NONSUB_PUBLIC_KEY || !NONSUB_SHORT_ID) {
+    throw new Error("buildNonsubTcpLink: REALITY keys not configured");
+  }
+  const query = [
+    `type=tcp`,
+    `security=reality`,
+    `pbk=${NONSUB_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `flow=xtls-rprx-vision`,
+    `sni=${NONSUB_SNI}`,
+    `sid=${NONSUB_SHORT_ID}`,
+    `spx=/`,
+  ].join("&");
+  const label = remark ? `${remark}-NONSUB` : "IkambaVPN-NONSUB";
+  return `vless://${clientId}@${VLESS_CONNECT_HOST}:${NONSUB_PORT}?${query}#${encodeURIComponent(label)}`;
+}
+
 export function buildVlessLink(clientId: string, remark: string): string {
   if (!clientId) {
     throw new Error("buildVlessLink: clientId is required");
@@ -1203,12 +1263,13 @@ export function buildVlessLink(clientId: string, remark: string): string {
     `security=reality`,
     `pbk=${REALITY_PUBLIC_KEY}`,
     `fp=${REALITY_FINGERPRINT}`,
-    `sni=${REALITY_SNI}`,
+    `flow=xtls-rprx-vision`,
+    `sni=tradingview.com`,
     `sid=${REALITY_SHORT_ID}`,
     `spx=/`,
   ].join("&");
 
-  return `vless://${clientId}@${VPS_IP}:${VLESS_PORT}?${query}#${encodeURIComponent(remark)}`;
+  return `vless://${clientId}@${VLESS_CONNECT_HOST}:${VLESS_PORT}?${query}#${encodeURIComponent(remark)}`;
 }
 
 /**
@@ -1255,7 +1316,7 @@ export function buildWsLink(clientId: string, remark: string): string {
     `host=${WS_HOST}`,
   ].join("&");
 
-  return `vless://${clientId}@${VPS_IP}:${WS_PORT}?${query}#${encodeURIComponent(remark + "-WS")}`;
+  return `vless://${clientId}@${VLESS_CONNECT_HOST}:${WS_PORT}?${query}#${encodeURIComponent(remark + "-WS")}`;
 }
 
 /**
@@ -1302,7 +1363,8 @@ export function buildHostkeyEsTurboLink(clientId: string, remark: string): strin
     `security=reality`,
     `pbk=${HOSTKEY_ES_PUBLIC_KEY}`,
     `fp=${REALITY_FINGERPRINT}`,
-    `sni=www.yahoo.com`,
+    `flow=xtls-rprx-vision`,
+    `sni=tradingview.com`,
     `sid=${HOSTKEY_ES_SHORT_ID_43234}`,
     `spx=`,
   ].join("&");
@@ -1311,18 +1373,70 @@ export function buildHostkeyEsTurboLink(clientId: string, remark: string): strin
 }
 
 export function buildHostkeyEsXhttpLink(clientId: string, remark: string): string {
+  // Matches the working "Russia-DPI-XHTTP-Reality" shape: XHTTP + Reality
+  // with cloudflare SNI, explicit Host header set to the server IP, and
+  // mode=auto. These three details let the request shape pass aggressive
+  // WiFi DPI that fingerprints stock XHTTP-Reality traffic.
   const query = [
     `type=xhttp`,
     `security=reality`,
     `pbk=${HOSTKEY_ES_PUBLIC_KEY}`,
     `fp=${REALITY_FINGERPRINT}`,
-    `sni=www.cloudflare.com`,
+    `sni=tradingview.com`,
     `sid=${HOSTKEY_ES_SHORT_ID_8443}`,
     `spx=/`,
     `path=${encodeURIComponent(HOSTKEY_ES_XHTTP_PATH)}`,
+    `host=${HOSTKEY_ES_IP}`,
+    `mode=auto`,
   ].join("&");
 
   return `vless://${clientId}@${HOSTKEY_ES_IP}:8443?${query}#${encodeURIComponent("🇪🇸 Spain Stealth")}`;
+}
+
+/**
+ * Russia-DPI XHTTP+REALITY on the Brazil clean IP (187.77.71.106).
+ * Matches the working test30 client JSON: xhttp, reality, sni=cloudflare,
+ * host=server IP, path=/assets/.../events. whatismyip shows Brazil (BR).
+ */
+/** XHTTP+REALITY on Hetzner (inbound Russia-DPI-XHTTP-Reality, port 8443). */
+export function buildHetznerDpiXhttpLink(clientId: string, remark: string): string {
+  if (!clientId) throw new Error("buildHetznerDpiXhttpLink: clientId is required");
+  const query = [
+    `type=xhttp`,
+    `security=reality`,
+    `pbk=${HETZNER_XHTTP_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=${HETZNER_XHTTP_SNI}`,
+    `sid=${HETZNER_XHTTP_SHORT_ID}`,
+    `spx=/`,
+    `path=${encodeURIComponent(HETZNER_XHTTP_PATH)}`,
+    `host=${VPS_IP}`,
+    `mode=auto`,
+  ].join("&");
+  const label = remark ? `${remark}-Hetzner-DPI-XHTTP` : "IkambaVPN-Hetzner-DPI-XHTTP";
+  return `vless://${clientId}@${VLESS_CONNECT_HOST}:${HETZNER_XHTTP_PORT}?${query}#${encodeURIComponent(label)}`;
+}
+
+export function buildBrazilDpiXhttpLink(clientId: string, remark: string): string {
+  if (!clientId) {
+    throw new Error("buildBrazilDpiXhttpLink: clientId is required");
+  }
+  const query = [
+    `type=xhttp`,
+    `security=reality`,
+    `pbk=${BRAZIL_XHTTP_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=${BRAZIL_XHTTP_SNI}`,
+    `sid=${BRAZIL_XHTTP_SHORT_ID}`,
+    `spx=/`,
+    `path=${encodeURIComponent(BRAZIL_XHTTP_PATH)}`,
+    `host=${BRAZIL_CLEAN_IP}`,
+    `mode=auto`,
+  ].join("&");
+  const label = remark
+    ? `${remark}-Russia-DPI-XHTTP-Reality`
+    : "IkambaVPN-Russia-DPI-XHTTP-Reality";
+  return `vless://${clientId}@${BRAZIL_CLEAN_IP}:${BRAZIL_XHTTP_PORT}?${query}#${encodeURIComponent(label)}`;
 }
 
 export function buildFrankfurtTurboLink(clientId: string, remark: string): string {
@@ -1339,6 +1453,102 @@ export function buildFrankfurtTurboLink(clientId: string, remark: string): strin
   return `vless://${clientId}@${VPS_IP}:${FRANKFURT_TURBO_PORT}?${query}#${encodeURIComponent("🇩🇪 Germany TCP Turbo")}`;
 }
 
+/**
+ * Experimental profile — replicates the test30 "Russia-DPI-XHTTP-Reality"
+ * shape verified to pass aggressive WiFi DPI: XHTTP + Reality + cloudflare
+ * SNI + Host header set to the server IP + mode=auto. Same target as Spain
+ * Stealth, kept under the "experimental" label as the canonical reference
+ * config for comparing against future variants.
+ */
+export function buildExperimentalLink(clientId: string, remark: string): string {
+  const query = [
+    `type=xhttp`,
+    `security=reality`,
+    `pbk=${HOSTKEY_ES_PUBLIC_KEY}`,
+    `fp=${REALITY_FINGERPRINT}`,
+    `sni=tradingview.com`,
+    `sid=${HOSTKEY_ES_SHORT_ID_8443}`,
+    `spx=/`,
+    `path=${encodeURIComponent(HOSTKEY_ES_XHTTP_PATH)}`,
+    `host=${HOSTKEY_ES_IP}`,
+    `mode=auto`,
+  ].join("&");
+  return `vless://${clientId}@${HOSTKEY_ES_IP}:8443?${query}#${encodeURIComponent("experimental")}`;
+}
+
+/**
+ * wifi profiles — gRPC+Reality+apple-SNI inbounds on port 9443.
+ * Mirror of the working test30-Maximum-Stealth-gRPC shape — clean transport
+ * that bypasses aggressive WiFi DPI when our cloud-provider IPs are reachable.
+ * Each server has its own reality keypair + unique shortId + serviceName, but
+ * the same per-customer UUID (reused from inbound-43234).
+ */
+const WIFI_GRPC_PORT = 9443;
+const WIFI_GRPC_SNI = "www.apple.com";
+
+const WIFI_ES_SHORT_ID = "c0cf136b037aaab1";
+const WIFI_ES_SVC = "ikambasvc266940179";
+
+const WIFI_FI_IP = "194.76.217.4";
+const WIFI_FI_PUB_KEY = "yMO3nD0R94-dZW8-Cxc9LkepHyzjQIPXyXHKB56Ge1A";
+const WIFI_FI_SHORT_ID = "8466916e4710938c";
+const WIFI_FI_SVC = "ikambasvc614194697";
+
+const WIFI_SE_IP = "138.124.24.164";
+const WIFI_SE_PUB_KEY = "Hyr1QIN4U7tY3GYqe2FA0gv05IdTXn0hnAso7YhffCY";
+const WIFI_SE_SHORT_ID = "165f394890879817";
+const WIFI_SE_SVC = "ikambasvc701100088";
+
+function buildGrpcRealityWifiLink(
+  clientId: string, ip: string, pubKey: string, shortId: string, svc: string, label: string,
+): string {
+  const query = [
+    `type=grpc`,
+    `security=reality`,
+    `pbk=${pubKey}`,
+    `fp=chrome`,
+    `sni=${WIFI_GRPC_SNI}`,
+    `sid=${shortId}`,
+    `spx=`,
+    `serviceName=${svc}`,
+    `mode=gun`,
+  ].join("&");
+  return `vless://${clientId}@${ip}:${WIFI_GRPC_PORT}?${query}#${encodeURIComponent(label)}`;
+}
+
+export function buildWifiLink(clientId: string, _remark: string): string {
+  return buildGrpcRealityWifiLink(clientId, HOSTKEY_ES_IP, HOSTKEY_ES_PUBLIC_KEY, WIFI_ES_SHORT_ID, WIFI_ES_SVC, "🇪🇸 wifi");
+}
+
+export function buildWifiFinlandLink(clientId: string, _remark: string): string {
+  return buildGrpcRealityWifiLink(clientId, WIFI_FI_IP, WIFI_FI_PUB_KEY, WIFI_FI_SHORT_ID, WIFI_FI_SVC, "🇫🇮 wifi");
+}
+
+export function buildWifiSwedenLink(clientId: string, _remark: string): string {
+  return buildGrpcRealityWifiLink(clientId, WIFI_SE_IP, WIFI_SE_PUB_KEY, WIFI_SE_SHORT_ID, WIFI_SE_SVC, "🇸🇪 wifi");
+}
+
+/**
+ * 🛡️ wifi-br — exact mirror of the working test30 gRPC+Reality config on the
+ * clean Brazilian IP (187.77.71.106). UUID is shared (test30 account) since
+ * that's the only credential the server has provisioned — so this profile is
+ * a shared-credential failsafe for customers whose WiFi blocks our cloud IPs.
+ */
+export function buildWifiBrLink(_clientId: string, _remark: string): string {
+  const query = [
+    `type=grpc`,
+    `security=reality`,
+    `pbk=llRbGz-ZlXwLg6IcEEpeSXN_d9AydZ4qT0EFtSC6t1s`,
+    `fp=chrome`,
+    `sni=www.apple.com`,
+    `sid=17a181082bcab919`,
+    `spx=`,
+    `serviceName=svcf121829146`,
+    `mode=gun`,
+  ].join("&");
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:9443?${query}#${encodeURIComponent("🛡️ wifi")}`;
+}
+
 // ── Multi-Server Link Builders ────────────────────────────────────────────────
 // These variants accept a ServerConfig so we can generate links for any server,
 // not just the one this backend instance is running on.
@@ -1353,13 +1563,41 @@ export function buildVlessLinkForServer(clientId: string, remark: string, server
     `security=reality`,
     `pbk=${server.realityPubKey}`,
     `fp=${REALITY_FINGERPRINT}`,
-    `sni=${server.realitySni || REALITY_SNI}`,
+    `flow=xtls-rprx-vision`,
+    `sni=tradingview.com`,
     `sid=${server.realityShortId}`,
     `spx=`,
   ].join("&");
 
   const port = server.vlessPort || VLESS_PORT;
   return `vless://${clientId}@${server.ip}:${port}?${query}#${encodeURIComponent(countryProfileLabel(server.label))}`;
+}
+
+/**
+ * TCP+REALITY profiles only — for anti-DPI tests without WS/XHTTP noise.
+ * Use subscription ?tcp_only=1 or GET /xui-public/tcp-link/:email.
+ */
+export function buildTcpRealityLinks(clientId: string, remark: string): string[] {
+  const links: string[] = [];
+  const addOptional = (builder: () => string) => {
+    try {
+      const link = builder();
+      if (link) links.push(link);
+    } catch {
+      // Profile not configured on this host.
+    }
+  };
+
+  addOptional(() => buildVlessLink(clientId, remark));
+  for (const server of getAllServers()) {
+    if (server.realityPubKey && server.realityShortId) {
+      addOptional(() => buildVlessLinkForServer(clientId, remark, server));
+    }
+  }
+  addOptional(() => buildHostkeyEsTurboLink(clientId, remark));
+  addOptional(() => buildHostkeyEsVisionLink(clientId, remark));
+
+  return links;
 }
 
 /**
@@ -1383,11 +1621,17 @@ export function buildWsLinkForServer(clientId: string, remark: string, server: S
 
 /**
  * Generate the public subscription profile list.
- * Keep it intentionally small: one TCP turbo profile per server, plus ES
- * XHTTP stealth as the only stealth/anti-DPI variant.
+ *
+ * Reduced to ONLY the Brazil gRPC+REALITY profile (187.77.71.106:9443) because
+ * all other inbounds (HOSTKEY ES turbo/xhttp, Helsinki, Stockholm, Frankfurt,
+ * Finland/Sweden wifi-gRPC, experimental) are currently down or unreliable.
+ * The Brazil entry uses the shared test30 UUID and is the only confirmed
+ * working profile.
+ *
+ * To restore the multi-server fan-out, re-introduce the addOptional() calls
+ * for the relevant builders below.
  */
 export function buildAllServerLinks(clientId: string, remark: string): string[] {
-  const servers = getAllServers();
   const links: string[] = [];
   const addOptional = (builder: () => string) => {
     try {
@@ -1398,17 +1642,7 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  addOptional(() => buildHostkeyEsTurboLink(clientId, remark));
-  addOptional(() => buildHostkeyEsXhttpLink(clientId, remark));
-  if (process.env.FRANKFURT_TURBO_ENABLED === "1") {
-    addOptional(() => buildFrankfurtTurboLink(clientId, remark));
-  }
-
-  for (const server of servers) {
-    if (server.realityPubKey && server.realityShortId) {
-      links.push(buildVlessLinkForServer(clientId, remark, server));
-    }
-  }
+  addOptional(() => buildWifiBrLink(clientId, remark));
 
   return links;
 }
