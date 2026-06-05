@@ -451,8 +451,7 @@ export function DashboardPage() {
     if (!firebaseUser?.email) return;
     setActivating(true); setActivateError(null);
     try {
-      // Persist a free vpn_orders record on first activation so the rest of
-      // the app (admin views, analytics, history) sees this user as active.
+      // Persist a free vpn_orders record on first activation.
       if (!activeOrder) {
         await createOrder({
           userId: firebaseUser.uid,
@@ -468,14 +467,18 @@ export function DashboardPage() {
         });
       }
 
-      // Provision the VLESS account on the panel — gives this user a working link.
-      await provisionXuiAccount({ email: firebaseUser.email, trafficLimitGB: 0, expiryDays: 0, maxConnections: 2 });
+      // Register user on the VPN panel — best-effort. The subscription URL
+      // works even if panel provisioning fails (shared UUID model), so never
+      // block the user from seeing their link because of a panel error.
+      provisionXuiAccount({ email: firebaseUser.email, trafficLimitGB: 0, expiryDays: 0, maxConnections: 2 })
+        .catch((e) => console.warn('[provision] panel registration failed (non-fatal):', e.message));
+
+      // Always mark as activated — subscription URL is ready regardless.
       setActivated(true);
       runHealth();
       healthRef.current = setInterval(runHealth, 60_000);
       getXuiStats(firebaseUser.email).then(setStats).catch(() => {});
 
-      // Refresh local orders so the UI immediately shows the active order.
       try {
         const updated = await getUserOrders(firebaseUser.uid);
         setOrders(updated);

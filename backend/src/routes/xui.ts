@@ -398,23 +398,33 @@ xuiPublicRouter.get("/subscription/:email", publicSubscriptionRedirectHandler);
  * }
  */
 xuiRouter.post("/provision", async (req: AuthedRequest, res: Response) => {
+  const userEmail =
+    req.body.email || (req.user as any)?.email || "unknown";
   try {
-    const userEmail =
-      req.body.email || (req.user as any)?.email || "unknown";
-
     const result = await provisionUser(userEmail, {
       trafficLimitGB: req.body.trafficLimitGB,
       expiryDays: req.body.expiryDays,
       maxConnections: req.body.maxConnections,
     });
-
-    return res.json({
-      ok: true,
-      data: result,
-    });
+    return res.json({ ok: true, data: result });
   } catch (err: any) {
     console.error("XUI provision error:", err.message);
-    return res.status(500).json({ ok: false, error: err.message });
+    // Panel registration failed — return the shared subscription URL anyway
+    // so the user can still connect (shared UUID model, no per-user UUID needed).
+    const remark = `IkambaVPN-${userEmail.split("@")[0]}`;
+    const { buildAllServerLinks } = await import("../services/xui");
+    const links = buildAllServerLinks("free", remark);
+    return res.json({
+      ok: true,
+      panelError: err.message,
+      data: {
+        clientId: "free",
+        subId: "",
+        email: userEmail,
+        vlessLink: links[0] ?? "",
+        subscriptionUrl: `${process.env.PUBLIC_SUB_BASE ?? ""}/xui-public/sub/${encodeURIComponent(userEmail)}`,
+      },
+    });
   }
 });
 
