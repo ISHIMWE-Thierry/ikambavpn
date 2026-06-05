@@ -1461,6 +1461,28 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt Vision")}`;
 }
 
+/**
+ * 🇩🇪 Frankfurt XHTTP+REALITY — port 8444, DPI-resistant.
+ * Replaces TCP+Vision as the default subscription profile.
+ * Same Frankfurt server & UUID, XHTTP transport survives the DPI that
+ * freezes TCP+Vision. Path /assets/fceebc8ad5ca/clean, host=server IP.
+ */
+export function buildFrankfurtXhttpLink(_clientId: string, _remark: string): string {
+  const query = [
+    `type=xhttp`,
+    `security=reality`,
+    `pbk=i2ryLXz5H51kVANIqKIFI30_rAx6iuEveXwPqY_GyRY`,
+    `fp=chrome`,
+    `sni=www.cloudflare.com`,
+    `sid=509db650956762e8`,
+    `spx=/`,
+    `path=${encodeURIComponent("/assets/fceebc8ad5ca/clean")}`,
+    `host=187.77.71.106`,
+    `mode=auto`,
+  ].join("&");
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8444?${query}#${encodeURIComponent("🇩🇪 Frankfurt XHTTP")}`;
+}
+
 export function buildHostkeyEsTurboLink(clientId: string, remark: string): string {
   const query = [
     `type=tcp`,
@@ -1746,7 +1768,8 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
+  // Primary: Frankfurt XHTTP+REALITY port 8444 — survives DPI that blocks TCP+Vision
+  addOptional(() => buildFrankfurtXhttpLink(clientId, remark));
 
   return links;
 }
