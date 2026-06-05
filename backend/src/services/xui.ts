@@ -530,21 +530,24 @@ export async function getOnlineClients(): Promise<string[]> {
     (result || []).forEach((e) => onlineSet.add(e));
   } catch { /* panel may be unreachable */ }
 
-  // Source 2: codex Xray access log (port 8444 XHTTP connections)
+  // Source 2: codex Xray access log (port 8444 XHTTP — the active sub profile).
+  // The whole free tier shares ONE UUID, so every device logs in under the same
+  // email. Counting emails would cap at 1. Instead, count DISTINCT SOURCE IPs
+  // seen in the last 3 minutes — each = a real connected device.
   try {
     const { execSync } = await import("child_process");
-    const raw = execSync("tail -200 /var/log/xray-codex/access.log 2>/dev/null", {
+    const raw = execSync("tail -400 /var/log/xray-codex/access.log 2>/dev/null", {
       encoding: "utf-8", timeout: 3000,
     });
     const cutoff = Date.now() - 3 * 60 * 1000; // 3 minutes
     for (const line of raw.split("\n")) {
-      if (!line.includes("email:")) continue;
+      if (!line.includes("from ")) continue;
       const tsMatch = line.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-      const emailMatch = line.match(/email:\s+(\S+)/);
-      if (!tsMatch || !emailMatch) continue;
+      const ipMatch = line.match(/from\s+(?:tcp:|udp:)?(\d+\.\d+\.\d+\.\d+):/);
+      if (!tsMatch || !ipMatch) continue;
       const [, yr, mo, dy, hr, mn, sc] = tsMatch;
       const ts = new Date(`${yr}-${mo}-${dy}T${hr}:${mn}:${sc}Z`).getTime();
-      if (ts >= cutoff) onlineSet.add(emailMatch[1].trim());
+      if (ts >= cutoff) onlineSet.add(`device@${ipMatch[1]}`);
     }
   } catch { /* log may not exist yet */ }
 
