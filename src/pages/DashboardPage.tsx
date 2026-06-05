@@ -12,8 +12,9 @@ import toast from 'react-hot-toast';
 import {
   provisionXuiAccount, getXuiStats, formatBytes, formatExpiry,
   checkVpnServerHealth, runDiagnostics, checkPaymentStatus,
+  getUserStatus,
 } from '../lib/xui-api';
-import type { XuiClientStat, DiagnosticResult } from '../lib/xui-api';
+import type { XuiClientStat, DiagnosticResult, UserStatus } from '../lib/xui-api';
 import { PremiumBadge } from '../components/PremiumBadge';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -267,6 +268,7 @@ export function DashboardPage() {
   const [activateError, setActivateError] = useState<string | null>(null);
   const [upgradePopup, setUpgradePopup] = useState<VpnPlan | null>(null);
   const [stats, setStats]             = useState<XuiClientStat | null>(null);
+  const [userStatus, setUserStatus]   = useState<UserStatus | null>(null);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const [diagResult, setDiagResult]   = useState<DiagnosticResult | null>(null);
   const [diagRunning, setDiagRunning] = useState(false);
@@ -300,13 +302,17 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!firebaseUser?.email) return;
-    getXuiStats(firebaseUser.email).then((s) => {
-      setStats(s); setActivated(true);
+    // Fetch unified status (x-ui primary, Firebase fallback) + traffic stats in parallel
+    Promise.all([
+      getUserStatus(firebaseUser.email).catch(() => null),
+      getXuiStats(firebaseUser.email).catch(() => null),
+    ]).then(([status, s]) => {
+      if (status) setUserStatus(status);
+      if (s) setStats(s);
+      setActivated(true);
       runHealth();
       healthRef.current = setInterval(runHealth, 60_000);
     }).catch(() => {
-      // VPN backend unreachable — still try health check and mark activated
-      // if user has an active order (Firestore is the source of truth for entitlement)
       runHealth();
       healthRef.current = setInterval(runHealth, 60_000);
     });
@@ -425,8 +431,11 @@ export function DashboardPage() {
   const activeOrder  = orders.find((o) => o.status === 'active' && !!o.expiresAt && !isExpired(o.expiresAt));
   const pendingOrders = orders.filter((o) => o.status === 'pending_payment');
   const historyOrders = orders.filter((o) => o.status !== 'pending_payment');
-  const days         = daysUntilExpiry(activeOrder?.expiresAt);
-  const expired      = isExpired(activeOrder?.expiresAt);
+  // Days remaining: x-ui panel is source of truth (null = lifetime/no expiry)
+  const days = userStatus?.daysRemaining ?? daysUntilExpiry(activeOrder?.expiresAt);
+  const expired = userStatus?.expiryMs
+    ? (userStatus.expiryMs > 0 && userStatus.expiryMs < Date.now())
+    : isExpired(activeOrder?.expiresAt);
   // Trial is only active if status is 'active' AND expiresAt is in the future
   const activeTrial  = trial?.status === 'active' && !!trial?.expiresAt && !isExpired(trial.expiresAt);
   const trialExpired = trial?.status === 'active' && !!trial?.expiresAt && isExpired(trial.expiresAt);

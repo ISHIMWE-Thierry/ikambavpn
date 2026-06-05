@@ -243,6 +243,45 @@ export async function getXuiStats(email: string): Promise<XuiClientStat> {
   return json.data;
 }
 
+export interface UserStatus {
+  ok: boolean;
+  source: 'panel' | 'firebase' | 'none';
+  email: string;
+  isActive: boolean;
+  expiryMs: number;
+  expiryDate: string | null;
+  daysRemaining: number | null;
+  uploadBytes: number;
+  downloadBytes: number;
+  totalBytes: number;
+  limitBytes: number;
+  subscriptionUrl: string;
+  planName?: string;
+}
+
+/**
+ * Get unified VPN status for a user — x-ui panel first, Firebase fallback.
+ * No auth required.
+ */
+export async function getUserStatus(email: string): Promise<UserStatus> {
+  const res = await fetch(`${API_BASE}/xui-public/user-status/${encodeURIComponent(email)}`);
+  const json = await res.json() as UserStatus;
+  return json;
+}
+
+export interface AdminOverview {
+  totalClients: number;
+  activeClients: number;
+  onlineNow: number;
+  expiringSoon: number;
+  lifetimeClients: number;
+}
+
+export async function getAdminOverview(): Promise<AdminOverview> {
+  const json = await xuiRequest<AdminOverview>('/admin/overview');
+  return json;
+}
+
 // ── Admin endpoints ───────────────────────────────────────────────────────────
 
 export interface XuiAdminClient {

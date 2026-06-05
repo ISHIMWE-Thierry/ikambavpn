@@ -380,6 +380,80 @@ xuiPublicRouter.get("/tcp-link/:email", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /xui-public/user-status/:email
+ * Unified status for the dashboard — x-ui is source of truth, Firebase is fallback.
+ * Returns expiry, days remaining, traffic, device limit, and subscription URL.
+ * No auth required (email is the key; subscription URL is per-email already).
+ */
+xuiPublicRouter.get("/user-status/:email", async (req: Request, res: Response) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const subUrl = `${process.env.PUBLIC_SUB_BASE ?? "https://ikambavpn.duckdns.org:4443"}/xui-public/sub/${encodeURIComponent(email)}`;
+
+    // --- Primary: x-ui panel ---
+    const stat = await getClientStatByEmail(email).catch(() => null);
+    if (stat) {
+      const now = Date.now();
+      const expiryMs = stat.expiryTime ?? 0;
+      const daysRemaining = expiryMs > 0 ? Math.max(0, Math.ceil((expiryMs - now) / 86400000)) : null;
+      return res.json({
+        ok: true, source: "panel",
+        email,
+        isActive: stat.enable !== false,
+        expiryMs,
+        expiryDate: expiryMs > 0 ? new Date(expiryMs).toISOString() : null,
+        daysRemaining,
+        uploadBytes: stat.up,
+        downloadBytes: stat.down,
+        totalBytes: stat.up + stat.down,
+        limitBytes: stat.total,
+        subscriptionUrl: subUrl,
+      });
+    }
+
+    // --- Fallback: Firebase vpn_orders ---
+    try {
+      const db = getFirestore();
+      const snap = await db.collection("vpn_orders")
+        .where("userEmail", "==", email)
+        .where("status", "==", "active")
+        .get();
+      if (!snap.empty) {
+        const order = snap.docs
+          .map(d => d.data())
+          .sort((a, b) => new Date(b.activatedAt ?? 0).getTime() - new Date(a.activatedAt ?? 0).getTime())[0];
+        const expiryMs = order.expiresAt ? new Date(order.expiresAt).getTime() : 0;
+        const now = Date.now();
+        const daysRemaining = expiryMs > 0 ? Math.max(0, Math.ceil((expiryMs - now) / 86400000)) : null;
+        return res.json({
+          ok: true, source: "firebase",
+          email,
+          isActive: true,
+          expiryMs,
+          expiryDate: order.expiresAt ?? null,
+          daysRemaining,
+          uploadBytes: 0, downloadBytes: 0, totalBytes: 0, limitBytes: 0,
+          planName: order.planName,
+          subscriptionUrl: subUrl,
+        });
+      }
+    } catch { /* Firebase fallback failed — return minimal response */ }
+
+    // Not found anywhere — new user, return minimal so dashboard still shows link
+    return res.json({
+      ok: true, source: "none",
+      email,
+      isActive: true,
+      expiryMs: 0, expiryDate: null, daysRemaining: null,
+      uploadBytes: 0, downloadBytes: 0, totalBytes: 0, limitBytes: 0,
+      subscriptionUrl: subUrl,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 xuiPublicRouter.get("/sub/:email", publicSubscriptionHandler);
 
 xuiPublicRouter.get("/subscription/:email", publicSubscriptionRedirectHandler);
@@ -507,6 +581,52 @@ xuiRouter.get("/stats/:email", async (req: AuthedRequest, res: Response) => {
 });
 
 // ── Admin endpoints ───────────────────────────────────────────────────────────
+
+/**
+ * GET /xui/admin/overview
+ * Live stats for the admin header: active count, online now, expiring soon.
+ */
+xuiRouter.get("/admin/overview", async (req: AuthedRequest, res: Response) => {
+  try {
+    const isAdmin = await checkIsAdmin(req.user);
+    if (!isAdmin) return res.status(403).json({ ok: false, error: "Admin only" });
+
+    const inbounds = await listInbounds();
+    const now = Date.now();
+    const sevenDays = 7 * 86400000;
+
+    let totalClients = 0, activeClients = 0, expiringSoon = 0, lifetimeClients = 0;
+    const seen = new Set<string>();
+
+    for (const inb of inbounds) {
+      const settings = JSON.parse((inb as any).settings || "{}");
+      for (const c of settings.clients || []) {
+        if (seen.has(c.id)) continue;
+        seen.add(c.id);
+        // Skip system/test accounts
+        if ((c.email || "").includes("codex") || (c.email || "").includes("test30")) continue;
+        totalClients++;
+        const exp = c.expiryTime ?? 0;
+        const enabled = c.enable !== false;
+        if (!enabled) continue;
+        if (exp === 0) { activeClients++; lifetimeClients++; continue; }
+        if (exp > now) {
+          activeClients++;
+          if (exp - now < sevenDays) expiringSoon++;
+        }
+      }
+    }
+
+    const onlineList = await getAllOnlineClients().catch(() => []);
+    const onlineNow = onlineList.filter(e =>
+      !e.email.includes("codex") && !e.email.includes("test30")
+    ).length;
+
+    return res.json({ ok: true, data: { totalClients, activeClients, onlineNow, expiringSoon, lifetimeClients } });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 /**
  * GET /xui/admin/clients
@@ -771,8 +891,25 @@ xuiRouter.post(
       // Flush subscription cache so V2RayTun/V2RayNG see updated expiry immediately
       if (email) {
         clearSubCache(email);
-        // Also clear the XHTTP mirror email variant
         clearSubCache(email.replace("@", ".x@"));
+      }
+
+      // Sync expiry to Firebase vpn_orders so dashboard shows correct days remaining
+      if (email && expiryTime !== undefined) {
+        try {
+          const db = getFirestore();
+          const snap = await db.collection("vpn_orders")
+            .where("userEmail", "==", email)
+            .where("status", "==", "active")
+            .get();
+          const newExpiry = expiryTime > 0 ? new Date(expiryTime).toISOString() : null;
+          const updatePayload: Record<string, any> = { updatedAt: new Date().toISOString() };
+          if (newExpiry) updatePayload.expiresAt = newExpiry;
+          if (enable !== undefined) updatePayload.status = enable ? "active" : "disabled";
+          if (!snap.empty) {
+            await snap.docs[0].ref.update(updatePayload);
+          }
+        } catch { /* Firebase sync is non-fatal */ }
       }
 
       return res.json({ ok: true });

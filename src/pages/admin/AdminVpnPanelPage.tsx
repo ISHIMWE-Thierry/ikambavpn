@@ -20,8 +20,9 @@ import {
   getAdminActivity,
   getAdminUserConnections,
   getAdminHistory,
+  getAdminOverview,
 } from '../../lib/xui-api';
-import type { XuiAdminClient, XuiSystemStatus, UserActivitySummary, ConnectionLogEntry, DailyAggregate, UserDailyStats, HistoryResponse } from '../../lib/xui-api';
+import type { XuiAdminClient, XuiSystemStatus, UserActivitySummary, ConnectionLogEntry, DailyAggregate, UserDailyStats, HistoryResponse, AdminOverview } from '../../lib/xui-api';
 import {
   syncVpnClientToFirestore,
   bulkSyncVpnClientsToFirestore,
@@ -657,6 +658,32 @@ function ClientRow({ client, onRefresh, isOnline, onViewActivity }: {
   );
 }
 
+// ── Overview Stats Bar ────────────────────────────────────────────────────────
+
+function OverviewBar({ ov }: { ov: AdminOverview | null }) {
+  if (!ov) return null;
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 flex flex-col gap-0.5">
+        <p className="text-[11px] text-green-600 font-medium uppercase tracking-wide">Online now</p>
+        <p className="text-2xl font-bold text-green-700">{ov.onlineNow}</p>
+      </div>
+      <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex flex-col gap-0.5">
+        <p className="text-[11px] text-blue-600 font-medium uppercase tracking-wide">Active</p>
+        <p className="text-2xl font-bold text-blue-700">{ov.activeClients}</p>
+      </div>
+      <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 flex flex-col gap-0.5">
+        <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wide">Total clients</p>
+        <p className="text-2xl font-bold text-gray-800">{ov.totalClients}</p>
+      </div>
+      <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3 flex flex-col gap-0.5">
+        <p className="text-[11px] text-orange-500 font-medium uppercase tracking-wide">Expiring ≤7d</p>
+        <p className="text-2xl font-bold text-orange-600">{ov.expiringSoon}</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Server Status Card ────────────────────────────────────────────────────────
 
 function ServerStatusCard({ status }: { status: XuiSystemStatus | null }) {
@@ -1140,6 +1167,7 @@ function LiveActivityPanel({
 export function AdminVpnPanelPage() {
   const [clients, setClients] = useState<XuiAdminClient[]>([]);
   const [serverStatus, setServerStatus] = useState<XuiSystemStatus | null>(null);
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState('');
@@ -1161,12 +1189,14 @@ export function AdminVpnPanelPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [c, s] = await Promise.all([
+      const [c, s, ov] = await Promise.all([
         getAdminClients(),
         getAdminServerStatus().catch(() => null),
+        getAdminOverview().catch(() => null),
       ]);
       setClients(c);
       setServerStatus(s);
+      if (ov) setOverview(ov);
     } catch {
       toast.error('Failed to load VPN panel data');
     } finally {
@@ -1329,6 +1359,9 @@ export function AdminVpnPanelPage() {
             History
           </button>
         </div>
+
+        {/* Live overview stats — always visible */}
+        <OverviewBar ov={overview} />
 
         {/* Server status — always visible */}
         <ServerStatusCard status={serverStatus} />
