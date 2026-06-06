@@ -1500,6 +1500,9 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
  * freezes TCP+Vision. Path /assets/fceebc8ad5ca/clean, host=server IP.
  */
 export function buildFrankfurtXhttpLink(_clientId: string, _remark: string): string {
+  // mode=stream-up: uploads travel over ONE continuous stream instead of many
+  // separate POSTs (packet-up). Big latency/speed win over high-RTT RU→DE links
+  // while keeping the same anti-DPI XHTTP+REALITY shape.
   const query = [
     `type=xhttp`,
     `security=reality`,
@@ -1510,7 +1513,7 @@ export function buildFrankfurtXhttpLink(_clientId: string, _remark: string): str
     `spx=/`,
     `path=${encodeURIComponent("/assets/fceebc8ad5ca/clean")}`,
     `host=187.77.71.106`,
-    `mode=auto`,
+    `mode=stream-up`,
   ].join("&");
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8444?${query}#${encodeURIComponent("🇩🇪 Frankfurt XHTTP")}`;
 }
