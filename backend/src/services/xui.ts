@@ -1500,9 +1500,9 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
  * freezes TCP+Vision. Path /assets/fceebc8ad5ca/clean, host=server IP.
  */
 export function buildFrankfurtXhttpLink(_clientId: string, _remark: string): string {
-  // mode=stream-one: a single bidirectional H2 stream carries both up and down —
-  // lowest overhead, closest to a raw TCP tunnel, fastest of the XHTTP modes.
-  // Keeps the anti-DPI XHTTP+REALITY shape.
+  // mode=stream-up: low upload latency without merging up+down into one stream.
+  // Better than stream-one for social video feeds (Reels/TikTok) which open many
+  // parallel CDN fetches — a single merged stream causes head-of-line blocking.
   const query = [
     `type=xhttp`,
     `security=reality`,
@@ -1513,7 +1513,7 @@ export function buildFrankfurtXhttpLink(_clientId: string, _remark: string): str
     `spx=/`,
     `path=${encodeURIComponent("/assets/fceebc8ad5ca/clean")}`,
     `host=187.77.71.106`,
-    `mode=stream-one`,
+    `mode=stream-up`,
   ].join("&");
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8444?${query}#${encodeURIComponent("🇩🇪 Frankfurt XHTTP")}`;
 }
