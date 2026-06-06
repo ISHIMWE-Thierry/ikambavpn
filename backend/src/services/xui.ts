@@ -1803,7 +1803,10 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  // Primary: Frankfurt XHTTP+REALITY port 8444 — survives DPI that blocks TCP+Vision
+  // Fast: Frankfurt TCP+REALITY+Vision port 443 — raw tunnel, lowest overhead.
+  // Needs client-side Fragment enabled to beat the TSPU 15-20KB freeze.
+  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
+  // Reliable: Frankfurt XHTTP+REALITY port 8444 — survives DPI without fragment.
   addOptional(() => buildFrankfurtXhttpLink(clientId, remark));
 
   return links;
