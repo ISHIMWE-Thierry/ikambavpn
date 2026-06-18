@@ -1480,18 +1480,19 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
  * Confirmed working on both WiFi and mobile data in Russia.
  */
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
-  // Codex xray TCP+REALITY on 43235 — actively serving live traffic, shared UUID.
-  // (x-ui's 443 inbound broke; this codex inbound is the known-good TCP profile.)
+  // Fresh ikamba-443-vision inbound on codex xray — TCP+REALITY+Vision on 443
+  // (DPI-safe port), www.microsoft.com SNI, shared UUID, fresh REALITY keys.
   const query = [
     `type=tcp`,
     `security=reality`,
-    `pbk=i2ryLXz5H51kVANIqKIFI30_rAx6iuEveXwPqY_GyRY`,
+    `pbk=qRKl4WAB7Ytd6rHyNjB1yZmatkm40er4Yf4CvO_U7kI`,
     `fp=chrome`,
-    `sni=www.yandex.com`,
-    `sid=1120feed01`,
+    `flow=xtls-rprx-vision`,
+    `sni=www.microsoft.com`,
+    `sid=ea1062b1d51631f6`,
     `spx=/`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt Turbo")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt Vision")}`;
 }
 
 /**
