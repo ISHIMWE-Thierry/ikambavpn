@@ -1480,19 +1480,18 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
  * Confirmed working on both WiFi and mobile data in Russia.
  */
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
-  // Fresh ikamba-443-vision inbound on codex xray — TCP+REALITY+Vision on 443
-  // (DPI-safe port), www.microsoft.com SNI, shared UUID, fresh REALITY keys.
+  // ikamba-443 inbound on codex xray — plain TCP+REALITY (NO Vision) on 443.
+  // No-flow is the proven-working shape (Vision causes "connects but no web").
   const query = [
     `type=tcp`,
     `security=reality`,
     `pbk=qRKl4WAB7Ytd6rHyNjB1yZmatkm40er4Yf4CvO_U7kI`,
     `fp=chrome`,
-    `flow=xtls-rprx-vision`,
     `sni=www.microsoft.com`,
     `sid=ea1062b1d51631f6`,
     `spx=/`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt Vision")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
 }
 
 /**
