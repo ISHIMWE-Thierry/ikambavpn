@@ -372,7 +372,7 @@ h1{font-size:25px;font-weight:800;letter-spacing:-.03em;margin:0;text-align:cent
 @keyframes fade{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 </style></head>
 <body><div class="wrap">
-<div class="brand"><span class="dot"></span><h1>IkambaVPN</h1></div>
+<div class="brand"><h1>IkambaVPN</h1></div>
 <div class="tag">Подключение за одну минуту</div>
 
 <div class="seg">
@@ -386,10 +386,11 @@ h1{font-size:25px;font-weight:800;letter-spacing:-.03em;margin:0;text-align:cent
   <a class="b dl" href="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215">App Store — Global</a>
   <a class="b dl" href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">App Store — Россия</a>
   <div class="hint">Недоступно в вашем регионе? TestFlight: <a href="https://testflight.apple.com/join/XMls6Ckd">Global</a> · <a href="https://testflight.apple.com/join/1bKEcMub">RU</a></div>
-  <div class="lbl"><span class="num">2</span>Добавьте сервер</div>
-  <button class="b primary" data-copy>Скопировать ссылку</button>
+  <div class="lbl"><span class="num">2</span>Подключитесь</div>
+  <a class="b primary" data-conn href="#">Подключить автоматически</a>
+  <button class="b ghost" data-copy>Скопировать ссылку</button>
   <div class="ok" data-ok></div>
-  <div class="hint">Откройте Happ — он добавит сервер из буфера автоматически. Затем включите подключение.</div>
+  <div class="hint">Если кнопка не сработала — скопируйте ссылку и откройте Happ, он добавит сервер сам.</div>
 </div>
 
 <div class="panel" data-panel="android">
