@@ -42,6 +42,7 @@ app.use("/connection", authMiddleware, heartbeatRouter);
 app.use("/admin", authMiddleware, adminRouter);
 app.use("/admin", authMiddleware, adminSubscriptionsRouter);
 app.use("/admin", authMiddleware, adminCustomersRouter);
+app.get("/happ", (_req, res) => res.redirect(302, "/xui-public/happ")); // short one-tap alias
 app.get("/sub/:identifier", publicSubscriptionHandler); // Legacy root subscription URL
 app.get("/subscription/:identifier", publicSubscriptionRedirectHandler); // Legacy root subscription redirect
 app.use("/xui", xuiPublicRouter); // Legacy public subscription paths, no auth

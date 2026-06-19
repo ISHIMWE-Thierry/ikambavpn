@@ -310,6 +310,33 @@ xuiPublicRouter.get("/ws-link/:email", async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /xui-public/happ  (and /happ alias)
+ * One-tap onboarding: an https page that redirects to the Happ crypto deep link.
+ * Telegram/markdown buttons only allow http(s) URLs, so this https wrapper is
+ * what makes a clickable "Connect" button possible. Tapping it opens Happ and
+ * imports the permanent subscription (which auto-updates forever).
+ */
+const HAPP_DEEPLINK =
+  process.env.HAPP_DEEPLINK ||
+  "happ://crypt3/A7zz/j6bTJxadnEuwEw0Jily+tcsy8X45ole7m/ctoqhlOUO9a7UsqXRAH5xyay5VTOXHt5VNUcB5m1Ian3G7QaVGtJagLRqukteoHgneVCtyaXwkPJiizREAoZYJsAQzoHP10RSmi6JuflSxVvNFqyB1X+1eXfoMFiLFSxfqGsZiSGCjFzIuaaOpMlOphKNcArkyRetD9iXXFs5x1ukxWLtnNwBSzpr6KRT4qBpKpRWnF/F2tPckNLmETlAMxRuw5cINYoVAHx/+FMtJgRIlv32SMuKZBYy1nX297WBZai673lGwOqMJ8V2zvUSHlBqr/j7Nn1W1gQjVQqqMcOcVjHXYJIokAyHTda3b5QwjAHTKSjVN2X56WWXuYa0klMYApCi0hqm/zzoSFIvlV1H0Jmi0JNg3DsdMUtkljm+O73IJ/rwtkq+r2ZpeF17WTMGQ3iROT2hUQ2zaxD5gmrGKJUq4pqO+6vwOu3KcyyUAc1viuS2gH3wEm8D0qBPc71eSrco/5VClzhCLCYN85Epx/K/Bf7rFmdFVveu78vzuz5xlOu+0iyTFCpOuXGR7oyj+U/SnhTXtJqiYBPLiLVzU+WW5i0yEW8gQwDC7am47gMpZ0ezWIrnda/XHmfdBgoI7iqc9rQ2j7rbk9KRJQCXP97/Z3A30h6WZfClK0cAC68=";
+
+function happRedirectHandler(_req: Request, res: Response) {
+  const dl = HAPP_DEEPLINK.replace(/"/g, "&quot;");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IkambaVPN — Подключение</title>
+<style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0b0c;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;text-align:center}
+.b{background:#fff;color:#000;padding:16px 28px;border-radius:14px;font-size:18px;font-weight:700;text-decoration:none;display:inline-block;margin-top:18px}
+p{opacity:.7;font-size:14px;margin-top:14px}</style></head>
+<body><div><h2>🚀 IkambaVPN</h2><div>Открываем приложение Happ…</div>
+<a class="b" href="${dl}">Подключить в Happ</a>
+<p>Если ничего не произошло — установите Happ и нажмите кнопку снова.</p></div>
+<script>setTimeout(function(){location.href="${dl}"},250)</script></body></html>`);
+}
+xuiPublicRouter.get("/happ", happRedirectHandler);
+
+/**
  * GET /xui-public/nonsub-link/:email
  * Permanent VLESS link — TCP+REALITY, tradingview SNI, no Cloudflare, no subscription.
  */
