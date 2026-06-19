@@ -327,32 +327,99 @@ function happRedirectHandler(_req: Request, res: Response) {
   // happ:// button is kept as a secondary one-tap for desktop / Android.
   const sub = (process.env.PUBLIC_SUB_BASE || "https://ikambavpn.duckdns.org:8443") +
     "/xui-public/sub/free#IkambaVPN";
-  const dl = HAPP_DEEPLINK.replace(/"/g, "&quot;");
   const subJs = JSON.stringify(sub);
+  const dlJs = JSON.stringify(HAPP_DEEPLINK);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>IkambaVPN — Подключение</title>
-<style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0b0c;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:20px}
-.card{max-width:420px;text-align:center}
-.b{background:#fff;color:#000;padding:16px 24px;border-radius:14px;font-size:17px;font-weight:700;text-decoration:none;display:block;margin:12px 0;border:none;width:100%;cursor:pointer}
-.b2{background:transparent;color:#fff;border:1px solid #555}
-.s{font-size:12px;opacity:.6;word-break:break-all;margin-top:10px}
-.step{text-align:left;opacity:.85;font-size:15px;margin:6px 0}
-#ok{color:#39d353;font-weight:700;height:18px}</style></head>
-<body><div class="card">
-<h2>🚀 IkambaVPN</h2>
-<div class="step">1️⃣ Установите Happ (App Store / Google Play)</div>
-<div class="step">2️⃣ Нажмите «Скопировать»</div>
-<div class="step">3️⃣ Откройте Happ — он добавит сервер сам</div>
-<div class="step">4️⃣ Включите 🔘 → Готово ✅</div>
-<button class="b" onclick="cp()">📋 Скопировать ссылку</button>
-<div id="ok"></div>
-<a class="b b2" href="${dl}">Открыть в Happ (ПК/Android)</a>
-<div class="s">${sub.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div>
+<title>IkambaVPN — Подключение за 1 минуту</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:linear-gradient(160deg,#0b0b0c,#15151a);color:#fff;margin:0;padding:24px 16px;min-height:100vh;display:flex;justify-content:center}
+.wrap{width:100%;max-width:440px}
+h1{font-size:24px;margin:4px 0 2px;text-align:center}
+.sub{text-align:center;opacity:.6;font-size:13px;margin-bottom:20px}
+.tabs{display:flex;gap:8px;margin-bottom:18px}
+.tab{flex:1;padding:12px 4px;border-radius:12px;background:#1d1d24;border:1px solid #2a2a33;text-align:center;font-size:13px;font-weight:600;cursor:pointer;opacity:.65}
+.tab.on{background:#fff;color:#000;opacity:1;border-color:#fff}
+.panel{display:none}
+.panel.on{display:block}
+.lbl{font-size:12px;text-transform:uppercase;letter-spacing:.5px;opacity:.5;margin:18px 0 8px}
+.b{display:block;width:100%;padding:15px;border-radius:13px;font-size:16px;font-weight:700;text-decoration:none;text-align:center;margin:9px 0;border:none;cursor:pointer}
+.dl{background:#23232b;color:#fff;border:1px solid #34343f}
+.copy{background:#fff;color:#000}
+.conn{background:#2ea043;color:#fff}
+.hint{font-size:12px;opacity:.55;margin:6px 0 0;line-height:1.45}
+#ok{color:#39d353;font-weight:700;height:18px;text-align:center;margin-top:6px;font-size:14px}
+.link{font-size:11px;opacity:.45;word-break:break-all;margin-top:14px;text-align:center}
+.flag{font-size:15px}
+</style></head>
+<body><div class="wrap">
+<h1>🚀 IkambaVPN</h1>
+<div class="sub">Бесплатный VPN · подключение за 1 минуту</div>
+
+<div class="tabs">
+  <div class="tab" id="t-ios" onclick="sel('ios')">📱 iPhone</div>
+  <div class="tab" id="t-android" onclick="sel('android')">🤖 Android</div>
+  <div class="tab" id="t-desktop" onclick="sel('desktop')">💻 ПК</div>
+</div>
+
+<!-- iOS -->
+<div class="panel" id="p-ios">
+  <div class="lbl">1 · Установите Happ</div>
+  <a class="b dl" href="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215">🌍 App Store (Global)</a>
+  <a class="b dl" href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">🇷🇺 App Store (Россия)</a>
+  <div class="hint">Нет в вашем App Store? Резерв — TestFlight: <a style="color:#6cf" href="https://testflight.apple.com/join/XMls6Ckd">Global</a> · <a style="color:#6cf" href="https://testflight.apple.com/join/1bKEcMub">RU</a></div>
+  <div class="lbl">2 · Добавьте сервер</div>
+  <button class="b copy" onclick="cp()">📋 Скопировать ссылку</button>
+  <div id="ok"></div>
+  <div class="hint">Скопируйте → откройте Happ → он сам добавит сервер. Затем нажмите большую кнопку включения. ✅</div>
+</div>
+
+<!-- Android -->
+<div class="panel" id="p-android">
+  <div class="lbl">1 · Установите Happ</div>
+  <a class="b dl" href="https://play.google.com/store/apps/details?id=com.happproxy">▶️ Google Play</a>
+  <a class="b dl" href="https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk">📦 Скачать APK</a>
+  <div class="lbl">2 · Подключитесь</div>
+  <a class="b conn" id="conn-a" href="#">⚡ Подключить автоматически</a>
+  <button class="b copy" onclick="cp()">📋 Или скопировать ссылку</button>
+  <div id="ok2"></div>
+  <div class="hint">Кнопка «Подключить» откроет Happ с готовым сервером. Если не сработала — скопируйте ссылку.</div>
+</div>
+
+<!-- Desktop -->
+<div class="panel" id="p-desktop">
+  <div class="lbl">1 · Установите Happ</div>
+  <a class="b dl" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe">🪟 Windows</a>
+  <a class="b dl" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg">🍎 macOS (.dmg)</a>
+  <a class="b dl" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.linux.x64.deb">🐧 Linux (.deb)</a>
+  <div class="lbl">2 · Подключитесь</div>
+  <a class="b conn" id="conn-d" href="#">⚡ Подключить автоматически</a>
+  <button class="b copy" onclick="cp()">📋 Или скопировать ссылку</button>
+  <div id="ok3"></div>
+</div>
+
+<div class="link">${sub.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div>
 </div>
 <script>
-function cp(){var s=${subJs};navigator.clipboard&&navigator.clipboard.writeText(s).then(function(){document.getElementById('ok').textContent='Скопировано! Откройте Happ';},function(){window.prompt('Скопируйте ссылку:',s);});}
+var SUB=${subJs}, DL=${dlJs};
+document.getElementById('conn-a').href=DL;
+document.getElementById('conn-d').href=DL;
+function cp(){
+  var done=function(){['ok','ok2','ok3'].forEach(function(id){var e=document.getElementById(id);if(e)e.textContent='✅ Скопировано! Откройте Happ';});};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(SUB).then(done,function(){window.prompt('Скопируйте ссылку:',SUB);});}
+  else{window.prompt('Скопируйте ссылку:',SUB);}
+}
+function sel(os){
+  ['ios','android','desktop'].forEach(function(o){
+    document.getElementById('t-'+o).className='tab'+(o===os?' on':'');
+    document.getElementById('p-'+o).className='panel'+(o===os?' on':'');
+  });
+}
+var ua=navigator.userAgent||'';
+var os=/iphone|ipad|ipod/i.test(ua)?'ios':(/android/i.test(ua)?'android':'desktop');
+sel(os);
 </script></body></html>`);
 }
 xuiPublicRouter.get("/happ", happRedirectHandler);
