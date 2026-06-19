@@ -1480,17 +1480,18 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
  * Confirmed working on both WiFi and mobile data in Russia.
  */
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
-  // ikamba-443 inbound on codex xray — TCP+REALITY+Vision on 443 (server-verified
-  // flowing). Vision = smoothest mode; inbound + link both carry the flow (matched).
+  // ikamba-443 inbound on codex xray — XHTTP+REALITY on 443 (server-verified).
+  // XHTTP survives the TSPU freeze that kills TCP+Vision; shared UUID, yandex SNI.
   const query = [
-    `type=tcp`,
+    `type=xhttp`,
     `security=reality`,
     `pbk=qRKl4WAB7Ytd6rHyNjB1yZmatkm40er4Yf4CvO_U7kI`,
     `fp=chrome`,
-    `flow=xtls-rprx-vision`,
     `sni=www.yandex.com`,
     `sid=ea1062b1d51631f6`,
-    `spx=/`,
+    `path=${encodeURIComponent("/assets/fceebc8ad5ca/clean")}`,
+    `host=187.77.71.106`,
+    `mode=auto`,
   ].join("&");
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
 }
