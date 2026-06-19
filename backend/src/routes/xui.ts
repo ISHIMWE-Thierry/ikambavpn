@@ -321,105 +321,124 @@ const HAPP_DEEPLINK =
   "happ://crypt3/A7zz/j6bTJxadnEuwEw0Jily+tcsy8X45ole7m/ctoqhlOUO9a7UsqXRAH5xyay5VTOXHt5VNUcB5m1Ian3G7QaVGtJagLRqukteoHgneVCtyaXwkPJiizREAoZYJsAQzoHP10RSmi6JuflSxVvNFqyB1X+1eXfoMFiLFSxfqGsZiSGCjFzIuaaOpMlOphKNcArkyRetD9iXXFs5x1ukxWLtnNwBSzpr6KRT4qBpKpRWnF/F2tPckNLmETlAMxRuw5cINYoVAHx/+FMtJgRIlv32SMuKZBYy1nX297WBZai673lGwOqMJ8V2zvUSHlBqr/j7Nn1W1gQjVQqqMcOcVjHXYJIokAyHTda3b5QwjAHTKSjVN2X56WWXuYa0klMYApCi0hqm/zzoSFIvlV1H0Jmi0JNg3DsdMUtkljm+O73IJ/rwtkq+r2ZpeF17WTMGQ3iROT2hUQ2zaxD5gmrGKJUq4pqO+6vwOu3KcyyUAc1viuS2gH3wEm8D0qBPc71eSrco/5VClzhCLCYN85Epx/K/Bf7rFmdFVveu78vzuz5xlOu+0iyTFCpOuXGR7oyj+U/SnhTXtJqiYBPLiLVzU+WW5i0yEW8gQwDC7am47gMpZ0ezWIrnda/XHmfdBgoI7iqc9rQ2j7rbk9KRJQCXP97/Z3A30h6WZfClK0cAC68=";
 
 function happRedirectHandler(_req: Request, res: Response) {
-  // happ:// deep links are unreliable on iOS (scheme not always registered →
-  // "address is invalid"). So the page's PRIMARY action is copy-the-subscription
-  // to clipboard (Happ auto-imports from clipboard on every platform). The
-  // happ:// button is kept as a secondary one-tap for desktop / Android.
   const sub = (process.env.PUBLIC_SUB_BASE || "https://ikambavpn.duckdns.org:8443") +
     "/xui-public/sub/free#IkambaVPN";
   const subJs = JSON.stringify(sub);
   const dlJs = JSON.stringify(HAPP_DEEPLINK);
+  // Override helmet's strict CSP for this standalone onboarding page so the
+  // inline <script>/<style> and Google Fonts load (helmet default blocks them).
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self'"
+  );
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>IkambaVPN — Подключение за 1 минуту</title>
+<title>IkambaVPN — Подключение</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box}
-body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:linear-gradient(160deg,#0b0b0c,#15151a);color:#fff;margin:0;padding:24px 16px;min-height:100vh;display:flex;justify-content:center}
-.wrap{width:100%;max-width:440px}
-h1{font-size:24px;margin:4px 0 2px;text-align:center}
-.sub{text-align:center;opacity:.6;font-size:13px;margin-bottom:20px}
-.tabs{display:flex;gap:8px;margin-bottom:18px}
-.tab{flex:1;padding:12px 4px;border-radius:12px;background:#1d1d24;border:1px solid #2a2a33;text-align:center;font-size:13px;font-weight:600;cursor:pointer;opacity:.65}
-.tab.on{background:#fff;color:#000;opacity:1;border-color:#fff}
+:root{--bg:#09090b;--card:#0c0c0e;--bd:#1f1f23;--bd2:#2a2a30;--fg:#fafafa;--mut:#8a8a93;--fg2:#e4e4e7}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:28px 18px;min-height:100vh;display:flex;justify-content:center;align-items:flex-start;-webkit-font-smoothing:antialiased}
+.wrap{width:100%;max-width:430px;animation:rise .5s cubic-bezier(.16,1,.3,1)}
+.brand{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--fg);box-shadow:0 0 0 4px rgba(250,250,250,.12)}
+h1{font-size:25px;font-weight:800;letter-spacing:-.03em;margin:0;text-align:center}
+.tag{text-align:center;color:var(--mut);font-size:13px;font-weight:500;margin:6px 0 24px}
+.seg{display:flex;gap:4px;background:var(--card);border:1px solid var(--bd);border-radius:13px;padding:4px;margin-bottom:22px}
+.tab{flex:1;padding:10px 4px;border-radius:9px;text-align:center;font-size:13px;font-weight:600;color:var(--mut);cursor:pointer;background:transparent;border:none;transition:color .2s,background .2s;font-family:inherit}
+.tab.on{background:var(--fg);color:#09090b}
+.tab:not(.on):hover{color:var(--fg2)}
 .panel{display:none}
-.panel.on{display:block}
-.lbl{font-size:12px;text-transform:uppercase;letter-spacing:.5px;opacity:.5;margin:18px 0 8px}
-.b{display:block;width:100%;padding:15px;border-radius:13px;font-size:16px;font-weight:700;text-decoration:none;text-align:center;margin:9px 0;border:none;cursor:pointer}
-.dl{background:#23232b;color:#fff;border:1px solid #34343f}
-.copy{background:#fff;color:#000}
-.conn{background:#2ea043;color:#fff}
-.hint{font-size:12px;opacity:.55;margin:6px 0 0;line-height:1.45}
-#ok{color:#39d353;font-weight:700;height:18px;text-align:center;margin-top:6px;font-size:14px}
-.link{font-size:11px;opacity:.45;word-break:break-all;margin-top:14px;text-align:center}
-.flag{font-size:15px}
+.panel.on{display:block;animation:fade .32s cubic-bezier(.16,1,.3,1)}
+.lbl{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--mut);margin:20px 0 10px}
+.num{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--card);border:1px solid var(--bd2);font-size:11px;color:var(--fg2)}
+.b{display:block;width:100%;padding:14px 16px;border-radius:12px;font-size:15px;font-weight:600;text-decoration:none;text-align:center;margin:8px 0;border:1px solid transparent;cursor:pointer;font-family:inherit;transition:transform .12s,background .2s,border-color .2s,opacity .2s}
+.b:active{transform:scale(.985)}
+.dl{background:var(--card);color:var(--fg);border-color:var(--bd2)}
+.dl:hover{background:#141417;border-color:#3a3a42}
+.primary{background:var(--fg);color:#09090b}
+.primary:hover{background:#e4e4e7}
+.ghost{background:transparent;color:var(--fg2);border-color:var(--bd2)}
+.ghost:hover{background:var(--card)}
+.hint{font-size:12px;color:var(--mut);margin:10px 2px 0;line-height:1.5}
+.hint a{color:var(--fg2)}
+.ok{height:16px;text-align:center;margin-top:8px;font-size:13px;font-weight:600;color:var(--fg);opacity:0;transition:opacity .25s}
+.ok.show{opacity:1}
+.foot{margin-top:22px;padding-top:16px;border-top:1px solid var(--bd)}
+.lk{font-size:11px;color:#5a5a62;word-break:break-all;text-align:center;line-height:1.5}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 </style></head>
 <body><div class="wrap">
-<h1>🚀 IkambaVPN</h1>
-<div class="sub">Бесплатный VPN · подключение за 1 минуту</div>
+<div class="brand"><span class="dot"></span><h1>IkambaVPN</h1></div>
+<div class="tag">Подключение за одну минуту</div>
 
-<div class="tabs">
-  <div class="tab" id="t-ios" onclick="sel('ios')">📱 iPhone</div>
-  <div class="tab" id="t-android" onclick="sel('android')">🤖 Android</div>
-  <div class="tab" id="t-desktop" onclick="sel('desktop')">💻 ПК</div>
+<div class="seg">
+  <button class="tab" data-os="ios">iPhone</button>
+  <button class="tab" data-os="android">Android</button>
+  <button class="tab" data-os="desktop">Компьютер</button>
 </div>
 
-<!-- iOS -->
-<div class="panel" id="p-ios">
-  <div class="lbl">1 · Установите Happ</div>
-  <a class="b dl" href="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215">🌍 App Store (Global)</a>
-  <a class="b dl" href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">🇷🇺 App Store (Россия)</a>
-  <div class="hint">Нет в вашем App Store? Резерв — TestFlight: <a style="color:#6cf" href="https://testflight.apple.com/join/XMls6Ckd">Global</a> · <a style="color:#6cf" href="https://testflight.apple.com/join/1bKEcMub">RU</a></div>
-  <div class="lbl">2 · Добавьте сервер</div>
-  <button class="b copy" onclick="cp()">📋 Скопировать ссылку</button>
-  <div id="ok"></div>
-  <div class="hint">Скопируйте → откройте Happ → он сам добавит сервер. Затем нажмите большую кнопку включения. ✅</div>
+<div class="panel" data-panel="ios">
+  <div class="lbl"><span class="num">1</span>Установите приложение Happ</div>
+  <a class="b dl" href="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215">App Store — Global</a>
+  <a class="b dl" href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973">App Store — Россия</a>
+  <div class="hint">Недоступно в вашем регионе? TestFlight: <a href="https://testflight.apple.com/join/XMls6Ckd">Global</a> · <a href="https://testflight.apple.com/join/1bKEcMub">RU</a></div>
+  <div class="lbl"><span class="num">2</span>Добавьте сервер</div>
+  <button class="b primary" data-copy>Скопировать ссылку</button>
+  <div class="ok" data-ok></div>
+  <div class="hint">Откройте Happ — он добавит сервер из буфера автоматически. Затем включите подключение.</div>
 </div>
 
-<!-- Android -->
-<div class="panel" id="p-android">
-  <div class="lbl">1 · Установите Happ</div>
-  <a class="b dl" href="https://play.google.com/store/apps/details?id=com.happproxy">▶️ Google Play</a>
-  <a class="b dl" href="https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk">📦 Скачать APK</a>
-  <div class="lbl">2 · Подключитесь</div>
-  <a class="b conn" id="conn-a" href="#">⚡ Подключить автоматически</a>
-  <button class="b copy" onclick="cp()">📋 Или скопировать ссылку</button>
-  <div id="ok2"></div>
-  <div class="hint">Кнопка «Подключить» откроет Happ с готовым сервером. Если не сработала — скопируйте ссылку.</div>
+<div class="panel" data-panel="android">
+  <div class="lbl"><span class="num">1</span>Установите приложение Happ</div>
+  <a class="b dl" href="https://play.google.com/store/apps/details?id=com.happproxy">Google Play</a>
+  <a class="b dl" href="https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk">Скачать APK</a>
+  <div class="lbl"><span class="num">2</span>Подключитесь</div>
+  <a class="b primary" data-conn href="#">Подключить автоматически</a>
+  <button class="b ghost" data-copy>Скопировать ссылку</button>
+  <div class="ok" data-ok></div>
+  <div class="hint">Кнопка откроет Happ с готовым сервером. Не сработала — скопируйте ссылку.</div>
 </div>
 
-<!-- Desktop -->
-<div class="panel" id="p-desktop">
-  <div class="lbl">1 · Установите Happ</div>
-  <a class="b dl" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe">🪟 Windows</a>
-  <a class="b dl" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg">🍎 macOS (.dmg)</a>
-  <a class="b dl" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.linux.x64.deb">🐧 Linux (.deb)</a>
-  <div class="lbl">2 · Подключитесь</div>
-  <a class="b conn" id="conn-d" href="#">⚡ Подключить автоматически</a>
-  <button class="b copy" onclick="cp()">📋 Или скопировать ссылку</button>
-  <div id="ok3"></div>
+<div class="panel" data-panel="desktop">
+  <div class="lbl"><span class="num">1</span>Установите приложение Happ</div>
+  <a class="b dl" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe">Windows</a>
+  <a class="b dl" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg">macOS</a>
+  <a class="b dl" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.linux.x64.deb">Linux</a>
+  <div class="lbl"><span class="num">2</span>Подключитесь</div>
+  <a class="b primary" data-conn href="#">Подключить автоматически</a>
+  <button class="b ghost" data-copy>Скопировать ссылку</button>
+  <div class="ok" data-ok></div>
 </div>
 
-<div class="link">${sub.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div>
+<div class="foot"><div class="lk">${sub.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div></div>
 </div>
 <script>
-var SUB=${subJs}, DL=${dlJs};
-document.getElementById('conn-a').href=DL;
-document.getElementById('conn-d').href=DL;
-function cp(){
-  var done=function(){['ok','ok2','ok3'].forEach(function(id){var e=document.getElementById(id);if(e)e.textContent='✅ Скопировано! Откройте Happ';});};
-  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(SUB).then(done,function(){window.prompt('Скопируйте ссылку:',SUB);});}
-  else{window.prompt('Скопируйте ссылку:',SUB);}
-}
-function sel(os){
-  ['ios','android','desktop'].forEach(function(o){
-    document.getElementById('t-'+o).className='tab'+(o===os?' on':'');
-    document.getElementById('p-'+o).className='panel'+(o===os?' on':'');
+(function(){
+  var SUB=${subJs}, DL=${dlJs};
+  function showOk(panel){var o=panel.querySelector('[data-ok]');if(o){o.textContent='Скопировано — откройте Happ';o.classList.add('show');}}
+  function copy(panel){
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(SUB).then(function(){showOk(panel);},function(){window.prompt('Скопируйте ссылку:',SUB);});
+    } else {window.prompt('Скопируйте ссылку:',SUB);}
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-conn]'),function(a){a.setAttribute('href',DL);});
+  Array.prototype.forEach.call(document.querySelectorAll('[data-copy]'),function(b){
+    b.addEventListener('click',function(){copy(b.closest('.panel'));});
   });
-}
-var ua=navigator.userAgent||'';
-var os=/iphone|ipad|ipod/i.test(ua)?'ios':(/android/i.test(ua)?'android':'desktop');
-sel(os);
+  function sel(os){
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){t.classList.toggle('on',t.getAttribute('data-os')===os);});
+    Array.prototype.forEach.call(document.querySelectorAll('.panel'),function(p){p.classList.toggle('on',p.getAttribute('data-panel')===os);});
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){
+    t.addEventListener('click',function(){sel(t.getAttribute('data-os'));});
+  });
+  var ua=navigator.userAgent||'';
+  sel(/iphone|ipad|ipod/i.test(ua)?'ios':(/android/i.test(ua)?'android':'desktop'));
+})();
 </script></body></html>`);
 }
 xuiPublicRouter.get("/happ", happRedirectHandler);
