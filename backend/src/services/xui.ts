@@ -1393,7 +1393,7 @@ export function buildHostkeyEsVisionLink(clientId: string, remark: string): stri
     `security=reality`,
     `pbk=${HOSTKEY_ES_PUBLIC_KEY}`,
     `fp=${REALITY_FINGERPRINT}`,
-    `sni=www.microsoft.com`,
+    `sni=www.yandex.com`,
     `sid=${HOSTKEY_ES_SHORT_ID_443}`,
     `spx=/`,
     `flow=xtls-rprx-vision`,
@@ -1475,7 +1475,7 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
 
 /**
  * Frankfurt TCP+REALITY+Vision on port 443 (IkambaVPN-test30-Backup-Frankfurt-TCP-Reality).
- * x-ui inbound-443, sni=www.microsoft.com, sid=bf08e4d4a095a87d.
+ * x-ui inbound-443, sni=www.yandex.com, sid=bf08e4d4a095a87d.
  * Shared UUID 38285504-... is provisioned with flow=xtls-rprx-vision in this inbound.
  * Confirmed working on both WiFi and mobile data in Russia.
  */
@@ -1488,7 +1488,7 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
     `pbk=qRKl4WAB7Ytd6rHyNjB1yZmatkm40er4Yf4CvO_U7kI`,
     `fp=chrome`,
     `flow=xtls-rprx-vision`,
-    `sni=www.microsoft.com`,
+    `sni=www.yandex.com`,
     `sid=ea1062b1d51631f6`,
     `spx=/`,
   ].join("&");
