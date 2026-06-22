@@ -1480,17 +1480,14 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
  * Confirmed working on both WiFi and mobile data in Russia.
  */
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
-  // ikamba-443 inbound on codex xray — TCP+REALITY+Vision on 443 (server-verified).
-  // Matches the "Основной" shape: Vision flow, safari fp, yandex SNI. Shared UUID.
+  // ikamba-443 inbound on codex xray — VLESS + WebSocket, security=none on 443
+  // (server-verified). Plaintext WS evades the DPI that freezes TCP+Vision;
+  // matches the "Запасной" shape. Shared UUID, path /upload/session.
   const query = [
-    `type=tcp`,
-    `security=reality`,
-    `pbk=qRKl4WAB7Ytd6rHyNjB1yZmatkm40er4Yf4CvO_U7kI`,
-    `fp=safari`,
-    `flow=xtls-rprx-vision`,
-    `sni=www.yandex.com`,
-    `sid=ea1062b1d51631f6`,
-    `spx=`,
+    `type=ws`,
+    `security=none`,
+    `path=${encodeURIComponent("/upload/session")}`,
+    `host=ikambavpn.duckdns.org`,
   ].join("&");
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
 }
