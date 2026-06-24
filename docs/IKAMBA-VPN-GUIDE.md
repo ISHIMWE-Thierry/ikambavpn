@@ -141,9 +141,16 @@ These are the real reasons "it connects but no internet" — none are obvious fr
    session after ~15–20 KB → *connects, no web*. Mitigations: enable **Fragment** in the
    client (splits the handshake), or use **XHTTP** transport (HTTP-framed, not frozen).
 
-2. **SNI tampering.** Some camouflage SNIs are interfered with on RU networks
-   (`www.cloudflare.com`, sometimes `www.microsoft.com`). **`www.yandex.com` is reliable**
-   (a Russian site DPI won't touch). REALITY `serverNames` can list several; the link picks one.
+2. **SNI ↔ IP consistency is THE thing (biggest lesson).** Borrowing a famous SNI
+   (`www.apple.com`, `www.microsoft.com`, `www.yandex.com`) toward a raw datacenter IP
+   that *isn't* that site creates an **SNI/IP mismatch** TSPU flags → the session
+   freezes (connects, no web). The fix that actually works: front REALITY with **your
+   OWN domain** that resolves to your server, and steal **your own real cert**. We use
+   `serverName=ikambavpn.duckdns.org` (→ our IP) with REALITY `target=127.0.0.1:4443`
+   (our Caddy, which serves a valid Let's Encrypt cert for that domain). Now SNI, IP,
+   and certificate are all consistent — indistinguishable from a real visit, and
+   TCP+Vision runs smooth on RU networks. *TCP+Vision was never the problem; the
+   borrowed-SNI-to-raw-IP mismatch was.*
 
 3. **Vision mismatch.** If the client link has `flow=xtls-rprx-vision` but the inbound client
    has `flow:""` (or vice-versa) → connects, DNS only, no web. **Both sides must match.**
