@@ -1480,11 +1480,12 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
  * Confirmed working on both WiFi and mobile data in Russia.
  */
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
-  // ikamba-443 inbound on codex xray — TCP+REALITY+Vision on 443, fronted by OUR
-  // OWN domain. THE fix: serverName=ikambavpn.duckdns.org resolves to our IP and
-  // REALITY steals our real Let's Encrypt cert (Caddy:4443), so SNI↔IP↔cert are all
-  // consistent — indistinguishable from a real visit, survives TSPU (confirmed on
-  // real RU network). Fastest transport. Shared UUID, safari fp, BBR.
+  // ikamba-8448 inbound on codex xray — TCP+REALITY+Vision, fronted by OUR OWN
+  // domain. Port 8448 (NOT 443): RU DPI actively scrutinizes REALITY on the
+  // standard HTTPS port 443 and freezes it, but lets it through on high ports —
+  // confirmed on the real network (8448 works, 443 froze). serverName=
+  // ikambavpn.duckdns.org resolves to our IP and REALITY steals our real Caddy
+  // LE cert, so SNI↔IP↔cert are consistent. Fastest working transport.
   const query = [
     `type=tcp`,
     `security=reality`,
@@ -1495,7 +1496,7 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
     `sid=7d91698c18edfd43`,
     `spx=`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@ikambavpn.duckdns.org:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@ikambavpn.duckdns.org:8448?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
 }
 
 /**
