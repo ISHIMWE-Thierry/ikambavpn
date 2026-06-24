@@ -1480,16 +1480,20 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
  * Confirmed working on both WiFi and mobile data in Russia.
  */
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
-  // ikamba-443 inbound on codex xray — VLESS + WebSocket, security=none on 443
-  // (server-verified). Plaintext WS evades the DPI that freezes TCP+Vision;
-  // matches the "Запасной" shape. Shared UUID, path /upload/session.
+  // ikamba-443 inbound on codex xray — TCP+REALITY+Vision on 443 (fastest, server-
+  // verified). Fresh REALITY keys, www.apple.com SNI, shared UUID, BBR. Served via
+  // the subscription URL so existing link-holders auto-refresh to these new keys.
   const query = [
-    `type=ws`,
-    `security=none`,
-    `path=${encodeURIComponent("/upload/session")}`,
-    `host=ikambavpn.duckdns.org`,
+    `type=tcp`,
+    `security=reality`,
+    `pbk=OtuimqFEkLdlpAXqDqXrf0qxfkDj4EJAMQF4RUc-h0k`,
+    `fp=chrome`,
+    `flow=xtls-rprx-vision`,
+    `sni=www.apple.com`,
+    `sid=4b50d5fa9c8a132a`,
+    `spx=/`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@ikambavpn.duckdns.org:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
 }
 
 /**
