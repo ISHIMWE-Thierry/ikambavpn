@@ -1525,23 +1525,23 @@ export function buildFrankfurtWsLink(_clientId: string, _remark: string): string
  * Same Frankfurt server & UUID, XHTTP transport survives the DPI that
  * freezes TCP+Vision. Path /assets/fceebc8ad5ca/clean, host=server IP.
  */
+// XHTTP + REALITY on the NEW CLEAN server (92.112.181.65:8443) — the most DPI-resistant
+// leg. XHTTP looks like ordinary multiplexed HTTP/2 and survives the active throttling
+// that freezes plain TCP+Vision. Same gateway.icloud.com decoy + shared UUID; its OWN
+// shortId. No `host` (matches the proven server self-test). mode=auto.
 export function buildFrankfurtXhttpLink(_clientId: string, _remark: string): string {
-  // mode=stream-up: low upload latency without merging up+down into one stream.
-  // Better than stream-one for social video feeds (Reels/TikTok) which open many
-  // parallel CDN fetches — a single merged stream causes head-of-line blocking.
   const query = [
     `type=xhttp`,
     `security=reality`,
-    `pbk=i2ryLXz5H51kVANIqKIFI30_rAx6iuEveXwPqY_GyRY`,
+    `pbk=mFbTarVjieMFf9_u5cO86asyd0cvfu9qVNSt3OwuXFM`,
     `fp=chrome`,
-    `sni=www.cloudflare.com`,
-    `sid=509db650956762e8`,
-    `spx=/`,
-    `path=${encodeURIComponent("/assets/fceebc8ad5ca/clean")}`,
-    `host=187.77.71.106`,
-    `mode=stream-up`,
+    `sni=gateway.icloud.com`,
+    `sid=90d8be77b1662ec2`,
+    `spx=${encodeURIComponent("/")}`,
+    `path=${encodeURIComponent("/assets/v1/stream")}`,
+    `mode=auto`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8444?${query}#${encodeURIComponent("🇩🇪 Frankfurt XHTTP")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:8443?${query}#${encodeURIComponent("🛡️ Ikamba — Stealth (XHTTP)")}`;
 }
 
 export function buildHostkeyEsTurboLink(clientId: string, remark: string): string {
@@ -1830,8 +1830,10 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
   };
 
   // Primary: TCP+REALITY+Vision on 443 (clean IP, gateway.icloud.com decoy, no CDN).
-  // This is the DPI-resistant profile RU clients should use first.
+  // Fastest, looks like a direct HTTPS visit to a real site.
   addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
+  // Stealth: XHTTP+REALITY on 8443 — most DPI-resistant, survives active throttling.
+  addOptional(() => buildFrankfurtXhttpLink(clientId, remark));
   // Fallback: fast WS on 8448 (security=none) for networks where 443/REALITY is rough.
   addOptional(() => buildFrankfurtWsLink(clientId, remark));
 
