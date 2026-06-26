@@ -1501,14 +1501,15 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
 }
 
 // RELIABLE profile: VLESS + WebSocket (security=none) DIRECT on 8448, by IP.
-// PROVEN to carry live RU traffic. (Cloudflare-fronted WS was tried but RU
-// interferes with Cloudflare-fronted TLS, blackholing the tunnel — reverted.)
+// Host header = the IP (NOT a domain) — exactly the easymobiledev "Запасной"
+// shape. Plaintext WS lets DPI read the Host header, so a domain there (duckdns)
+// is a flag; using the bare IP shows no domain signal at all.
 export function buildFrankfurtWsLink(_clientId: string, _remark: string): string {
   const query = [
     `type=ws`,
     `security=none`,
     `path=${encodeURIComponent("/upload/session")}`,
-    `host=ikambavpn.duckdns.org`,
+    `host=187.77.71.106`,
   ].join("&");
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8448?${query}#${encodeURIComponent("🛡️ Frankfurt — Reliable")}`;
 }
