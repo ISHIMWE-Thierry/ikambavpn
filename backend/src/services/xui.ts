@@ -1500,20 +1500,17 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt — Fast")}`;
 }
 
-// RELIABLE profile: VLESS + WS through CLOUDFLARE (cdn.ikambaventures.com).
-// Clients connect to Cloudflare's edge (TLS) → CF proxies to our origin → xray.
-// The real server IP (187.77.71.106) is NEVER exposed — DPI only sees Cloudflare,
-// which RU can't block wholesale. Unblockable + IP-hidden, and CF's edge near RU
-// often lowers latency. This is the bulletproof default.
+// RELIABLE profile: VLESS + WebSocket (security=none) DIRECT on 8448, by IP.
+// PROVEN to carry live RU traffic. (Cloudflare-fronted WS was tried but RU
+// interferes with Cloudflare-fronted TLS, blackholing the tunnel — reverted.)
 export function buildFrankfurtWsLink(_clientId: string, _remark: string): string {
   const query = [
     `type=ws`,
-    `security=tls`,
-    `sni=cdn.ikambaventures.com`,
-    `host=cdn.ikambaventures.com`,
+    `security=none`,
     `path=${encodeURIComponent("/upload/session")}`,
+    `host=ikambavpn.duckdns.org`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@cdn.ikambaventures.com:443?${query}#${encodeURIComponent("🛡️ Frankfurt — Reliable")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8448?${query}#${encodeURIComponent("🛡️ Frankfurt — Reliable")}`;
 }
 
 /**
