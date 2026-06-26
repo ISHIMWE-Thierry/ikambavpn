@@ -1484,6 +1484,9 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
 // networks where this IP is REALITY-flagged it may connect-without-web, so the
 // WS "reliable" profile below is offered alongside it.
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
+  // Connect by IP (no client DNS needed) but keep SNI=cdn.ikambavpn.com — the IP
+  // is what cdn resolves to, so SNI↔IP stays consistent and the clean-domain
+  // REALITY camouflage is preserved without depending on the client resolving cdn.
   const query = [
     `type=tcp`,
     `security=reality`,
@@ -1494,7 +1497,7 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
     `sid=dc48dadb19aaca3b`,
     `spx=`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@cdn.ikambavpn.com:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt — Fast")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt — Fast")}`;
 }
 
 // RELIABLE profile: VLESS + WebSocket (security=none) on 8448. Slower (HTTP
@@ -1507,7 +1510,8 @@ export function buildFrankfurtWsLink(_clientId: string, _remark: string): string
     `path=${encodeURIComponent("/upload/session")}`,
     `host=ikambavpn.duckdns.org`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@ikambavpn.duckdns.org:8448?${query}#${encodeURIComponent("🛡️ Frankfurt — Reliable")}`;
+  // Connect by IP (no client DNS) — host header keeps the camouflage hostname.
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8448?${query}#${encodeURIComponent("🛡️ Frankfurt — Reliable")}`;
 }
 
 /**
