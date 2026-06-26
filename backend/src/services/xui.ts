@@ -1500,18 +1500,17 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt — Fast")}`;
 }
 
-// RELIABLE profile: VLESS + WebSocket (security=none) DIRECT on 8448, by IP.
-// Host header = the IP (NOT a domain) — exactly the easymobiledev "Запасной"
-// shape. Plaintext WS lets DPI read the Host header, so a domain there (duckdns)
-// is a flag; using the bare IP shows no domain signal at all.
+// The ONE profile: fastest VLESS + WebSocket (security=none), DIRECT to our IP
+// (no Cloudflare), duckdns host. BBR-tuned on the 8448 inbound. TCP/REALITY
+// dropped — this IP is REALITY-flagged; WS is the working signature here.
 export function buildFrankfurtWsLink(_clientId: string, _remark: string): string {
   const query = [
     `type=ws`,
     `security=none`,
     `path=${encodeURIComponent("/upload/session")}`,
-    `host=187.77.71.106`,
+    `host=ikambavpn.duckdns.org`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8448?${query}#${encodeURIComponent("🛡️ Frankfurt — Reliable")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8448?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
 }
 
 /**
@@ -1824,9 +1823,8 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  // Both profiles — users pick whichever passes on their network:
-  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark)); // 🇩🇪 Fast (Vision)
-  addOptional(() => buildFrankfurtWsLink(clientId, remark));        // 🛡️ Reliable (WS)
+  // Single profile: fast WS direct to our IP (TCP/REALITY dropped — IP flagged).
+  addOptional(() => buildFrankfurtWsLink(clientId, remark));
 
   return links;
 }
