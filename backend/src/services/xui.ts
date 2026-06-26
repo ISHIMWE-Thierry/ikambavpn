@@ -1500,9 +1500,10 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt — Fast")}`;
 }
 
-// The ONE profile: fastest VLESS + WebSocket (security=none), DIRECT to our IP
-// (no Cloudflare), duckdns host. BBR-tuned on the 8448 inbound. TCP/REALITY
-// dropped — this IP is REALITY-flagged; WS is the working signature here.
+// Fast VLESS + WebSocket (security=none) on the NEW CLEAN server (92.112.181.65),
+// direct by IP, duckdns host. BBR-tuned. The old 187.77.71.106 was REALITY-burned;
+// this is a fresh clean IP. (REALITY+Vision decoy profile added separately once
+// the neutral domain points here.)
 export function buildFrankfurtWsLink(_clientId: string, _remark: string): string {
   const query = [
     `type=ws`,
@@ -1510,7 +1511,7 @@ export function buildFrankfurtWsLink(_clientId: string, _remark: string): string
     `path=${encodeURIComponent("/upload/session")}`,
     `host=ikambavpn.duckdns.org`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:8448?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:8448?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
 }
 
 /**
