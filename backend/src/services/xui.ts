@@ -1486,15 +1486,16 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
   // confirmed on the real network (8448 works, 443 froze). serverName=
   // ikambavpn.duckdns.org resolves to our IP and REALITY steals our real Caddy
   // LE cert, so SNI↔IP↔cert are consistent. Fastest working transport.
+  // STOPGAP: VLESS + WebSocket (security=none) on 8448. REALITY+Vision with the
+  // duckdns SNI was being flagged by RU DPI (*.duckdns.org = personal-VPN signal);
+  // WS uses no REALITY SNI so it isn't flagged — proven to carry live RU traffic.
+  // Proper fix pending: clean custom domain (e.g. a subdomain of ikambavpn.com)
+  // to front REALITY+Vision like easymobiledev.xyz does.
   const query = [
-    `type=tcp`,
-    `security=reality`,
-    `pbk=${process.env.IKAMBA_PBK || "YO0t4VfnP9GAEcjASNtLtwJ9bicDIWwtqwfxixZAaDY"}`,
-    `fp=safari`,
-    `flow=xtls-rprx-vision`,
-    `sni=ikambavpn.duckdns.org`,
-    `sid=${process.env.IKAMBA_SID || "7d91698c18edfd43"}`,
-    `spx=`,
+    `type=ws`,
+    `security=none`,
+    `path=${encodeURIComponent("/upload/session")}`,
+    `host=ikambavpn.duckdns.org`,
   ].join("&");
   const port = process.env.IKAMBA_PORT || "8448";
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@ikambavpn.duckdns.org:${port}?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
