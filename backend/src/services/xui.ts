@@ -1486,18 +1486,23 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
 // server, not a VPN. This is the sustainable anti-DPI setup (the easymobiledev
 // model). Connect by IP (no client DNS); SNI=cdn.ikambaventures.com resolves to
 // this IP, so SNI↔IP↔cert↔decoy are all consistent. Enable Fragment in the client.
+// TCP + REALITY + Vision on the NEW CLEAN server (92.112.181.65), port 443, direct
+// by IP, NO Cloudflare. SNI/dest = gateway.icloud.com (Apple — ubiquitous in RU, not
+// throttled, TLS1.3, small cert). NOTE: never use www.microsoft.com as dest — its TLS
+// Certificate record (8273B) exceeds REALITY's 8192B parser limit (Xray issue #6356)
+// and the handshake silently fails ("received real certificate"). Fresh clean IP.
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
   const query = [
     `type=tcp`,
     `security=reality`,
-    `pbk=alJ6aPcfzZwwJNcXMmBg3CQwmzgD68zRpTR_wUzJXA0`,
-    `fp=safari`,
+    `pbk=mFbTarVjieMFf9_u5cO86asyd0cvfu9qVNSt3OwuXFM`,
+    `fp=chrome`,
     `flow=xtls-rprx-vision`,
-    `sni=cdn.ikambaventures.com`,
-    `sid=33990c31c45ad894`,
-    `spx=`,
+    `sni=gateway.icloud.com`,
+    `sid=72d489f1dcedaf22`,
+    `spx=${encodeURIComponent("/")}`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt — Fast")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:443?${query}#${encodeURIComponent("🚀 Ikamba — Fast (443)")}`;
 }
 
 // Fast VLESS + WebSocket (security=none) on the NEW CLEAN server (92.112.181.65),
@@ -1824,7 +1829,10 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  // Single profile: fast WS direct to our IP (TCP/REALITY dropped — IP flagged).
+  // Primary: TCP+REALITY+Vision on 443 (clean IP, gateway.icloud.com decoy, no CDN).
+  // This is the DPI-resistant profile RU clients should use first.
+  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
+  // Fallback: fast WS on 8448 (security=none) for networks where 443/REALITY is rough.
   addOptional(() => buildFrankfurtWsLink(clientId, remark));
 
   return links;
