@@ -1489,14 +1489,15 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
   const query = [
     `type=tcp`,
     `security=reality`,
-    `pbk=YO0t4VfnP9GAEcjASNtLtwJ9bicDIWwtqwfxixZAaDY`,
+    `pbk=${process.env.IKAMBA_PBK || "dieeUp6RtOaYHhAwVC6gAU1KVjxsr4DFiP48uiXKrz8"}`,
     `fp=safari`,
     `flow=xtls-rprx-vision`,
     `sni=ikambavpn.duckdns.org`,
-    `sid=7d91698c18edfd43`,
+    `sid=${process.env.IKAMBA_SID || "13795fea8db61379"}`,
     `spx=`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@ikambavpn.duckdns.org:8448?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
+  const port = process.env.IKAMBA_PORT || "2087";
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@ikambavpn.duckdns.org:${port}?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
 }
 
 /**
