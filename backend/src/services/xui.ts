@@ -1479,22 +1479,22 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
  * Shared UUID 38285504-... is provisioned with flow=xtls-rprx-vision in this inbound.
  * Confirmed working on both WiFi and mobile data in Russia.
  */
-// FAST profile: clean-domain TCP+REALITY+Vision on 443 (cdn.ikambavpn.com fronts
-// REALITY with a real LE cert — easymobiledev model). Works on most ISPs; on
-// networks where this IP is REALITY-flagged it may connect-without-web, so the
-// WS "reliable" profile below is offered alongside it.
+// FAST profile: TCP+REALITY+Vision on 443, fronted by cdn.ikambaventures.com — a
+// NEUTRAL domain (not VPN-branded) with a REAL decoy website behind it. REALITY's
+// steal target is the local decoy (Caddy:8443), so RU's active probes to our
+// IP:443 see a legit "Ventures CDN" site → the endpoint looks like a normal HTTPS
+// server, not a VPN. This is the sustainable anti-DPI setup (the easymobiledev
+// model). Connect by IP (no client DNS); SNI=cdn.ikambaventures.com resolves to
+// this IP, so SNI↔IP↔cert↔decoy are all consistent. Enable Fragment in the client.
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
-  // Connect by IP (no client DNS needed) but keep SNI=cdn.ikambavpn.com — the IP
-  // is what cdn resolves to, so SNI↔IP stays consistent and the clean-domain
-  // REALITY camouflage is preserved without depending on the client resolving cdn.
   const query = [
     `type=tcp`,
     `security=reality`,
-    `pbk=w-VIsRJf19cWVqx91hl8k83a89zOyBbQZy2qWXDyyC8`,
+    `pbk=alJ6aPcfzZwwJNcXMmBg3CQwmzgD68zRpTR_wUzJXA0`,
     `fp=safari`,
     `flow=xtls-rprx-vision`,
-    `sni=cdn.ikambavpn.com`,
-    `sid=dc48dadb19aaca3b`,
+    `sni=cdn.ikambaventures.com`,
+    `sid=33990c31c45ad894`,
     `spx=`,
   ].join("&");
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@187.77.71.106:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt — Fast")}`;
