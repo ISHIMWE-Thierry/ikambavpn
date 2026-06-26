@@ -1479,26 +1479,35 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
  * Shared UUID 38285504-... is provisioned with flow=xtls-rprx-vision in this inbound.
  * Confirmed working on both WiFi and mobile data in Russia.
  */
+// FAST profile: clean-domain TCP+REALITY+Vision on 443 (cdn.ikambavpn.com fronts
+// REALITY with a real LE cert — easymobiledev model). Works on most ISPs; on
+// networks where this IP is REALITY-flagged it may connect-without-web, so the
+// WS "reliable" profile below is offered alongside it.
 export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string): string {
-  // ikamba-8448 inbound on codex xray — TCP+REALITY+Vision, fronted by OUR OWN
-  // domain. Port 8448 (NOT 443): RU DPI actively scrutinizes REALITY on the
-  // standard HTTPS port 443 and freezes it, but lets it through on high ports —
-  // confirmed on the real network (8448 works, 443 froze). serverName=
-  // ikambavpn.duckdns.org resolves to our IP and REALITY steals our real Caddy
-  // LE cert, so SNI↔IP↔cert are consistent. Fastest working transport.
-  // STOPGAP: VLESS + WebSocket (security=none) on 8448. REALITY+Vision with the
-  // duckdns SNI was being flagged by RU DPI (*.duckdns.org = personal-VPN signal);
-  // WS uses no REALITY SNI so it isn't flagged — proven to carry live RU traffic.
-  // Proper fix pending: clean custom domain (e.g. a subdomain of ikambavpn.com)
-  // to front REALITY+Vision like easymobiledev.xyz does.
+  const query = [
+    `type=tcp`,
+    `security=reality`,
+    `pbk=w-VIsRJf19cWVqx91hl8k83a89zOyBbQZy2qWXDyyC8`,
+    `fp=safari`,
+    `flow=xtls-rprx-vision`,
+    `sni=cdn.ikambavpn.com`,
+    `sid=dc48dadb19aaca3b`,
+    `spx=`,
+  ].join("&");
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@cdn.ikambavpn.com:443?${query}#${encodeURIComponent("🇩🇪 Frankfurt — Fast")}`;
+}
+
+// RELIABLE profile: VLESS + WebSocket (security=none) on 8448. Slower (HTTP
+// framing, no crypto offload) but works everywhere — not REALITY, so it isn't
+// flagged. The dependable fallback when the Fast profile won't pass.
+export function buildFrankfurtWsLink(_clientId: string, _remark: string): string {
   const query = [
     `type=ws`,
     `security=none`,
     `path=${encodeURIComponent("/upload/session")}`,
     `host=ikambavpn.duckdns.org`,
   ].join("&");
-  const port = process.env.IKAMBA_PORT || "8448";
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@ikambavpn.duckdns.org:${port}?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@ikambavpn.duckdns.org:8448?${query}#${encodeURIComponent("🛡️ Frankfurt — Reliable")}`;
 }
 
 /**
@@ -1811,12 +1820,9 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  // Fast: Frankfurt TCP+REALITY+Vision port 443 — raw tunnel, lowest overhead.
-  // Needs client-side Fragment enabled to beat the TSPU 15-20KB freeze.
-  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
-  // XHTTP fallback (buildFrankfurtXhttpLink) is kept in code — re-add the line
-  // below if TCP+Vision ever gets blocked again:
-  // addOptional(() => buildFrankfurtXhttpLink(clientId, remark));
+  // Both profiles — users pick whichever passes on their network:
+  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark)); // 🇩🇪 Fast (Vision)
+  addOptional(() => buildFrankfurtWsLink(clientId, remark));        // 🛡️ Reliable (WS)
 
   return links;
 }
