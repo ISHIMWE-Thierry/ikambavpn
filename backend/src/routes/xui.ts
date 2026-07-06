@@ -116,6 +116,25 @@ export async function publicSubscriptionHandler(req: Request, res: Response) {
     res.setHeader("Content-Disposition", "inline");
     res.setHeader("Profile-Update-Interval", "1"); // Check every 1 hour for config updates
     res.setHeader("Subscription-Userinfo", entry.userInfo);
+    // Neutral brand group name — raw base64, no "base64:" prefix, MUST NOT contain "VPN"
+    // (screenshot/shoulder-surf leak in RU). Clients that don't parse it just ignore it.
+    res.setHeader(
+      "profile-title",
+      Buffer.from(process.env.SUB_PROFILE_TITLE || "Ikamba").toString("base64")
+    );
+    // Support / web page — only emitted when a NEUTRAL domain is configured; never duckdns.
+    if (process.env.SUB_SUPPORT_URL) res.setHeader("support-url", process.env.SUB_SUPPORT_URL);
+    if (process.env.SUB_WEB_URL) res.setHeader("profile-web-page-url", process.env.SUB_WEB_URL);
+    // Live ops banner (e.g. maintenance / new-link notice) — plain UTF-8 base64, no color codes.
+    if (process.env.SUB_ANNOUNCE) {
+      res.setHeader("announce", Buffer.from(process.env.SUB_ANNOUNCE).toString("base64"));
+      if (process.env.SUB_ANNOUNCE_URL) res.setHeader("announce-url", process.env.SUB_ANNOUNCE_URL);
+    }
+    // Happ: auto-select the lowest-latency leg on open (no-op on V2RayTun/Hiddify — harmless).
+    res.setHeader("providerid", process.env.SUB_PROVIDER_ID || "ikamba");
+    res.setHeader("subscription-autoconnect", "true");
+    res.setHeader("subscription-autoconnect-type", "lowestdelay");
+    res.setHeader("subscription-ping-onopen-enabled", "true");
     res.setHeader("ETag", `"sub-${Date.now()}"`);
     res.setHeader("Last-Modified", new Date().toUTCString());
     // Subscription profiles change during live server failover; force clients and

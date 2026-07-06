@@ -385,18 +385,15 @@ export async function getCachedSubscription(email: string): Promise<SubCacheEntr
     const allLinks = buildAllServerLinks(clientId, remark);
     const vlessLink = allLinks.join("\n");
 
-    // Build user info
+    // Build user info. The free tier shares ONE UUID, so panel up/down/total are POOLED
+    // across every device and misleading — report only a real expiry (seconds), traffic 0.
     let userInfo = "upload=0; download=0; total=0; expire=0";
     try {
       const stat = await getClientStatByEmail(email);
-      if (stat) {
-        const expireSec = stat.expiryTime ? Math.floor(stat.expiryTime / 1000) : 0;
-        userInfo = `upload=${stat.up}; download=${stat.down}; total=${stat.total}; expire=${expireSec}`;
-      } else if (lookup) {
-        userInfo = userInfoFromClient(lookup.client);
-      }
+      const expireSec = stat?.expiryTime ? Math.floor(stat.expiryTime / 1000) : 0;
+      userInfo = `upload=0; download=0; total=0; expire=${expireSec}`;
     } catch {
-      if (lookup) userInfo = userInfoFromClient(lookup.client);
+      // keep zeros on panel error
     }
 
     const entry: SubCacheEntry = { vlessLink, userInfo, cachedAt: Date.now() };
@@ -1516,7 +1513,8 @@ export function buildFrankfurtWsLink(_clientId: string, _remark: string): string
     `path=${encodeURIComponent("/upload/session")}`,
     `host=ikambavpn.duckdns.org`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:8448?${query}#${encodeURIComponent("🇩🇪 Frankfurt")}`;
+  // Node is Lithuania (Hostinger), not Germany — drop the wrong 🇩🇪 flag, use neutral name.
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:8448?${query}#${encodeURIComponent("Ikamba — Backup")}`;
 }
 
 /**
@@ -1539,9 +1537,32 @@ export function buildFrankfurtXhttpLink(_clientId: string, _remark: string): str
     `sid=90d8be77b1662ec2`,
     `spx=${encodeURIComponent("/")}`,
     `path=${encodeURIComponent("/assets/v1/stream")}`,
-    `mode=auto`,
+    // stream-up: separate upload stream, better shape for RU-mobile video (Reels/TikTok
+    // open many parallel CDN fetches; the merged single stream head-of-line-blocks them).
+    // Verified: full 1MB download works against the mode=auto inbound.
+    `mode=stream-up`,
   ].join("&");
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:8443?${query}#${encodeURIComponent("🛡️ Ikamba — Stealth (XHTTP)")}`;
+}
+
+// gRPC + REALITY on the clean server (92.112.181.65:9443) — adds the one transport
+// FRAMING our other legs lack (HTTP/2-RPC), a distinct failure class from TCP-Vision /
+// XHTTP / WS under RU TSPU TLS-in-TCP degradation. Own fresh keypair + shortId (NOT the
+// 443/8443 key), mode=gun, gateway.icloud.com small-cert decoy, no Vision flow. Self-
+// tested HTTP 204 end-to-end via the public IP.
+export function buildFrankfurtGrpcLink(_clientId: string, _remark: string): string {
+  const query = [
+    `type=grpc`,
+    `security=reality`,
+    `pbk=zPx8jCCpWInklP5azAQmYULBpowaR1RZwmrQv9rtASM`,
+    `fp=chrome`,
+    `sni=gateway.icloud.com`,
+    `sid=666319f44164216a`,
+    `spx=${encodeURIComponent("/")}`,
+    `serviceName=${encodeURIComponent("cdn.v2.Stream")}`,
+    `mode=gun`,
+  ].join("&");
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:9443?${query}#${encodeURIComponent("🔀 Ikamba — gRPC")}`;
 }
 
 export function buildHostkeyEsTurboLink(clientId: string, remark: string): string {
@@ -1834,6 +1855,8 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
   addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
   // Stealth: XHTTP+REALITY on 8443 — most DPI-resistant, survives active throttling.
   addOptional(() => buildFrankfurtXhttpLink(clientId, remark));
+  // gRPC+REALITY on 9443 — HTTP/2-RPC framing, an independent failure class.
+  addOptional(() => buildFrankfurtGrpcLink(clientId, remark));
   // Fallback: fast WS on 8448 (security=none) for networks where 443/REALITY is rough.
   addOptional(() => buildFrankfurtWsLink(clientId, remark));
 
