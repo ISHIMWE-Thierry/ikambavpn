@@ -1499,7 +1499,7 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
     `sid=72d489f1dcedaf22`,
     `spx=${encodeURIComponent("/")}`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:443?${query}#${encodeURIComponent("🚀 Ikamba — Fast (443)")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:443?${query}#${encodeURIComponent("⚡ Ikamba — Vision (needs Fragment)")}`;
 }
 
 // Fast VLESS + WebSocket (security=none) on the NEW CLEAN server (92.112.181.65),
@@ -1537,10 +1537,9 @@ export function buildFrankfurtXhttpLink(_clientId: string, _remark: string): str
     `sid=90d8be77b1662ec2`,
     `spx=${encodeURIComponent("/")}`,
     `path=${encodeURIComponent("/assets/v1/stream")}`,
-    // stream-up: separate upload stream, better shape for RU-mobile video (Reels/TikTok
-    // open many parallel CDN fetches; the merged single stream head-of-line-blocks them).
-    // Verified: full 1MB download works against the mode=auto inbound.
-    `mode=stream-up`,
+    // mode=auto (matches the server inbound). stream-up was tried but its single long
+    // download stream is freeze-vulnerable on RU TSPU (connects but no data) — reverted.
+    `mode=auto`,
   ].join("&");
   return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:8443?${query}#${encodeURIComponent("🛡️ Ikamba — Stealth (XHTTP)")}`;
 }
@@ -1562,7 +1561,7 @@ export function buildFrankfurtGrpcLink(_clientId: string, _remark: string): stri
     `serviceName=${encodeURIComponent("cdn.v2.Stream")}`,
     `mode=gun`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:9443?${query}#${encodeURIComponent("🔀 Ikamba — gRPC")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:9443?${query}#${encodeURIComponent("🚀 Ikamba — Fast (gRPC)")}`;
 }
 
 export function buildHostkeyEsTurboLink(clientId: string, remark: string): string {
@@ -1850,15 +1849,18 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  // Primary: TCP+REALITY+Vision on 443 (clean IP, gateway.icloud.com decoy, no CDN).
-  // Fastest, looks like a direct HTTPS visit to a real site.
-  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
-  // Stealth: XHTTP+REALITY on 8443 — most DPI-resistant, survives active throttling.
-  addOptional(() => buildFrankfurtXhttpLink(clientId, remark));
-  // gRPC+REALITY on 9443 — HTTP/2-RPC framing, an independent failure class.
+  // ORDER MATTERS — lead with the transports that survive RU TSPU's stream-freeze
+  // WITHOUT client-side fragment. Field-confirmed: gRPC (HTTP/2 frames) and WS work as-is;
+  // Vision (raw TLS) and XHTTP (single long download stream) freeze unless the user
+  // enables Fragment, so they go last and are labelled accordingly.
+  // Primary: gRPC+REALITY on 9443 — HTTP/2-RPC framing, works in RU with no toggles.
   addOptional(() => buildFrankfurtGrpcLink(clientId, remark));
-  // Fallback: fast WS on 8448 (security=none) for networks where 443/REALITY is rough.
+  // Backup: WS on 8448 (security=none) — WebSocket-framed, also survives the freeze.
   addOptional(() => buildFrankfurtWsLink(clientId, remark));
+  // Vision (443) — fastest when it works, but needs the client Fragment toggle in RU.
+  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
+  // XHTTP (8443, mode=auto) — REALITY stealth; also wants Fragment on frozen networks.
+  addOptional(() => buildFrankfurtXhttpLink(clientId, remark));
 
   return links;
 }
