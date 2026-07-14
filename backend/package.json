@@ -9,6 +9,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@kastov/cryptohapp": "github:kastov/cryptohapp",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",

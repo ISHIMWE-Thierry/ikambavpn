@@ -1,0 +1,22 @@
+// Paste entire file at https://login.tailscale.com/admin/acls
+{
+	"grants": [
+		{"src": ["*"], "dst": ["*"], "ip": ["*"]},
+	],
+
+	"ssh": [
+		{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+
+	"nodeAttrs": [
+		{
+			"target": ["autogroup:member"],
+			"attr":   ["funnel"],
+		},
+	],
+}

@@ -1,11 +1,32 @@
+# ── Dependencies & build output ─────────────────────────────
 node_modules/
 dist/
+backend/dist/
+functions/lib/
+*.tsbuildinfo
+
+# ── Secrets & environment ───────────────────────────────────
 .env
 .env.local
 .env.production
 *.local
-.DS_Store
-.firebase/
 backend/.env
-backend/dist/
+# Handoff notes contain live passwords / API keys — NEVER commit.
+docs/AI-HANDOFF.md
+# Live VPN server links (IP + UUID + REALITY keys) — keep out of git.
+infrastructure/ikamba-free-test-links.txt
+
+# ── Firebase / tooling logs ─────────────────────────────────
+.firebase/
 firebase-debug.log
+firestore-debug.log
+
+# ── Local agent/editor tooling ──────────────────────────────
+.claude/
+.agents/
+.mcp.json
+skills-lock.json
+
+# ── OS cruft ────────────────────────────────────────────────
+.DS_Store
+*.DS_Store
