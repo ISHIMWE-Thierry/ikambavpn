@@ -1849,18 +1849,18 @@ export function buildAllServerLinks(clientId: string, remark: string): string[] 
     }
   };
 
-  // ORDER MATTERS — lead with the transports that survive RU TSPU's stream-freeze
-  // WITHOUT client-side fragment. Field-confirmed: gRPC (HTTP/2 frames) and WS work as-is;
-  // Vision (raw TLS) and XHTTP (single long download stream) freeze unless the user
-  // enables Fragment, so they go last and are labelled accordingly.
+  // Serve ONLY the transports that survive RU TSPU's stream-freeze without any client
+  // toggle. Field-confirmed on real RU networks: gRPC (HTTP/2 frames) and WS (WebSocket
+  // frames) work; Vision (raw TLS) and XHTTP (single long download stream) freeze — even
+  // with client Fragment on some networks — so they are NOT served (builders kept for a
+  // future full-JSON + baked-fragment delivery). See [[project_ikamba_443_vision]].
   // Primary: gRPC+REALITY on 9443 — HTTP/2-RPC framing, works in RU with no toggles.
   addOptional(() => buildFrankfurtGrpcLink(clientId, remark));
-  // Backup: WS on 8448 (security=none) — WebSocket-framed, also survives the freeze.
+  // Backup: WS on 8448 — WebSocket-framed, also survives the freeze.
   addOptional(() => buildFrankfurtWsLink(clientId, remark));
-  // Vision (443) — fastest when it works, but needs the client Fragment toggle in RU.
-  addOptional(() => buildFrankfurtTcpVisionLink(clientId, remark));
-  // XHTTP (8443, mode=auto) — REALITY stealth; also wants Fragment on frozen networks.
-  addOptional(() => buildFrankfurtXhttpLink(clientId, remark));
+  // Freeze-prone legs intentionally NOT served (kept in code, need fragment/full-JSON):
+  //   buildFrankfurtTcpVisionLink (443 Vision) — raw TLS stream, RU freeze target.
+  //   buildFrankfurtXhttpLink (8443 XHTTP)     — single long download stream, freezes.
 
   return links;
 }
