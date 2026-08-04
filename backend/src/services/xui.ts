@@ -1483,7 +1483,7 @@ export function buildEsSpainXhttpLink(_clientId: string, _remark: string): strin
 // server, not a VPN. This is the sustainable anti-DPI setup (the easymobiledev
 // model). Connect by IP (no client DNS); SNI=cdn.ikambaventures.com resolves to
 // this IP, so SNI↔IP↔cert↔decoy are all consistent. Enable Fragment in the client.
-// TCP + REALITY + Vision on the NEW CLEAN server (92.112.181.65), port 443, direct
+// TCP + REALITY + Vision on the NEW CLEAN server (168.231.113.242), port 443, direct
 // by IP, NO Cloudflare. SNI/dest = gateway.icloud.com (Apple — ubiquitous in RU, not
 // throttled, TLS1.3, small cert). NOTE: never use www.microsoft.com as dest — its TLS
 // Certificate record (8273B) exceeds REALITY's 8192B parser limit (Xray issue #6356)
@@ -1499,10 +1499,10 @@ export function buildFrankfurtTcpVisionLink(_clientId: string, _remark: string):
     `sid=72d489f1dcedaf22`,
     `spx=${encodeURIComponent("/")}`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:443?${query}#${encodeURIComponent("⚡ Ikamba — Vision (needs Fragment)")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@168.231.113.242:443?${query}#${encodeURIComponent("⚡ Ikamba — Vision (needs Fragment)")}`;
 }
 
-// Fast VLESS + WebSocket (security=none) on the NEW CLEAN server (92.112.181.65),
+// Fast VLESS + WebSocket (security=none) on the NEW CLEAN server (168.231.113.242),
 // direct by IP, duckdns host. BBR-tuned. The old 187.77.71.106 was REALITY-burned;
 // this is a fresh clean IP. (REALITY+Vision decoy profile added separately once
 // the neutral domain points here.)
@@ -1514,7 +1514,7 @@ export function buildFrankfurtWsLink(_clientId: string, _remark: string): string
     `host=ikambavpn.duckdns.org`,
   ].join("&");
   // Node is Lithuania (Hostinger), not Germany — drop the wrong 🇩🇪 flag, use neutral name.
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:8448?${query}#${encodeURIComponent("Ikamba — Backup")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@168.231.113.242:8448?${query}#${encodeURIComponent("Ikamba — Backup")}`;
 }
 
 /**
@@ -1523,7 +1523,7 @@ export function buildFrankfurtWsLink(_clientId: string, _remark: string): string
  * Same Frankfurt server & UUID, XHTTP transport survives the DPI that
  * freezes TCP+Vision. Path /assets/fceebc8ad5ca/clean, host=server IP.
  */
-// XHTTP + REALITY on the NEW CLEAN server (92.112.181.65:8443) — the most DPI-resistant
+// XHTTP + REALITY on the NEW CLEAN server (168.231.113.242:8443) — the most DPI-resistant
 // leg. XHTTP looks like ordinary multiplexed HTTP/2 and survives the active throttling
 // that freezes plain TCP+Vision. Same gateway.icloud.com decoy + shared UUID; its OWN
 // shortId. No `host` (matches the proven server self-test). mode=auto.
@@ -1541,10 +1541,10 @@ export function buildFrankfurtXhttpLink(_clientId: string, _remark: string): str
     // download stream is freeze-vulnerable on RU TSPU (connects but no data) — reverted.
     `mode=auto`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:8443?${query}#${encodeURIComponent("🛡️ Ikamba — Stealth (XHTTP)")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@168.231.113.242:8443?${query}#${encodeURIComponent("🛡️ Ikamba — Stealth (XHTTP)")}`;
 }
 
-// gRPC + REALITY on the clean server (92.112.181.65:9443) — adds the one transport
+// gRPC + REALITY on the clean server (168.231.113.242:9443) — adds the one transport
 // FRAMING our other legs lack (HTTP/2-RPC), a distinct failure class from TCP-Vision /
 // XHTTP / WS under RU TSPU TLS-in-TCP degradation. Own fresh keypair + shortId (NOT the
 // 443/8443 key), mode=gun, gateway.icloud.com small-cert decoy, no Vision flow. Self-
@@ -1553,15 +1553,15 @@ export function buildFrankfurtGrpcLink(_clientId: string, _remark: string): stri
   const query = [
     `type=grpc`,
     `security=reality`,
-    `pbk=zPx8jCCpWInklP5azAQmYULBpowaR1RZwmrQv9rtASM`,
+    `pbk=rhp_KJNGY8Eo92oqi_Gyz1pwptG4kh4XJ2Mn9E8zGBs`,
     `fp=chrome`,
     `sni=gateway.icloud.com`,
-    `sid=666319f44164216a`,
+    `sid=bf03309beb8a71d4`,
     `spx=${encodeURIComponent("/")}`,
     `serviceName=${encodeURIComponent("cdn.v2.Stream")}`,
     `mode=gun`,
   ].join("&");
-  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@92.112.181.65:9443?${query}#${encodeURIComponent("🚀 Ikamba — Fast (gRPC)")}`;
+  return `vless://38285504-1bba-4511-b5fe-ecfc72e1285b@168.231.113.242:9443?${query}#${encodeURIComponent("🚀 Ikamba — Fast (gRPC)")}`;
 }
 
 export function buildHostkeyEsTurboLink(clientId: string, remark: string): string {
